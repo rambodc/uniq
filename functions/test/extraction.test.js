@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import { extractionSchema, normalizeDraft } from "../extraction.js";
 import { DAILY_ANALYSIS_LIMIT, DAILY_REFINEMENT_LIMIT, GUEST_ANALYSIS_LIMIT, GUEST_REFINEMENT_LIMIT, nextUtcReset, quotaStatus, utcDay } from "../access.js";
 
-test("schema supports only vertical and horizontal output", () => {
-  assert.deepEqual(extractionSchema.properties.draft.properties.type.properties.value.enum, ["vertical", "horizontal", null]);
+test("schema separates trajectory, holes, tubulars, and cement with bounded collections", () => {
+  const draft=extractionSchema.properties.draft.properties;
+  assert.deepEqual(draft.trajectory.items.properties.type.enum, ["vertical","inclined-hold","build","drop","turn","compound","horizontal","survey"]);
+  assert.equal(draft.holes.maxItems,24);
+  assert.equal(draft.tubulars.maxItems,32);
+  assert.equal(draft.cement.maxItems,32);
 });
 
 test("guest AI trial limits stay intentionally smaller than account quotas", () => {
@@ -13,8 +17,9 @@ test("guest AI trial limits stay intentionally smaller than account quotas", () 
   assert.ok(GUEST_ANALYSIS_LIMIT < DAILY_ANALYSIS_LIMIT);
   assert.ok(GUEST_REFINEMENT_LIMIT < DAILY_REFINEMENT_LIMIT);
 });
-test("normalizer rejects unsupported architecture", () => {
-  assert.throws(() => normalizeDraft({ draft: { type: { value: "multilateral" } } }), /unsupported/);
+test("normalizer rejects incomplete and unsupported construction drafts", () => {
+  assert.throws(() => normalizeDraft({ draft: { trajectory:[] } }), /incomplete/);
+  assert.throws(() => normalizeDraft({ draft: { trajectory:[{type:"multilateral"}],holes:[],tubulars:[],cement:[] } }), /unsupported/);
 });
 
 test("daily quota status is deterministic and clamps at zero", () => {
