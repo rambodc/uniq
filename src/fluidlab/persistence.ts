@@ -1,11 +1,11 @@
-import type { WellDesign } from "./model";
+import type { WellProject } from "./engineering";
 
 const DB_NAME = "uniqenergy-fluidlab";
 const STORE = "workspace";
 export const GUEST_DRAFT_KEY = "guest-draft";
 export const PENDING_SAVE_KEY = "pending-save";
 
-export interface LocalDraft { design: WellDesign; updatedAt: string }
+export interface LocalDraft { design: WellProject; updatedAt: string }
 
 function database() {
   return new Promise<IDBDatabase>((resolve, reject) => {

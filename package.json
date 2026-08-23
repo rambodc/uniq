@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
-    "test": "vitest run src/fluidlab/model.test.ts && node --test tests/homepage.test.mjs",
+    "test": "vitest run src/fluidlab/engineering.test.ts && node --test tests/homepage.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node --test tests/rules.test.mjs\"",
     "deploy": "npm run build && firebase deploy --only hosting"
   },

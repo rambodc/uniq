@@ -36,30 +36,22 @@ async function readQuota(uid, now = new Date()) {
   const snapshot = await db.collection("fluidlabUsage").doc(uid).collection("days").doc(utcDay(now)).get();
   return quotaStatus(snapshot.data(), now);
 }
-async function reserveQuota(uid, kind, now = new Date()) {
-  const reference = db.collection("fluidlabUsage").doc(uid).collection("days").doc(utcDay(now));
+async function reserveQuota(uid, kind, guest = false, now = new Date()) {
+  const reference = guest ? db.collection("fluidlabGuestUsage").doc(uid) : db.collection("fluidlabUsage").doc(uid).collection("days").doc(utcDay(now));
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(reference);
     const current = snapshot.data() || {};
     const field = kind === "analysis" ? "analyses" : "refinements";
-    const limit = kind === "analysis" ? DAILY_ANALYSIS_LIMIT : DAILY_REFINEMENT_LIMIT;
-    if (Number(current[field] || 0) >= limit) throw new HttpsError("resource-exhausted", `The daily ${kind} limit has been reached.`);
-    const next = { ...current, [field]: Number(current[field] || 0) + 1, updatedAt: FieldValue.serverTimestamp() };
+    const pendingField = kind === "analysis" ? "pendingAnalyses" : "pendingRefinements";
+    const limit = guest ? (kind === "analysis" ? GUEST_ANALYSIS_LIMIT : GUEST_REFINEMENT_LIMIT) : (kind === "analysis" ? DAILY_ANALYSIS_LIMIT : DAILY_REFINEMENT_LIMIT);
+    if (Number(current[field] || 0) + Number(current[pendingField] || 0) >= limit) throw new HttpsError("resource-exhausted", `The ${guest?"guest ":"daily "}${kind} limit has been reached.`);
+    const next = { ...current, [pendingField]: Number(current[pendingField] || 0) + 1, updatedAt: FieldValue.serverTimestamp() };
     transaction.set(reference, next, { merge: true });
-    return quotaStatus(next, now);
+    return { reference, field, pendingField, limit, guest, now };
   });
 }
-async function reserveGuestQuota(uid, kind) {
-  const reference = db.collection("fluidlabGuestUsage").doc(uid);
-  return db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(reference), current = snapshot.data() || {};
-    const field = kind === "analysis" ? "analyses" : "refinements";
-    const limit = kind === "analysis" ? GUEST_ANALYSIS_LIMIT : GUEST_REFINEMENT_LIMIT;
-    if (Number(current[field] || 0) >= limit) throw new HttpsError("resource-exhausted", `The guest ${kind} trial has been used. Sign in to continue.`);
-    const next = { ...current, [field]: Number(current[field] || 0) + 1, updatedAt: FieldValue.serverTimestamp() };
-    transaction.set(reference, next, { merge: true });
-    return { analysesRemaining: Math.max(0, GUEST_ANALYSIS_LIMIT - Number(next.analyses || 0)), refinementsRemaining: Math.max(0, GUEST_REFINEMENT_LIMIT - Number(next.refinements || 0)), resetsAt: "" };
-  });
+async function finalizeQuota(reservation, success) {
+  return db.runTransaction(async transaction => { const snapshot=await transaction.get(reservation.reference),current=snapshot.data()||{},pending=Math.max(0,Number(current[reservation.pendingField]||0)-1),next={...current,[reservation.pendingField]:pending,updatedAt:FieldValue.serverTimestamp()};if(success)next[reservation.field]=Number(current[reservation.field]||0)+1;transaction.set(reservation.reference,next,{merge:true});return reservation.guest?{analysesRemaining:Math.max(0,GUEST_ANALYSIS_LIMIT-Number(next.analyses||0)),refinementsRemaining:Math.max(0,GUEST_REFINEMENT_LIMIT-Number(next.refinements||0)),resetsAt:""}:quotaStatus(next,reservation.now);});
 }
 
 export const registerFluidLabUser = onCall(profileBase, async (request) => {
@@ -90,14 +82,16 @@ export const analyzeWell = onCall({ ...callableBase, timeoutSeconds: 120, memory
   if (!supported.has(file.mimeType)) throw new HttpsError("invalid-argument", "This file type is not supported.");
   const bytes = Buffer.from(file.base64, "base64");
   if (!bytes.length || bytes.length > 15 * 1024 * 1024) throw new HttpsError("invalid-argument", "Files must be between 1 byte and 15 MB.");
-  const quota = account.anonymous ? await reserveGuestQuota(account.uid, "analysis") : await reserveQuota(account.uid, "analysis");
+  const reservation = await reserveQuota(account.uid, "analysis", account.anonymous);
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   let uploaded;
   try {
     uploaded = await client.files.create({ file: await toFile(bytes, file.name, { type: file.mimeType }), purpose: "user_data" });
-    const response = await client.responses.create({ model: "gpt-5.5", store: false, reasoning: { effort: "medium" }, max_output_tokens: 5000, instructions, input: [{ role: "user", content: [{ type: "input_text", text: `Extract a supported well draft from ${file.name}. Return missing and conflicting values explicitly.` }, { type: "input_file", file_id: uploaded.id }] }], text: { format: { type: "json_schema", name: "well_extraction", strict: true, schema: extractionSchema } } });
-    return { ...normalizeDraft(JSON.parse(response.output_text)), quota };
+    const request = compact => client.responses.create({ model: "gpt-5.5", store: false, reasoning: { effort: compact?"low":"medium" }, max_output_tokens: compact?3500:5000, instructions:`${instructions}${compact?"\nBe exceptionally compact. Return no repeated evidence and no commentary outside the schema.":""}`, input: [{ role: "user", content: [{ type: "input_text", text: `Extract a section-based well draft from ${file.name}. Return missing and conflicting values explicitly.` }, { type: "input_file", file_id: uploaded.id }] }], text: { format: { type: "json_schema", name: "well_extraction", strict: true, schema: extractionSchema } } });
+    let parsed; for(let attempt=0;attempt<2;attempt++){const response=await request(attempt===1);if(response.status==="incomplete")continue;try{parsed=normalizeDraft(JSON.parse(response.output_text));break;}catch(error){if(attempt===1)throw error;}}
+    if(!parsed)throw new Error("The extraction response was incomplete.");const quota=await finalizeQuota(reservation,true);return { ...parsed, quota };
   } catch (error) {
+    await finalizeQuota(reservation,false).catch(refundError=>console.error("Quota release failed",refundError));
     console.error("Well extraction failed", error instanceof Error ? error.message : error);
     throw new HttpsError("internal", "The document could not be analyzed. Please try again or enter the well manually.");
   } finally { if (uploaded?.id) await client.files.delete(uploaded.id).catch((error) => console.error("Temporary file cleanup failed", error)); }
@@ -108,12 +102,13 @@ export const refineWell = onCall({ ...callableBase, timeoutSeconds: 60, memory: 
   if (!account.anonymous) await authorized(request);
   const { draft, message } = request.data ?? {};
   if (!draft || typeof message !== "string" || !message.trim() || message.length > 2000) throw new HttpsError("invalid-argument", "Enter a short correction or answer.");
-  const quota = account.anonymous ? await reserveGuestQuota(account.uid, "refinement") : await reserveQuota(account.uid, "refinement");
+  const reservation = await reserveQuota(account.uid, "refinement", account.anonymous);
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   try {
     const response = await client.responses.create({ model: "gpt-5.5", store: false, reasoning: { effort: "low" }, max_output_tokens: 3500, instructions: `${instructions}\nUpdate the supplied draft only from the user's explicit correction. Retain prior source citations for unchanged values and mark user-provided changes with source location "User confirmation".`, input: `CURRENT DRAFT:\n${JSON.stringify(draft)}\n\nUSER MESSAGE:\n${message}`, text: { format: { type: "json_schema", name: "well_refinement", strict: true, schema: extractionSchema } } });
-    return { ...normalizeDraft(JSON.parse(response.output_text)), quota };
+    if(response.status==="incomplete")throw new Error("The correction response was incomplete.");const parsed=normalizeDraft(JSON.parse(response.output_text)),quota=await finalizeQuota(reservation,true);return { ...parsed, quota };
   } catch (error) {
+    await finalizeQuota(reservation,false).catch(refundError=>console.error("Quota release failed",refundError));
     console.error("Well refinement failed", error instanceof Error ? error.message : error);
     throw new HttpsError("internal", "The correction could not be applied. Please edit the fields manually.");
   }
@@ -123,9 +118,9 @@ const projectCollection = (uid) => db.collection("fluidlabUsers").doc(uid).colle
 const timestamp = (value) => value?.toDate ? value.toDate().toISOString() : null;
 function cleanText(value, label, max = 100) { const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : ""; if (!text || text.length > max) throw new HttpsError("invalid-argument", `Enter a valid ${label}.`); return text; }
 function validDesign(value) {
-  if (!value || value.version !== 1 || typeof value.name !== "string" || !["vertical","directional","horizontal","multilateral"].includes(value.type) || !["metric","imperial"].includes(value.units) || !value.main || !value.display || !Array.isArray(value.sections) || value.sections.length < 1 || value.sections.length > 3 || !Array.isArray(value.branches) || value.branches.length > 3) throw new HttpsError("invalid-argument", "The FluidLab design is invalid or unsupported.");
-  const numbers=["surfaceNorthing","surfaceEasting","verticalSection","kickoffMd","buildRate","targetInclination","azimuth","holdLength","lateralLength"];
-  if(numbers.some(key=>!Number.isFinite(value.main[key]))||value.sections.some(section=>typeof section.id!=="string"||typeof section.name!=="string"||!Number.isFinite(section.diameterMm)||!Number.isFinite(section.startMd)||!Number.isFinite(section.endMd)||!/^#[0-9a-f]{6}$/i.test(section.color)||typeof section.visible!=="boolean")||value.branches.some(branch=>typeof branch.id!=="string"||typeof branch.name!=="string"||![branch.tieInMd,branch.buildRate,branch.targetInclination,branch.azimuth,branch.lateralLength].every(Number.isFinite)||!/^#[0-9a-f]{6}$/i.test(branch.color)||typeof branch.visible!=="boolean"))throw new HttpsError("invalid-argument","The FluidLab design contains invalid values.");
+  if (!value || value.version !== 1 || typeof value.name !== "string" || !["metric","imperial"].includes(value.unitSystem) || !Array.isArray(value.wellbores) || value.wellbores.length<1 || value.wellbores.length>30 || !Array.isArray(value.drillStrings) || !value.operation || !value.display || "type" in value || "main" in value || "sections" in value) throw new HttpsError("invalid-argument", "The FluidLab section-based project is invalid or unsupported.");
+  const segmentTypes=new Set(["vertical","inclined-hold","build","drop","turn","compound","horizontal","survey"]),finite=value=>Number.isFinite(value);
+  for(const wellbore of value.wellbores){if(typeof wellbore.id!=="string"||!Array.isArray(wellbore.trajectory)||!Array.isArray(wellbore.holes)||!Array.isArray(wellbore.tubulars)||!Array.isArray(wellbore.cement))throw new HttpsError("invalid-argument","A wellbore is malformed.");for(const segment of wellbore.trajectory){if(!segmentTypes.has(segment.type)||!finite(segment.length)||!finite(segment.endInclination)||!finite(segment.endAzimuth)||!Array.isArray(segment.stations))throw new HttpsError("invalid-argument","A trajectory segment is malformed.");}for(const hole of wellbore.holes)if(![hole.startMd,hole.endMd,hole.diameterMm].every(finite))throw new HttpsError("invalid-argument","A hole interval is malformed.");for(const tubular of wellbore.tubulars)if(![tubular.topMd,tubular.bottomMd,tubular.odMm,tubular.idMm].every(finite))throw new HttpsError("invalid-argument","A tubular string is malformed.");for(const cement of wellbore.cement)if(![cement.topMd,cement.bottomMd,cement.excessPercent].every(finite))throw new HttpsError("invalid-argument","A cement placement is malformed.");}
   const encoded = Buffer.byteLength(JSON.stringify(value)); if (encoded > 1024 * 1024) throw new HttpsError("invalid-argument", "The FluidLab design is too large.");
   return JSON.parse(JSON.stringify(value));
 }
@@ -135,7 +130,7 @@ async function ownedProject(account, id) { if(typeof id!=="string"||!id) throw n
 export const listFluidLabProjects = onCall(profileBase, async (request) => { const account=await authorized(request), archived=Boolean(request.data?.archived); const snapshots=await projectCollection(account.uid).orderBy("updatedAt","desc").limit(200).get(); return {projects:snapshots.docs.filter((doc)=>Boolean(doc.data().archivedAt)===archived).map((doc)=>publicProject(doc,false))}; });
 export const getFluidLabProject = onCall(profileBase, async (request) => { const account=await authorized(request), {ref,snap}=await ownedProject(account,request.data?.projectId); const versions=await ref.collection("versions").orderBy("createdAt","desc").limit(100).get(); return {project:publicProject(snap),versions:versions.docs.map((doc)=>({id:doc.id,name:doc.data().name,note:doc.data().note||"",design:doc.data().design,createdAt:timestamp(doc.data().createdAt)}))}; });
 export const createFluidLabProject = onCall(profileBase, async (request) => { const account=await authorized(request), design=validDesign(request.data?.design), ref=projectCollection(account.uid).doc(), now=FieldValue.serverTimestamp(); await ref.set({owner:account.uid,name:cleanText(design.name,"project name"),currentDesign:design,schemaVersion:1,revision:1,archivedAt:null,createdAt:now,updatedAt:now}); return {project:publicProject(await ref.get())}; });
-export const updateFluidLabProject = onCall(profileBase, async (request) => { const account=await authorized(request), design=validDesign(request.data?.design), {ref}=await ownedProject(account,request.data?.projectId), expected=Number(request.data?.revision); await db.runTransaction(async(tx)=>{const snap=await tx.get(ref);if(snap.data().revision!==expected)throw new HttpsError("aborted","This project was changed in another session.");tx.update(ref,{name:cleanText(design.name,"project name"),currentDesign:design,revision:expected+1,updatedAt:FieldValue.serverTimestamp()});}); return {project:publicProject(await ref.get())}; });
-export const manageFluidLabProject = onCall(profileBase, async (request) => { const account=await authorized(request), action=request.data?.action, {ref,snap}=await ownedProject(account,request.data?.projectId); if(action==="duplicate"){const design=JSON.parse(JSON.stringify(snap.data().currentDesign));design.name=`${design.name} copy`;const copy=projectCollection(account.uid).doc(),now=FieldValue.serverTimestamp();await copy.set({owner:account.uid,name:design.name,currentDesign:design,schemaVersion:1,revision:1,archivedAt:null,createdAt:now,updatedAt:now});return {project:publicProject(await copy.get())};} if(action==="archive"||action==="restore"){await ref.update({archivedAt:action==="archive"?FieldValue.serverTimestamp():null,updatedAt:FieldValue.serverTimestamp()});return {project:publicProject(await ref.get())};} if(action==="delete"){const versions=await ref.collection("versions").get(),writer=db.bulkWriter();versions.docs.forEach(doc=>writer.delete(doc.ref));writer.delete(ref);await writer.close();return {};} throw new HttpsError("invalid-argument","Unsupported project action."); });
+export const updateFluidLabProject = onCall(profileBase, async (request) => { const account=await authorized(request), design=validDesign(request.data?.design), {ref}=await ownedProject(account,request.data?.projectId), expected=Number(request.data?.baseRevision),mutationId=cleanText(request.data?.mutationId,"mutation ID",100); await db.runTransaction(async(tx)=>{const snap=await tx.get(ref),data=snap.data();if(data.lastMutationId===mutationId)return;if(data.revision!==expected)throw new HttpsError("aborted","This project was changed in another session.");tx.update(ref,{name:cleanText(design.name,"project name"),currentDesign:design,revision:expected+1,lastMutationId:mutationId,updatedAt:FieldValue.serverTimestamp()});}); return {project:publicProject(await ref.get())}; });
+export const manageFluidLabProject = onCall(profileBase, async (request) => { const account=await authorized(request), action=request.data?.action, {ref,snap}=await ownedProject(account,request.data?.projectId); if(action==="duplicate"||action==="duplicate-converted"){const design=JSON.parse(JSON.stringify(snap.data().currentDesign));if(action==="duplicate-converted")design.unitSystem=design.unitSystem==="metric"?"imperial":"metric";design.name=`${design.name} ${action==="duplicate-converted"?`(${design.unitSystem})`:"copy"}`;const copy=projectCollection(account.uid).doc(),now=FieldValue.serverTimestamp();await copy.set({owner:account.uid,name:design.name,currentDesign:design,schemaVersion:1,revision:1,archivedAt:null,createdAt:now,updatedAt:now});return {project:publicProject(await copy.get())};} if(action==="archive"||action==="restore"){await ref.update({archivedAt:action==="archive"?FieldValue.serverTimestamp():null,updatedAt:FieldValue.serverTimestamp()});return {project:publicProject(await ref.get())};} if(action==="delete"){const versions=await ref.collection("versions").get(),writer=db.bulkWriter();versions.docs.forEach(doc=>writer.delete(doc.ref));writer.delete(ref);await writer.close();return {};} throw new HttpsError("invalid-argument","Unsupported project action."); });
 export const createFluidLabVersion = onCall(profileBase, async (request) => { const account=await authorized(request), {ref,snap}=await ownedProject(account,request.data?.projectId), version=ref.collection("versions").doc(), now=FieldValue.serverTimestamp(), name=cleanText(request.data?.name,"version name",80), note=typeof request.data?.note==="string"?request.data.note.trim().slice(0,500):""; await version.set({name,note,design:snap.data().currentDesign,creator:account.uid,createdAt:now});const saved=await version.get();return {version:{id:saved.id,name,note,design:saved.data().design,createdAt:timestamp(saved.data().createdAt)}}; });
 export const manageFluidLabVersion = onCall(profileBase, async (request) => { const account=await authorized(request), {ref}=await ownedProject(account,request.data?.projectId), version=ref.collection("versions").doc(String(request.data?.versionId||"")), snap=await version.get();if(!snap.exists)throw new HttpsError("not-found","Version not found.");if(request.data?.action==="delete"){await version.delete();return {};}if(request.data?.action==="restore"){const expected=Number(request.data?.revision);await db.runTransaction(async tx=>{const project=await tx.get(ref);if(project.data().revision!==expected)throw new HttpsError("aborted","This project was changed in another session.");tx.update(ref,{name:snap.data().design.name,currentDesign:snap.data().design,revision:expected+1,updatedAt:FieldValue.serverTimestamp()});});return {project:publicProject(await ref.get())};}throw new HttpsError("invalid-argument","Unsupported version action."); });
