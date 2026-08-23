@@ -1,5 +1,7 @@
 export const DAILY_ANALYSIS_LIMIT = 5;
 export const DAILY_REFINEMENT_LIMIT = 25;
+export const GUEST_ANALYSIS_LIMIT = 1;
+export const GUEST_REFINEMENT_LIMIT = 3;
 
 export function utcDay(date = new Date()) { return date.toISOString().slice(0, 10); }
 export function nextUtcReset(date = new Date()) { const reset = new Date(date); reset.setUTCHours(24, 0, 0, 0); return reset.toISOString(); }

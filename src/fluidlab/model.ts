@@ -139,6 +139,17 @@ export function parseDesign(payload: string): WellDesign | null {
     return parsed;
   } catch { return null; }
 }
+export const PROJECT_FILE_LIMIT = 1024 * 1024;
+export function parseProjectJson(json: string): WellDesign | null {
+  if (new TextEncoder().encode(json).length > PROJECT_FILE_LIMIT) return null;
+  try {
+    const parsed = JSON.parse(json) as WellDesign;
+    const mainNumbers = ["surfaceNorthing","surfaceEasting","verticalSection","kickoffMd","buildRate","targetInclination","azimuth","holdLength","lateralLength"] as const;
+    if (parsed.version !== 1 || typeof parsed.name !== "string" || parsed.name.trim().length<1 || parsed.name.length>100 || !["vertical", "directional", "horizontal", "multilateral"].includes(parsed.type) || !["metric", "imperial"].includes(parsed.units) || !parsed.main || mainNumbers.some(key=>!Number.isFinite(parsed.main[key])) || !parsed.display || typeof parsed.display.formations!=="boolean" || typeof parsed.display.labels!=="boolean" || typeof parsed.display.dimensions!=="boolean" || typeof parsed.display.cameraDrift!=="boolean" || typeof parsed.display.isolated!=="string" || !Array.isArray(parsed.sections) || parsed.sections.some(section=>typeof section.id!=="string"||typeof section.name!=="string"||!Number.isFinite(section.diameterMm)||!Number.isFinite(section.startMd)||!Number.isFinite(section.endMd)||!/^#[0-9a-f]{6}$/i.test(section.color)||typeof section.visible!=="boolean") || !Array.isArray(parsed.branches) || parsed.branches.some(branch=>typeof branch.id!=="string"||typeof branch.name!=="string"||![branch.tieInMd,branch.buildRate,branch.targetInclination,branch.azimuth,branch.lateralLength].every(Number.isFinite)||!/^#[0-9a-f]{6}$/i.test(branch.color)||typeof branch.visible!=="boolean")) return null;
+    return generateWell(parsed).errors.length ? null : structuredClone(parsed);
+  } catch { return null; }
+}
+export function projectFileName(name: string) { return `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "wellbore"}.fluidlab.json`; }
 export function consultationMailto(design: WellDesign, summary: WellSummary, shareUrl: string) {
   const lines = ["Hello UniqEnergy team,", "", `I created a 3D wellbore design: ${design.name}`, `Architecture: ${design.type}`, `Total MD: ${displayDistance(summary.totalMd, design.units)}`, `TVD: ${displayDistance(summary.tvd, design.units)}`, `Horizontal displacement: ${displayDistance(summary.horizontalDisplacement, design.units)}`, `KOP: ${displayDistance(summary.kickoffMd, design.units)}`, `Final inclination / azimuth: ${summary.finalInclination.toFixed(1)}° / ${summary.finalAzimuth.toFixed(1)}°`, "", "Hole sections:", ...design.sections.map((section) => `- ${section.name}: ${displayDiameter(section.diameterMm, design.units)}, ${displayDistance(section.startMd, design.units)}–${displayDistance(section.endMd, design.units)} MD`), "", `Shared design: ${shareUrl}`, "", "I understand this is a planning visualization and not a directional survey record."];
   return `mailto:info@uniqenergy.com?subject=${encodeURIComponent("3D wellbore design consultation")}&body=${encodeURIComponent(lines.join("\n"))}`;
