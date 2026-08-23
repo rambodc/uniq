@@ -1,0 +1,17 @@
+name: "PR: Firebase Rules"
+on:
+  pull_request:
+    paths: ["firestore.rules", "storage.rules", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-pull-request.yml"]
+concurrency: { group: "rules-pr-${{ github.event.pull_request.number }}", cancel-in-progress: true }
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm install --global firebase-tools@14.15.2
+      - run: npm run test:rules

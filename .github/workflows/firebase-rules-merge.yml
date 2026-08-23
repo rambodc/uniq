@@ -1,0 +1,30 @@
+name: "Production: Firebase Rules"
+on:
+  push:
+    branches: [production]
+    paths: ["firestore.rules", "storage.rules", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
+  workflow_dispatch:
+concurrency: { group: rules-production, cancel-in-progress: false }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: Prod
+    permissions: { id-token: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Validate deployment identity
+        run: |
+          test -n "${{ secrets.GCP_WIF_PROVIDER }}" || { echo "Missing GCP_WIF_PROVIDER"; exit 1; }
+          test -n "${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}" || { echo "Missing GCP_SERVICE_ACCOUNT_EMAIL"; exit 1; }
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+      - run: npm ci
+      - run: npm install --global firebase-tools@14.15.2
+      - run: npm run test:rules
+      - run: firebase deploy --only firestore:rules,firestore:indexes,storage --project uniqenergy-de71c --non-interactive --message "CI rules deploy"
