@@ -1,10 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { extractionSchema, normalizeDraft } from "../extraction.js";
-import { DAILY_ANALYSIS_LIMIT, DAILY_REFINEMENT_LIMIT, nextUtcReset, quotaStatus, utcDay } from "../access.js";
+import { DAILY_ANALYSIS_LIMIT, DAILY_REFINEMENT_LIMIT, GUEST_ANALYSIS_LIMIT, GUEST_REFINEMENT_LIMIT, nextUtcReset, quotaStatus, utcDay } from "../access.js";
 
 test("schema supports only vertical and horizontal output", () => {
   assert.deepEqual(extractionSchema.properties.draft.properties.type.properties.value.enum, ["vertical", "horizontal", null]);
+});
+
+test("guest AI trial limits stay intentionally smaller than account quotas", () => {
+  assert.equal(GUEST_ANALYSIS_LIMIT, 1);
+  assert.equal(GUEST_REFINEMENT_LIMIT, 3);
+  assert.ok(GUEST_ANALYSIS_LIMIT < DAILY_ANALYSIS_LIMIT);
+  assert.ok(GUEST_REFINEMENT_LIMIT < DAILY_REFINEMENT_LIMIT);
 });
 test("normalizer rejects unsupported architecture", () => {
   assert.throws(() => normalizeDraft({ draft: { type: { value: "multilateral" } } }), /unsupported/);

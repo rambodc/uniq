@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPreset, feetToMetres, generateWell, inchesToMm, interpolateStation, metresToFeet, mmToInches, parseDesign, sectionStations, serializeDesign, validateDesign } from "./model";
+import { createPreset, feetToMetres, generateWell, inchesToMm, interpolateStation, metresToFeet, mmToInches, parseDesign, parseProjectJson, projectFileName, sectionStations, serializeDesign, validateDesign } from "./model";
 
 describe("3D wellbore model", () => {
   it("round-trips metric and imperial values", () => {
@@ -48,5 +48,13 @@ describe("3D wellbore model", () => {
     expect(parseDesign(serializeDesign({ ...design, version: 2 as 1 }))).toBeNull();
     expect(parseDesign(serializeDesign({ ...design, sections: [] }))).toBeNull();
     expect(parseDesign("not-valid")).toBeNull();
+  });
+  it("round-trips portable project files and rejects malformed values", () => {
+    const design=createPreset("horizontal");
+    expect(parseProjectJson(JSON.stringify(design))).toEqual(design);
+    expect(parseProjectJson(JSON.stringify({...design,main:{...design.main,azimuth:null}}))).toBeNull();
+    expect(parseProjectJson(JSON.stringify({...design,version:2}))).toBeNull();
+    expect(parseProjectJson("{")).toBeNull();
+    expect(projectFileName(" Well A / 01 ")).toBe("well-a-01.fluidlab.json");
   });
 });

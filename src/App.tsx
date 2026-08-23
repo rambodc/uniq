@@ -2,6 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
+const ProjectLibrary = lazy(() => import("./fluidlab/ProjectLibrary"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
 
 const EMAIL = "mailto:info@uniqenergy.com?subject=Drilling%20Fluid%20Consultation&body=Hello%20UniqEnergy%20team%2C%0A%0AI%27d%20like%20to%20discuss%20a%20drilling%20fluid%20program.%0A%0ACompany%3A%0AProject%20or%20wellbore%3A%0ABest%20way%20to%20reach%20me%3A";
@@ -27,8 +28,8 @@ const faqs = [
 function Logo() { return <span className="logo"><i aria-hidden="true"/><span>Uniq<strong>Energy</strong></span></span>; }
 function scrollToSection(id: string) { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 const authPaths = ["/signin", "/signup", "/forgot-password"] as const;
-type RoutePath = "/" | "/fluidlab" | typeof authPaths[number];
-const validPath = (value: string): RoutePath => value === "/fluidlab" || authPaths.includes(value as typeof authPaths[number]) ? value as RoutePath : "/";
+type RoutePath = "/" | "/fluidlab" | "/fluidlab/projects" | typeof authPaths[number];
+const validPath = (value: string): RoutePath => value === "/fluidlab" || value === "/fluidlab/projects" || authPaths.includes(value as typeof authPaths[number]) ? value as RoutePath : "/";
 
 function Header({ page, onHome, onFluidLab }: { page: "home" | "fluidlab"; onHome: (section?: string) => void; onFluidLab: () => void }) {
   const [open, setOpen] = useState(false);
@@ -170,7 +171,7 @@ export default function App() {
     addEventListener("popstate", update);
     return () => removeEventListener("popstate", update);
   }, []);
-  const page = path === "/fluidlab" ? "fluidlab" : "home";
+  const page = path.startsWith("/fluidlab") ? "fluidlab" : "home";
   const home = (section = "home") => {
     if (location.pathname !== "/") { history.pushState({}, "", "/"); setPath("/"); requestAnimationFrame(() => setTimeout(() => scrollToSection(section), 0)); }
     else scrollToSection(section);
@@ -190,6 +191,7 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
   if (authPaths.includes(path as typeof authPaths[number])) return <Suspense fallback={<main className="route-loading"><span>Loading secure access…</span></main>}><AuthPage path={path as typeof authPaths[number]} navigate={navigate}/></Suspense>;
+  if (path === "/fluidlab/projects") return <Suspense fallback={<main className="route-loading"><span>Loading projects…</span></main>}><ProjectLibrary navigate={navigate}/></Suspense>;
   if (page === "fluidlab") return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab onHome={home} onAuth={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }} exitRequest={exitRequest} onConfirmBrowserExit={() => { dirtyRef.current = false; history.back(); }}/></Suspense>;
   return <><a className="skip-link" href="#main">Skip to content</a><Header page={page} onHome={home} onFluidLab={lab}/><main id="main"><Hero/><Introduction/><Systems/><Technology/><Capabilities/><Operations/><FAQ/><Contact/></main><Footer onFluidLab={lab}/></>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { createUserWithEmailAndPassword, EmailAuthProvider, linkWithCredential, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ArrowLeft, LockKeyhole, Mail, UserRound } from "lucide-react";
 import { auth } from "../firebaseClient";
 import { getProfile, registerProfile } from "../fluidlab/ai";
@@ -65,11 +65,12 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
       if (!profileOnly) {
         if (password.length < 8) throw Object.assign(new Error(), { code: "auth/weak-password" });
         if (password !== confirm) throw Object.assign(new Error(), { code: "profile/password-mismatch" });
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
+        if (auth.currentUser?.isAnonymous) await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email.trim(), password));
+        else await createUserWithEmailAndPassword(auth, email.trim(), password);
         setProfileOnly(true);
       }
       await registerProfile(firstName.trim(), lastName.trim());
-      navigate("/fluidlab");
+      navigate(query.get("returnTo") || "/fluidlab");
     } catch (requestError) {
       const code = typeof requestError === "object" && requestError && "code" in requestError ? String(requestError.code) : "";
       if (code.includes("password-mismatch")) setError("Passwords do not match.");

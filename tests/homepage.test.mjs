@@ -28,7 +28,7 @@ test("sitemap contains the homepage and FluidLab", async () => {
   assert.match(sitemap, /https:\/\/uniqenergy-de71c\.web\.app\/fluidlab/);
 });
 
-test("FluidLab is a protected full-screen workspace", async () => {
+test("FluidLab is a public full-screen workspace with guarded saving", async () => {
   const source = await readFile(new URL("src/fluidlab/FluidLab.tsx", root), "utf8");
   const styles = await readFile(new URL("src/fluidlab/fluidlab.css", root), "utf8");
   assert.match(styles, /height:100dvh/);
@@ -38,7 +38,8 @@ test("FluidLab is a protected full-screen workspace", async () => {
   assert.match(source, /Review Well/);
   assert.match(source, /beforeunload/);
   assert.match(source, /role="alertdialog"/);
-  assert.match(source, /Your FluidLab design is not stored\./);
+  assert.match(source, /Stored only on this device/);
+  assert.match(source, /Create account and save/);
   assert.match(source, /aria-controls="fluidlab-controls"/);
   assert.match(styles, /min-height:44px/);
 });

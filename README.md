@@ -9,7 +9,7 @@ UniqEnergy's Vite/React website and the FluidLab AI-assisted 3D wellbore workspa
 - OpenAI Responses API from server-side Functions only
 - App Check with reCAPTCHA Enterprise in monitor-only mode
 
-Uploaded documents, extracted well data, chat messages, and 3D designs remain browser-memory-only. Firestore stores only the user's account profile, status, and server-managed daily usage. Client access to Firestore and Storage is denied by rules.
+Uploaded source documents remain temporary. Guest designs recover from device-local IndexedDB; signed-in users can store projects and immutable named versions in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
 
 ## Local development
 
@@ -34,10 +34,13 @@ npm run lint --prefix functions
 
 Create a local `.env.local` from the Firebase web-app values and `VITE_APPCHECK_SITE_KEY`. Environment files are ignored. Never put `OPENAI_API_KEY` in the frontend or GitHub; it is bound to AI Functions from Firebase Secret Manager.
 
+Firebase Authentication must have both Email/Password and Anonymous providers enabled. Production callable Functions enforce App Check; use a registered App Check debug token for local calls against deployed Functions.
+
 ## Authentication and routes
 
 - `/` — public homepage
-- `/fluidlab` — 3D workspace; AI import requires an active account
+- `/fluidlab` — public 3D workspace with a one-analysis guest AI trial
+- `/fluidlab/projects` — signed-in project library
 - `/signin` — Email/Password sign in
 - `/signup` — public registration and missing-profile completion
 - `/forgot-password` — Firebase password reset
