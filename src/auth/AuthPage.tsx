@@ -86,7 +86,7 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
       <div className="auth-brand"><i/>Uniq<strong>Energy</strong><span>/ FluidLab</span></div>
       <span className="auth-eyebrow">Secure engineering workspace</span>
       <h1>{path === "/signin" ? "Welcome back." : path === "/signup" ? (profileOnly ? "Complete your profile." : "Create your account.") : "Reset your password."}</h1>
-      <p>{path === "/signin" ? "Sign in to save and manage conceptual MD/TVD well designs." : path === "/signup" ? "Create an account to save FluidLab projects securely in the cloud." : "We’ll send a secure reset link to your account email."}</p>
+      <p>{path === "/signin" ? "Sign in to save and manage conceptual MD-only well designs." : path === "/signup" ? "Create an account to save FluidLab projects securely in the cloud." : "We’ll send a secure reset link to your account email."}</p>
       {error && <div className="auth-alert error" role="alert">{error}</div>}
       {status && <div className="auth-alert success" role="status">{status}</div>}
       {path === "/signup" && <div className="auth-name-row"><label><span>First name</span><div><UserRound/><input autoComplete="given-name" required value={firstName} onChange={(event) => setFirstName(event.target.value)}/></div></label><label><span>Last name</span><div><UserRound/><input autoComplete="family-name" required value={lastName} onChange={(event) => setLastName(event.target.value)}/></div></label></div>}
@@ -100,7 +100,7 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
         {path === "/forgot-password" && <button type="button" onClick={() => navigate("/signin")}>Return to sign in</button>}
       </div>
       {profileOnly && <button className="auth-signout" type="button" onClick={async () => { await signOut(auth); navigate("/signin"); }}>Use a different account</button>}
-      <small>Conceptual planning visualization only. MD/TVD endpoints do not define a directional survey.</small>
+      <small>Conceptual planning visualization only. Section MD and KOP/EOC inputs do not define a directional survey.</small>
     </form>
   </main>;
 }

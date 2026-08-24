@@ -13,15 +13,19 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { useReducedMotion } from "motion/react";
 import {
   Check,
+  Box,
   FolderOpen,
   LogIn,
   LogOut,
+  Maximize2,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  RotateCcw,
   Save,
   Trash2,
+  GalleryVerticalEnd,
+  X,
 } from "lucide-react";
 import { auth, ensureFluidLabIdentity } from "../firebaseClient";
 import {
@@ -33,6 +37,7 @@ import {
   emptyDraft,
   generateProject,
   sectionTopMd,
+  sectionColors,
   trajectoryErrors,
   truncateFrom,
   type SectionDraft,
@@ -131,6 +136,7 @@ export default function FluidLab({
     [user, setUser] = useState<User | null>(null),
     [authReady, setAuthReady] = useState(false),
     [collapsed, setCollapsed] = useState(false),
+    [drawerOpen, setDrawerOpen] = useState(false),
     [view, setView] = useState<"perspective" | "profile">("perspective"),
     [fitSignal, setFitSignal] = useState(0),
     [visible, setVisible] = useState(!document.hidden),
@@ -142,15 +148,16 @@ export default function FluidLab({
   const reduced = Boolean(useReducedMotion()),
     generated = useMemo(() => generateProject(design), [design]),
     account = Boolean(user && !user.isAnonymous),
-    units = design.unitSystem,
+    units = design.unitSystem ?? "metric",
+    unitsChosen = design.unitSystem !== null,
     saving = useRef(false),
+    drawerTrigger = useRef<HTMLButtonElement>(null),
     trajectoryDirty =
       JSON.stringify(trajectoryDraft) !== JSON.stringify(design.trajectory),
     draftTouched =
       draftOpen &&
       (draft.name !== "" ||
         draft.endMdM != null ||
-        draft.referenceTvdM != null ||
         draft.diameterMm != null),
     dirty = saveState !== "saved" || draftTouched || trajectoryDirty;
   useEffect(
@@ -183,6 +190,17 @@ export default function FluidLab({
   useEffect(() => {
     if (exitRequest) setExitOpen(true);
   }, [exitRequest]);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+        requestAnimationFrame(() => drawerTrigger.current?.focus());
+      }
+    };
+    addEventListener("keydown", close);
+    return () => removeEventListener("keydown", close);
+  }, [drawerOpen]);
   useEffect(() => {
     if (!projectId || !account) return;
     let active = true;
@@ -320,10 +338,11 @@ export default function FluidLab({
   ]);
   const kopSection = containingSection(design, trajectoryDraft.kopMdM),
     eocSection = containingSection(design, trajectoryDraft.endCurveMdM),
-    topMd = design.sections.at(-1)?.endMdM ?? 0,
-    topReference =
-      design.sections.at(-1)?.referenceTvdM ??
-      (design.sections.length ? null : 0);
+    topMd = design.sections.at(-1)?.endMdM ?? 0;
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    requestAnimationFrame(() => drawerTrigger.current?.focus());
+  };
   return (
     <main
       className={`fluidlab-workspace ${collapsed ? "panel-collapsed" : ""}`}
@@ -401,7 +420,22 @@ export default function FluidLab({
             ))}
         </div>
       </header>
-      <aside className="workspace-panel sequential-panel">
+      <button ref={drawerTrigger} className="mobile-menu-button" aria-label="Open well builder" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu/><b>Builder</b></button>
+      {drawerOpen && (
+        <button
+          className="drawer-backdrop"
+          aria-label="Close well builder"
+          onClick={closeDrawer}
+        />
+      )}
+      <aside className={`workspace-panel sequential-panel ${drawerOpen ? "drawer-open" : ""}`} aria-label="Well builder">
+        {collapsed && (
+          <button
+            className="collapsed-panel-hit"
+            aria-label="Expand well builder"
+            onClick={() => setCollapsed(false)}
+          />
+        )}
         <div className="panel-heading">
           <div>
             <span>Sequential well builder</span>
@@ -413,23 +447,11 @@ export default function FluidLab({
           <button onClick={() => setCollapsed((value) => !value)}>
             {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
           </button>
+          <button className="mobile-drawer-close" aria-label="Close well builder" onClick={closeDrawer}><X/></button>
         </div>
         <div className="panel-body editor-content">
-          <label className="text-field">
-            <span>Units</span>
-            <select
-              value={units}
-              onChange={(event) =>
-                updateDesign(
-                  (next) =>
-                    (next.unitSystem = event.target.value as UnitSystem),
-                )
-              }
-            >
-              <option value="metric">Metric</option>
-              <option value="imperial">Imperial</option>
-            </select>
-          </label>
+          {!unitsChosen ? <section className="unit-setup"><span>Step 1</span><h2>Choose project units</h2><p>This choice is permanent for this project.</p><div><button onClick={() => updateDesign((next) => { next.unitSystem = "metric"; })}>Metric<small>metres · millimetres</small></button><button onClick={() => updateDesign((next) => { next.unitSystem = "imperial"; })}>Imperial<small>feet · inches</small></button></div></section> : <div className="locked-units"><span>Units</span><strong>{units === "metric" ? "Metric · m / mm" : "Imperial · ft / in"}</strong><small>Locked for this project</small></div>}
+          {unitsChosen && <>
           <section className="trajectory-card">
             <div>
               <b>Applied trajectory</b>
@@ -518,7 +540,7 @@ export default function FluidLab({
                   key={section.id}
                 >
                   <header>
-                    <span>{index + 1}</span>
+                    <span style={{ background: section.color, color: "#03131d" }}>{index + 1}</span>
                     <button
                       className="locked-section-select"
                       onClick={() => setSelectedId(section.id)}
@@ -557,22 +579,7 @@ export default function FluidLab({
                         {dunit(units)}
                       </dd>
                     </div>
-                    <div>
-                      <dt>Reference TVD</dt>
-                      <dd>
-                        {section.referenceTvdM == null
-                          ? "Not provided"
-                          : `${toLength(section.referenceTvdM, units).toFixed(1)} ${lunit(units)}`}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Visual TVD</dt>
-                      <dd>
-                        {derived
-                          ? `${toLength(derived.endVisualTvdM, units).toFixed(1)} ${lunit(units)}`
-                          : "—"}
-                      </dd>
-                    </div>
+                    <div><dt>Color</dt><dd><i className="section-color-dot" style={{background:section.color}}/>{section.color.toUpperCase()}</dd></div>
                     <div>
                       <dt>Capacity</dt>
                       <dd>
@@ -631,33 +638,6 @@ export default function FluidLab({
                   }
                 />
                 <Field
-                  label="Top TVD"
-                  value={
-                    topReference == null ? null : toLength(topReference, units)
-                  }
-                  unit={lunit(units)}
-                  disabled
-                  onChange={() => {}}
-                  optional
-                />
-                <Field
-                  label="Bottom TVD"
-                  value={
-                    draft.referenceTvdM == null
-                      ? null
-                      : toLength(draft.referenceTvdM, units)
-                  }
-                  unit={lunit(units)}
-                  optional
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      referenceTvdM:
-                        value == null ? null : fromLength(value, units),
-                    }))
-                  }
-                />
-                <Field
                   label="Bit size"
                   value={
                     draft.diameterMm == null
@@ -674,6 +654,7 @@ export default function FluidLab({
                   }
                 />
               </div>
+              <div className="color-picker"><span>Section color</span><div>{sectionColors.map((color) => <button key={color} type="button" aria-label={`Choose ${color}`} aria-pressed={draft.color === color} className={draft.color === color ? "active" : ""} style={{background:color}} onClick={() => setDraft((current) => ({...current,color}))}/>) }<label title="Custom color"><input type="color" value={draft.color} onChange={(event) => setDraft((current) => ({...current,color:event.target.value}))}/><span>Custom</span></label></div></div>
               {draftErrors(design, draft).length > 0 && draftTouched && (
                 <p className="draft-error">{draftErrors(design, draft)[0]}</p>
               )}
@@ -711,11 +692,7 @@ export default function FluidLab({
                 {toLength(design.sections.at(-1)!.endMdM, units).toFixed(1)}{" "}
                 {lunit(units)}
               </strong>
-              <span>Visual TVD</span>
-              <strong>
-                {toLength(generated.totalVisualTvdM, units).toFixed(1)}{" "}
-                {lunit(units)}
-              </strong>
+              <span>Confirmed sections</span><strong>{design.sections.length}</strong>
               <span>Horizontal displacement</span>
               <strong>
                 {toLength(generated.totalHorizontalM, units).toFixed(1)}{" "}
@@ -733,6 +710,7 @@ export default function FluidLab({
             Construction sections control MD and bit size. Only applied KOP/EOC
             values control the visual trajectory.
           </p>
+          </>}
         </div>
       </aside>
       <div className="camera-toolbar">
@@ -740,19 +718,19 @@ export default function FluidLab({
           className={view === "perspective" ? "active" : ""}
           onClick={() => setView("perspective")}
         >
-          Perspective
+          <Box /><span>Perspective</span>
         </button>
         <button
           className={view === "profile" ? "active" : ""}
           onClick={() => setView("profile")}
         >
-          Profile
+          <GalleryVerticalEnd /><span>Profile</span>
         </button>
         <button
           title="Fit current well"
           onClick={() => setFitSignal((value) => value + 1)}
         >
-          <RotateCcw /> Fit
+          <Maximize2 /><span>Fit view</span>
         </button>
       </div>
       {notice && (

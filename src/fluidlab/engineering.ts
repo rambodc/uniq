@@ -3,7 +3,6 @@ export interface WellSection {
   id: string;
   name: string;
   endMdM: number;
-  referenceTvdM: number | null;
   diameterMm: number;
   color: string;
   visible: boolean;
@@ -14,9 +13,9 @@ export interface WellTrajectory {
   endCurveMdM: number | null;
 }
 export interface WellProject {
-  version: 3;
+  version: 4;
   name: string;
-  unitSystem: UnitSystem;
+  unitSystem: UnitSystem | null;
   sections: WellSection[];
   trajectory: WellTrajectory;
   display: { selectedSectionId: string | null };
@@ -24,12 +23,12 @@ export interface WellProject {
 export interface SectionDraft {
   name: string;
   endMdM: number | null;
-  referenceTvdM: number | null;
   diameterMm: number | null;
+  color: string;
 }
 export interface ProfilePoint {
   mdM: number;
-  tvdM: number;
+  verticalM: number;
   horizontalM: number;
   inclinationDeg: number;
   sectionId: string;
@@ -38,8 +37,8 @@ export interface DerivedSection {
   sectionId: string;
   startMdM: number;
   endMdM: number;
-  startVisualTvdM: number;
-  endVisualTvdM: number;
+  startVerticalM: number;
+  endVerticalM: number;
   horizontalDisplacementM: number;
   capacityM3: number;
   points: ProfilePoint[];
@@ -50,20 +49,20 @@ export interface GeneratedProject {
   errors: string[];
   totalCapacityM3: number;
   totalHorizontalM: number;
-  totalVisualTvdM: number;
+  totalVerticalM: number;
 }
-const colors = ["#35dfbd", "#43aee8", "#8a73e8", "#f2b84b", "#ef7d65"];
+export const sectionColors = ["#35dfbd", "#43aee8", "#8a73e8", "#f2b84b", "#ef7d65"];
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 export const emptyDraft = (): SectionDraft => ({
   name: "",
   endMdM: null,
-  referenceTvdM: null,
   diameterMm: null,
+  color: sectionColors[0],
 });
-export function createProject(unitSystem: UnitSystem = "metric"): WellProject {
+export function createProject(unitSystem: UnitSystem | null = null): WellProject {
   return {
-    version: 3,
+    version: 4,
     name: "New conceptual well",
     unitSystem,
     sections: [],
@@ -73,9 +72,6 @@ export function createProject(unitSystem: UnitSystem = "metric"): WellProject {
 }
 export function sectionTopMd(project: WellProject, index: number) {
   return index ? project.sections[index - 1].endMdM : 0;
-}
-export function sectionTopReferenceTvd(project: WellProject, index: number) {
-  return index ? project.sections[index - 1].referenceTvdM : 0;
 }
 export function draftErrors(project: WellProject, draft: SectionDraft) {
   const errors: string[] = [],
@@ -92,11 +88,8 @@ export function draftErrors(project: WellProject, draft: SectionDraft) {
     draft.diameterMm <= 0
   )
     errors.push("Enter a positive bit size.");
-  if (
-    draft.referenceTvdM != null &&
-    (!Number.isFinite(draft.referenceTvdM) || draft.referenceTvdM < 0)
-  )
-    errors.push("Reference TVD must be zero or greater.");
+  if (!/^#[0-9a-f]{6}$/i.test(draft.color))
+    errors.push("Choose a valid section color.");
   if (draft.name.length > 80)
     errors.push("Section name must be 80 characters or fewer.");
   return errors;
@@ -108,9 +101,8 @@ export function confirmSection(project: WellProject, draft: SectionDraft) {
     id: uid(),
     name: draft.name.trim(),
     endMdM: draft.endMdM!,
-    referenceTvdM: draft.referenceTvdM,
     diameterMm: draft.diameterMm!,
-    color: colors[project.sections.length % colors.length],
+    color: draft.color,
     visible: true,
   };
   project.sections.push(section);
@@ -133,8 +125,8 @@ export function truncateFrom(project: WellProject, index: number) {
     draft: {
       name: first.name,
       endMdM: first.endMdM,
-      referenceTvdM: first.referenceTvdM,
       diameterMm: first.diameterMm,
+      color: first.color,
     },
     removedCount: removed.length,
     trajectoryCleared,
@@ -162,7 +154,7 @@ export function trajectoryErrors(
 export function validateProject(project: WellProject) {
   if (
     !project ||
-    project.version !== 3 ||
+    project.version !== 4 ||
     !Array.isArray(project.sections) ||
     !project.trajectory
   )
@@ -174,7 +166,7 @@ export function validateProject(project: WellProject) {
     project.name.length > 100
   )
     errors.push("Enter a valid project name.");
-  if (!["metric", "imperial"].includes(project.unitSystem))
+  if (project.unitSystem !== "metric" && project.unitSystem !== "imperial")
     errors.push("Choose project units.");
   if (project.sections.length < 1 || project.sections.length > 50)
     errors.push("Confirm between 1 and 50 sections.");
@@ -190,11 +182,8 @@ export function validateProject(project: WellProject) {
       errors.push(
         `Section ${index + 1}: Bottom MD must be greater than ${prior}.`,
       );
-    if (
-      section?.referenceTvdM != null &&
-      (!Number.isFinite(section.referenceTvdM) || section.referenceTvdM < 0)
-    )
-      errors.push(`Section ${index + 1}: Reference TVD is invalid.`);
+    if (!/^#[0-9a-f]{6}$/i.test(section?.color))
+      errors.push(`Section ${index + 1}: choose a valid color.`);
     if (!Number.isFinite(section?.diameterMm) || section.diameterMm <= 0)
       errors.push(`Section ${index + 1}: enter a positive bit size.`);
     if (Number.isFinite(section?.endMdM)) prior = section.endMdM;
@@ -213,14 +202,14 @@ export function pointAtMd(
     t.endCurveMdM == null ||
     mdM <= t.kopMdM
   )
-    return { mdM, tvdM: mdM, horizontalM: 0, inclinationDeg: 0, sectionId };
+    return { mdM, verticalM: mdM, horizontalM: 0, inclinationDeg: 0, sectionId };
   const length = t.endCurveMdM - t.kopMdM,
     radius = (2 * length) / Math.PI;
   if (mdM < t.endCurveMdM) {
     const theta = (mdM - t.kopMdM) / radius;
     return {
       mdM,
-      tvdM: t.kopMdM + radius * Math.sin(theta),
+      verticalM: t.kopMdM + radius * Math.sin(theta),
       horizontalM: radius * (1 - Math.cos(theta)),
       inclinationDeg: (theta * 180) / Math.PI,
       sectionId,
@@ -228,7 +217,7 @@ export function pointAtMd(
   }
   return {
     mdM,
-    tvdM: t.kopMdM + radius,
+    verticalM: t.kopMdM + radius,
     horizontalM: radius + (mdM - t.endCurveMdM),
     inclinationDeg: 90,
     sectionId,
@@ -243,7 +232,7 @@ export function generateProject(project: WellProject): GeneratedProject {
       errors,
       totalCapacityM3: 0,
       totalHorizontalM: 0,
-      totalVisualTvdM: 0,
+      totalVerticalM: 0,
     };
   const points: ProfilePoint[] = [],
     sections: DerivedSection[] = [];
@@ -283,8 +272,8 @@ export function generateProject(project: WellProject): GeneratedProject {
       sectionId: section.id,
       startMdM: start,
       endMdM: section.endMdM,
-      startVisualTvdM: first.tvdM,
-      endVisualTvdM: last.tvdM,
+      startVerticalM: first.verticalM,
+      endVerticalM: last.verticalM,
       horizontalDisplacementM: last.horizontalM - first.horizontalM,
       capacityM3,
       points: sectionPoints,
@@ -301,7 +290,7 @@ export function generateProject(project: WellProject): GeneratedProject {
     errors: [],
     totalCapacityM3,
     totalHorizontalM: last.horizontalM,
-    totalVisualTvdM: last.tvdM,
+    totalVerticalM: last.verticalM,
   };
 }
 export function containingSection(project: WellProject, md: number | null) {

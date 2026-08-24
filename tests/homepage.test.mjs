@@ -63,7 +63,7 @@ test("FluidLab is a public full-screen workspace with guarded saving", async () 
   assert.match(styles, /min-height:44px/);
 });
 
-test("FluidLab uses horizontal tabs, mobile-safe fields, and icon camera controls", async () => {
+test("FluidLab uses an MD-only mobile drawer and icon camera controls", async () => {
   const source = await readFile(
     new URL("src/fluidlab/FluidLab.tsx", root),
     "utf8",
@@ -75,12 +75,10 @@ test("FluidLab uses horizontal tabs, mobile-safe fields, and icon camera control
   assert.match(source, /from\s+\"lucide-react\"/);
   assert.doesNotMatch(source, /engineering-tabs/);
   assert.match(source, /className="camera-toolbar"/);
-  assert.doesNotMatch(source, /className=\{`metrics-dock/);
-  assert.match(styles, /\.open-hole-panel/);
-  assert.match(
-    styles,
-    /\.number-field input,.text-field input,.section-editor legend>input:not\(\[type=color\]\),.checks select\{font-size:16px\}/,
-  );
+  assert.match(source, /mobile-menu-button/);
+  assert.match(source, /unit-setup/);
+  assert.match(source, /type="color"/);
+  assert.match(styles, /\.number-field input,.text-field input\{min-height:44px;font-size:16px\}/);
   assert.match(styles, /\.camera-toolbar\{top:auto;right:auto;bottom:/);
 });
 
@@ -94,7 +92,7 @@ test("the homepage shell is excluded from the FluidLab route", async () => {
 test("obsolete AI and local persistence integrations are removed", async () => {
   const backend = await readFile(new URL("functions/index.js", root), "utf8");
   assert.doesNotMatch(backend, /OpenAI|analyzeWell|refineWell|createFluidLabVersion/);
-  assert.match(backend, /schemaVersion:\s*3/);
+  assert.match(backend, /schemaVersion:\s*4/);
   await assert.rejects(readFile(new URL("src/fluidlab/ai.ts", root), "utf8"));
   await assert.rejects(readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"));
 });

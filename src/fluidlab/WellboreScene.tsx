@@ -1,7 +1,7 @@
 /* eslint-disable react/no-unknown-property,react-hooks/immutability,react-hooks/exhaustive-deps */
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { Grid, Html, Line, OrbitControls } from "@react-three/drei";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import {
   generateProject,
@@ -10,8 +10,8 @@ import {
   type WellSection,
 } from "./engineering";
 
-const point = (item: { horizontalM: number; tvdM: number }) =>
-  new THREE.Vector3(item.horizontalM, -item.tvdM, 0);
+const point = (item: { horizontalM: number; verticalM: number }) =>
+  new THREE.Vector3(item.horizontalM, -item.verticalM, 0);
 
 function Camera({
   points,
@@ -112,17 +112,40 @@ function Tube({
       <group position={point(derived.points.at(-1)!)}>
         <mesh>
           <sphereGeometry args={[5, 12, 12]} />
-          <meshStandardMaterial color={selected ? "#fff" : "#f2b84b"} />
+          <meshStandardMaterial color={selected ? "#fff" : section.color} />
         </mesh>
-        <Html center distanceFactor={260}>
-          <span className="scene-label">
-            {section.name || "Section"} · MD {section.endMdM.toFixed(0)} ·
-            Visual TVD {derived.endVisualTvdM.toFixed(0)}
-          </span>
-        </Html>
       </group>
     </group>
   );
+}
+
+type LabelPosition = { id: string; text: string; x: number; y: number; selected: boolean };
+function LabelTracker({ design, model, selectedId, onUpdate }: {
+  design: WellProject;
+  model: ReturnType<typeof generateProject>;
+  selectedId: string | null;
+  onUpdate: (items: LabelPosition[]) => void;
+}) {
+  const { camera, size } = useThree(), last = useRef("");
+  useFrame(() => {
+    const candidates = design.sections.map((section, index) => {
+      const p = point(model.sections[index].points.at(-1)!).project(camera);
+      const md = design.unitSystem === "imperial" ? section.endMdM * 3.280839895 : section.endMdM;
+      const diameter = design.unitSystem === "imperial" ? section.diameterMm / 25.4 : section.diameterMm;
+      return { id: section.id, selected: section.id === selectedId, x: (p.x + 1) * size.width / 2, y: (1 - p.y) * size.height / 2,
+        text: `${section.name || `Section ${index + 1}`} · MD ${md.toFixed(0)} ${design.unitSystem === "imperial" ? "ft" : "m"} · ${diameter.toFixed(2)} ${design.unitSystem === "imperial" ? "in" : "mm"}` };
+    }).sort((a, b) => Number(b.selected) - Number(a.selected));
+    const accepted: LabelPosition[] = [], boxes: { left:number; right:number; top:number; bottom:number }[] = [];
+    for (const item of candidates) {
+      const width = Math.min(260, Math.max(120, item.text.length * 5.5)), height = 24;
+      const box = { left: item.x - width / 2, right: item.x + width / 2, top: item.y - height / 2, bottom: item.y + height / 2 };
+      if (item.x < 0 || item.x > size.width || item.y < 0 || item.y > size.height || (!item.selected && boxes.some((b) => !(box.right < b.left || box.left > b.right || box.bottom < b.top || box.top > b.bottom)))) continue;
+      boxes.push(box); accepted.push(item);
+    }
+    const key = JSON.stringify(accepted.map(({id,x,y,selected}) => [id,Math.round(x),Math.round(y),selected]));
+    if (key !== last.current) { last.current = key; onUpdate(accepted); }
+  });
+  return null;
 }
 
 export default function WellboreScene({
@@ -146,8 +169,9 @@ export default function WellboreScene({
 }) {
   const model = useMemo(() => generateProject(design), [design]);
   const points = useMemo(() => model.points.map(point), [model.points]);
+  const [labels, setLabels] = useState<LabelPosition[]>([]);
   return (
-    <Canvas
+    <><Canvas
       frameloop={active ? "always" : "demand"}
       gl={{ antialias: true, alpha: false }}
       camera={{ fov: 42 }}
@@ -165,14 +189,7 @@ export default function WellboreScene({
       <color attach="background" args={["#03131d"]} />
       <ambientLight intensity={1.25} />
       <directionalLight position={[800, 500, 600]} intensity={2} />
-      <Grid
-        args={[10000, 10000]}
-        cellSize={100}
-        sectionSize={500}
-        fadeDistance={7000}
-        cellColor="#0c5660"
-        sectionColor="#16818b"
-      />
+      <gridHelper args={[100000, 200, "#16818b", "#0c5660"]} />
       {design.sections.map(
         (section, index) =>
           model.sections[index] && (
@@ -187,6 +204,7 @@ export default function WellboreScene({
       )}
       <OrbitControls makeDefault enableDamping={!reducedMotion} />
       <Camera points={points} view={view} fitSignal={fitSignal} />
-    </Canvas>
+      {model.sections.length > 0 && <LabelTracker design={design} model={model} selectedId={selectedSectionId} onUpdate={setLabels} />}
+    </Canvas><div className="scene-label-layer" aria-hidden="true">{labels.map((label) => <span key={label.id} className={label.selected ? "selected" : ""} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div></>
   );
 }

@@ -1,6 +1,6 @@
 # UniqEnergy Website and FluidLab
 
-UniqEnergy's Vite/React website and the FluidLab conceptual MD/TVD well workspace.
+UniqEnergy's Vite/React website and the FluidLab conceptual MD-only well workspace.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ UniqEnergy's Vite/React website and the FluidLab conceptual MD/TVD well workspac
 - Firebase Hosting, Email/Password Authentication, Firestore, Storage, and Cloud Functions
 - App Check with reCAPTCHA Enterprise in monitor-only mode
 
-FluidLab builds a sequential hole program from locked section-bottom MDs, optional reference TVDs, and bit sizes. Wells remain vertical unless an applied KOP/End-of-Curve pair defines a single-plane build to horizontal. Guest work remains in memory only; signed-in users can store projects in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
+FluidLab builds a sequential hole program from locked section-bottom MDs, bit sizes, and section colors. Wells remain vertical unless an applied KOP/End-of-Curve pair defines a single-plane build to horizontal. Project units are selected once before construction and remain locked. Guest work remains in memory only; signed-in users can store projects in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
 
 ## Local development
 
@@ -38,7 +38,7 @@ Firebase Authentication must have both Email/Password and Anonymous providers en
 ## Authentication and routes
 
 - `/` — public homepage
-- `/fluidlab` — public conceptual 3D MD/TVD workspace
+- `/fluidlab` — public conceptual 3D MD-only workspace
 - `/fluidlab/projects` — signed-in project library
 - `/signin` — Email/Password sign in
 - `/signup` — public registration and missing-profile completion

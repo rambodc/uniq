@@ -98,7 +98,7 @@ const projectCollection = (uid) =>
 function validDesign(value) {
   if (
     !value ||
-    value.version !== 3 ||
+    value.version !== 4 ||
     typeof value.name !== "string" ||
     !["metric", "imperial"].includes(value.unitSystem) ||
     !Array.isArray(value.sections) ||
@@ -124,12 +124,10 @@ function validDesign(value) {
       section.name.length > 80 ||
       !Number.isFinite(section.endMdM) ||
       section.endMdM <= priorMd ||
-      (section.referenceTvdM !== null &&
-        (!Number.isFinite(section.referenceTvdM) ||
-          section.referenceTvdM < 0)) ||
       !Number.isFinite(section.diameterMm) ||
       section.diameterMm <= 0 ||
       typeof section.color !== "string" ||
+      !/^#[0-9a-f]{6}$/i.test(section.color) ||
       typeof section.visible !== "boolean"
     )
       throw new HttpsError(
@@ -199,7 +197,7 @@ export const listFluidLabProjects = onCall(base, async (request) => {
 export const getFluidLabProject = onCall(base, async (request) => {
   const account = await authorized(request),
     { snap } = await ownedProject(account, request.data?.projectId);
-  if (snap.data().schemaVersion !== 3)
+  if (snap.data().schemaVersion !== 4)
     throw new HttpsError(
       "failed-precondition",
       "This project uses an unsupported schema.",
@@ -215,7 +213,7 @@ export const createFluidLabProject = onCall(base, async (request) => {
     owner: account.uid,
     name: cleanName(design.name, "project name"),
     currentDesign: design,
-    schemaVersion: 3,
+    schemaVersion: 4,
     revision: 1,
     createdAt: now,
     updatedAt: now,
@@ -232,7 +230,7 @@ export const updateFluidLabProject = onCall(base, async (request) => {
     const snap = await transaction.get(ref),
       data = snap.data();
     if (data.lastMutationId === mutationId) return;
-    if (data.schemaVersion !== 3)
+    if (data.schemaVersion !== 4)
       throw new HttpsError(
         "failed-precondition",
         "This project uses an unsupported schema.",
