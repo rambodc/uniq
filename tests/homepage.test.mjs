@@ -80,6 +80,13 @@ test("FluidLab uses an MD-only mobile drawer and icon camera controls", async ()
   assert.match(source, /type="color"/);
   assert.match(styles, /\.number-field input,.text-field input\{min-height:44px;font-size:16px\}/);
   assert.match(styles, /\.camera-toolbar\{top:auto;right:auto;bottom:/);
+  const scene = await readFile(
+    new URL("src/fluidlab/WellboreScene.tsx", root),
+    "utf8",
+  );
+  assert.match(scene, /radius\s*\/\s*Math\.sin\(limitingFov\s*\/\s*2\)/);
+  assert.match(scene, /lineWidth=\{selected \? 4 : 2\.5\}/);
+  assert.match(scene, /depthTest=\{false\}/);
 });
 
 test("the homepage shell is excluded from the FluidLab route", async () => {

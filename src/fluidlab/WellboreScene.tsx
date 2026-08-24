@@ -33,16 +33,22 @@ function Camera({
     if (!current.length) return;
     const box = new THREE.Box3().setFromPoints(current);
     const center = box.getCenter(new THREE.Vector3());
-    const size = Math.max(box.getSize(new THREE.Vector3()).length(), 100);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const radius = Math.max(sphere.radius, 50);
+    const perspective = camera as THREE.PerspectiveCamera;
+    const verticalFov = THREE.MathUtils.degToRad(perspective.fov || 42);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * perspective.aspect);
+    const limitingFov = Math.min(verticalFov, horizontalFov);
+    const distance = (radius / Math.sin(limitingFov / 2)) * 1.18;
     const direction =
       view === "profile"
         ? new THREE.Vector3(0, 0, 1)
         : new THREE.Vector3(1, 0.45, 1);
     camera.position.copy(
-      center.clone().add(direction.normalize().multiplyScalar(size * 0.9)),
+      center.clone().add(direction.normalize().multiplyScalar(distance)),
     );
     camera.near = 0.1;
-    camera.far = size * 12;
+    camera.far = Math.max(10000, distance + radius * 12);
     camera.updateProjectionMatrix();
     if (controls && "target" in controls) {
       const orbit = controls as unknown as {
@@ -68,13 +74,19 @@ function Tube({
   derived,
   selected,
   onSelect,
+  baseRadius,
+  maxDiameter,
 }: {
   section: WellSection;
   derived: DerivedSection;
   selected: boolean;
   onSelect: (id: string) => void;
+  baseRadius: number;
+  maxDiameter: number;
 }) {
   const points = derived.points.map(point);
+  const visualRadius =
+    baseRadius * (0.45 + 0.55 * (section.diameterMm / maxDiameter));
   const curve = useMemo(
     () => new THREE.CatmullRomCurve3(points),
     [derived.points],
@@ -84,11 +96,11 @@ function Tube({
       new THREE.TubeGeometry(
         curve,
         Math.max(24, points.length),
-        Math.max(1.2, section.diameterMm / 55),
+        visualRadius,
         14,
         false,
       ),
-    [curve, section.diameterMm, points.length],
+    [curve, points.length, visualRadius],
   );
   if (!section.visible) return null;
   return (
@@ -108,10 +120,16 @@ function Tube({
           emissiveIntensity={selected ? 0.28 : 0.05}
         />
       </mesh>
-      {selected && <Line points={points} color="#fff" lineWidth={1} />}
+      <Line
+        points={points}
+        color={section.color}
+        lineWidth={selected ? 4 : 2.5}
+        depthTest={false}
+        renderOrder={10}
+      />
       <group position={point(derived.points.at(-1)!)}>
         <mesh>
-          <sphereGeometry args={[5, 12, 12]} />
+          <sphereGeometry args={[visualRadius * 1.35, 12, 12]} />
           <meshStandardMaterial color={selected ? "#fff" : section.color} />
         </mesh>
       </group>
@@ -169,6 +187,14 @@ export default function WellboreScene({
 }) {
   const model = useMemo(() => generateProject(design), [design]);
   const points = useMemo(() => model.points.map(point), [model.points]);
+  const displayScale = useMemo(() => {
+    if (!points.length) return { baseRadius: 1.5, maxDiameter: 1 };
+    const extent = new THREE.Box3().setFromPoints(points).getSize(new THREE.Vector3()).length();
+    return {
+      baseRadius: THREE.MathUtils.clamp(extent / 420, 1.5, 30),
+      maxDiameter: Math.max(...design.sections.map((section) => section.diameterMm), 1),
+    };
+  }, [design.sections, points]);
   const [labels, setLabels] = useState<LabelPosition[]>([]);
   return (
     <><Canvas
@@ -199,6 +225,8 @@ export default function WellboreScene({
               derived={model.sections[index]}
               selected={selectedSectionId === section.id}
               onSelect={onSelect}
+              baseRadius={displayScale.baseRadius}
+              maxDiameter={displayScale.maxDiameter}
             />
           ),
       )}

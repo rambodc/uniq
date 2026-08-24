@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   confirmSection,
+  applySectionEdit,
   createProject,
   emptyDraft,
+  editSectionErrors,
   generateProject,
   pointAtMd,
   trajectoryErrors,
@@ -76,6 +78,44 @@ describe("sequential KOP/EOC model", () => {
     expect(result.draft.endMdM).toBe(1000);
     expect(result.trajectoryCleared).toBe(true);
     expect(p.sections).toEqual([]);
+  });
+  it("edits a shared boundary without changing section identity", () => {
+    const p = project(), ids = p.sections.map((section) => section.id),
+      before = generateProject(p).sections.map((section) => section.capacityM3);
+    const result = applySectionEdit(p, 0, {
+      name: "Surface revised",
+      endMdM: 1100,
+      diameterMm: 300,
+      color: "#ef7d65",
+    });
+    expect(result.errors).toEqual([]);
+    expect(p.sections.map((section) => section.id)).toEqual(ids);
+    expect(p.sections[0].endMdM).toBe(1100);
+    expect(generateProject(p).sections.map((section) => section.startMdM)).toEqual([0, 1100]);
+    const after = generateProject(p).sections.map((section) => section.capacityM3);
+    expect(after[0]).not.toBe(before[0]);
+    expect(after[1]).not.toBe(before[1]);
+  });
+  it("edits a middle section between fixed neighbors", () => {
+    const p = project();
+    confirmSection(p, { name: "Tail", endMdM: 3000, diameterMm: 159, color: "#8a73e8" });
+    expect(applySectionEdit(p, 1, {
+      name: "Middle", endMdM: 2100, diameterMm: 200, color: "#f2b84b",
+    }).errors).toEqual([]);
+    expect(p.sections.map((section) => section.endMdM)).toEqual([1000, 2100, 3000]);
+  });
+  it("keeps edited MD between neighboring boundaries", () => {
+    const p = project(), base = { name: "", diameterMm: 200, color: "#35dfbd" };
+    expect(editSectionErrors(p, 0, { ...base, endMdM: 0 }).join()).toMatch(/greater/);
+    expect(editSectionErrors(p, 0, { ...base, endMdM: 2200 }).join()).toMatch(/less/);
+    expect(editSectionErrors(p, 1, { ...base, endMdM: 1000 }).join()).toMatch(/greater/);
+  });
+  it("blocks edits that place the applied EOC beyond total MD", () => {
+    const p = project();
+    p.trajectory = { enabled: true, kopMdM: 1800, endCurveMdM: 2100 };
+    expect(editSectionErrors(p, 1, {
+      name: "Lateral", endMdM: 2000, diameterMm: 216, color: "#43aee8",
+    }).join()).toMatch(/End of Curve/);
   });
   it("rejects older schemas", () =>
     expect(validateProject({ ...project(), version: 3 } as never)).toEqual([

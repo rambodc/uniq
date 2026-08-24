@@ -109,6 +109,61 @@ export function confirmSection(project: WellProject, draft: SectionDraft) {
   project.display.selectedSectionId = section.id;
   return { section, errors: [] };
 }
+export function editSectionErrors(
+  project: WellProject,
+  index: number,
+  draft: SectionDraft,
+) {
+  const section = project.sections[index];
+  if (!section) return ["Choose a confirmed section."];
+  const errors: string[] = [],
+    lower = sectionTopMd(project, index),
+    upper = project.sections[index + 1]?.endMdM;
+  if (
+    draft.endMdM == null ||
+    !Number.isFinite(draft.endMdM) ||
+    draft.endMdM <= lower
+  )
+    errors.push(`Bottom MD must be greater than ${lower}.`);
+  if (upper != null && draft.endMdM != null && draft.endMdM >= upper)
+    errors.push(`Bottom MD must be less than ${upper}.`);
+  if (
+    draft.diameterMm == null ||
+    !Number.isFinite(draft.diameterMm) ||
+    draft.diameterMm <= 0
+  )
+    errors.push("Enter a positive bit size.");
+  if (!/^#[0-9a-f]{6}$/i.test(draft.color))
+    errors.push("Choose a valid section color.");
+  if (draft.name.length > 80)
+    errors.push("Section name must be 80 characters or fewer.");
+  if (
+    index === project.sections.length - 1 &&
+    project.trajectory.enabled &&
+    draft.endMdM != null &&
+    project.trajectory.endCurveMdM != null &&
+    draft.endMdM < project.trajectory.endCurveMdM
+  )
+    errors.push(
+      "Bottom MD cannot be shallower than the applied End of Curve. Adjust or disable the trajectory first.",
+    );
+  return errors;
+}
+export function applySectionEdit(
+  project: WellProject,
+  index: number,
+  draft: SectionDraft,
+) {
+  const errors = editSectionErrors(project, index, draft);
+  if (errors.length) return { section: null, errors };
+  const section = project.sections[index];
+  section.name = draft.name.trim();
+  section.endMdM = draft.endMdM!;
+  section.diameterMm = draft.diameterMm!;
+  section.color = draft.color;
+  project.display.selectedSectionId = section.id;
+  return { section, errors: [] };
+}
 export function truncateFrom(project: WellProject, index: number) {
   if (index < 0 || index >= project.sections.length) return null;
   const removed = project.sections.slice(index),

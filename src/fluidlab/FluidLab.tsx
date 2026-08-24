@@ -21,6 +21,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plus,
   Save,
   Trash2,
@@ -30,10 +31,12 @@ import {
 import { auth, ensureFluidLabIdentity } from "../firebaseClient";
 import {
   confirmSection,
+  applySectionEdit,
   containingSection,
   createProject as createBlank,
   cubicMetresToBbl,
   draftErrors,
+  editSectionErrors,
   emptyDraft,
   generateProject,
   sectionTopMd,
@@ -144,6 +147,8 @@ export default function FluidLab({
     [exitOpen, setExitOpen] = useState(false),
     [conflict, setConflict] = useState(false),
     [deleteIndex, setDeleteIndex] = useState<number | null>(null),
+    [editIndex, setEditIndex] = useState<number | null>(null),
+    [editDraft, setEditDraft] = useState<SectionDraft>(() => emptyDraft()),
     [selectedId, setSelectedId] = useState<string | null>(null);
   const reduced = Boolean(useReducedMotion()),
     generated = useMemo(() => generateProject(design), [design]),
@@ -159,7 +164,11 @@ export default function FluidLab({
       (draft.name !== "" ||
         draft.endMdM != null ||
         draft.diameterMm != null),
-    dirty = saveState !== "saved" || draftTouched || trajectoryDirty;
+    dirty =
+      saveState !== "saved" ||
+      draftTouched ||
+      trajectoryDirty ||
+      editIndex !== null;
   useEffect(
     () =>
       onAuthStateChanged(auth, (current) => {
@@ -264,6 +273,31 @@ export default function FluidLab({
     updateDesign((next) => (next.trajectory = candidate));
     setTrajectoryDraft(candidate);
   };
+  const beginEdit = (index: number) => {
+    const section = design.sections[index];
+    setEditIndex(index);
+    setEditDraft({
+      name: section.name,
+      endMdM: section.endMdM,
+      diameterMm: section.diameterMm,
+      color: section.color,
+    });
+    setSelectedId(section.id);
+  };
+  const applyEdit = () => {
+    if (editIndex == null) return;
+    const errors = editSectionErrors(design, editIndex, editDraft);
+    if (errors.length) {
+      setNotice(errors[0]);
+      return;
+    }
+    const next = structuredClone(design);
+    applySectionEdit(next, editIndex, editDraft);
+    setDesign(next);
+    setSelectedId(next.sections[editIndex].id);
+    setEditIndex(null);
+    setSaveState("editing");
+  };
   const removeFrom = () => {
     if (deleteIndex == null) return;
     const next = structuredClone(design),
@@ -274,6 +308,7 @@ export default function FluidLab({
     setDraft(result.draft);
     setDraftOpen(true);
     setSelectedId(next.sections.at(-1)?.id ?? null);
+    setEditIndex(null);
     setDeleteIndex(null);
     setSaveState("editing");
     if (result.trajectoryCleared)
@@ -284,6 +319,7 @@ export default function FluidLab({
   const canSave =
     design.sections.length > 0 &&
     !draftOpen &&
+    editIndex == null &&
     !trajectoryDirty &&
     !generated.errors.length;
   const save = useCallback(async () => {
@@ -291,6 +327,8 @@ export default function FluidLab({
       setNotice(
         draftOpen
           ? "Confirm or discard the current section draft before saving."
+          : editIndex != null
+            ? "Apply or cancel the section edit before saving."
           : "Apply the trajectory changes before saving.",
       );
       return;
@@ -332,6 +370,7 @@ export default function FluidLab({
     canSave,
     design,
     draftOpen,
+    editIndex,
     onAuth,
     projectId,
     revision,
@@ -548,15 +587,10 @@ export default function FluidLab({
                       <b>{section.name || `Section ${index + 1}`}</b>
                       <small>Confirmed and locked</small>
                     </button>
-                    <button
-                      title="Delete this section and everything below"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setDeleteIndex(index);
-                      }}
-                    >
-                      <Trash2 />
-                    </button>
+                    <div className="locked-section-actions">
+                      <button title="Edit section" onClick={() => beginEdit(index)}><Pencil /></button>
+                      <button title="Delete this section and everything below" onClick={() => setDeleteIndex(index)}><Trash2 /></button>
+                    </div>
                   </header>
                   <dl>
                     <div>
@@ -590,6 +624,20 @@ export default function FluidLab({
                       </dd>
                     </div>
                   </dl>
+                  {editIndex === index && (
+                    <fieldset className="section-edit-form">
+                      <legend>Edit Section {index + 1}</legend>
+                      <label className="text-field"><span>Name <em>optional</em></span><input value={editDraft.name} maxLength={80} onChange={(event) => setEditDraft((current) => ({ ...current, name: event.target.value }))}/></label>
+                      <div className="draft-grid">
+                        <Field label="Top MD" value={toLength(top, units)} unit={lunit(units)} disabled onChange={() => {}} />
+                        <Field label="Bottom MD" value={editDraft.endMdM == null ? null : toLength(editDraft.endMdM, units)} unit={lunit(units)} onChange={(value) => setEditDraft((current) => ({ ...current, endMdM: value == null ? null : fromLength(value, units) }))}/>
+                        <Field label="Bit size" value={editDraft.diameterMm == null ? null : toDiameter(editDraft.diameterMm, units)} unit={dunit(units)} onChange={(value) => setEditDraft((current) => ({ ...current, diameterMm: value == null ? null : fromDiameter(value, units) }))}/>
+                      </div>
+                      <div className="color-picker"><span>Section color</span><div>{sectionColors.map((color) => <button key={color} type="button" aria-label={`Choose ${color}`} aria-pressed={editDraft.color === color} className={editDraft.color === color ? "active" : ""} style={{background:color}} onClick={() => setEditDraft((current) => ({...current,color}))}/>) }<label title="Custom color"><input type="color" value={editDraft.color} onChange={(event) => setEditDraft((current) => ({...current,color:event.target.value}))}/><span>Custom</span></label></div></div>
+                      {editSectionErrors(design, index, editDraft).length > 0 && <p className="draft-error">{editSectionErrors(design, index, editDraft)[0]}</p>}
+                      <div className="draft-actions"><button onClick={() => setEditIndex(null)}>Cancel</button><button className="confirm-section" onClick={applyEdit}><Check /> Apply Changes</button></div>
+                    </fieldset>
+                  )}
                 </article>
               );
             })}
