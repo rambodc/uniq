@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       purge_fluidlab_data:
-        description: "Purge FluidLab projects and milestones after deployment"
+        description: "Purge FluidLab projects and nested versions after deployment"
         required: false
         default: false
         type: boolean
@@ -35,4 +35,4 @@ jobs:
       - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --message "CI functions deploy"
       - name: Purge obsolete FluidLab project data
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_fluidlab_data }}
-        run: node functions/purge-fluidlab-projects.js
+        run: node functions/purge-fluidlab-projects.js --confirm

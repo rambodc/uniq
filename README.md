@@ -1,15 +1,14 @@
 # UniqEnergy Website and FluidLab
 
-UniqEnergy's Vite/React website and the FluidLab AI-assisted 3D wellbore workspace.
+UniqEnergy's Vite/React website and the FluidLab conceptual MD/TVD well workspace.
 
 ## Architecture
 
 - React, TypeScript, Vite, Three.js/React Three Fiber
 - Firebase Hosting, Email/Password Authentication, Firestore, Storage, and Cloud Functions
-- OpenAI Responses API from server-side Functions only
 - App Check with reCAPTCHA Enterprise in monitor-only mode
 
-Uploaded source documents remain temporary. Guest designs recover from device-local IndexedDB; signed-in users can store projects and immutable named versions in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
+FluidLab infers a smooth, single-plane conceptual profile from section-bottom MD/TVD endpoints and bit sizes. Guest work remains in memory only; signed-in users can store projects in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
 
 ## Local development
 
@@ -39,7 +38,7 @@ Firebase Authentication must have both Email/Password and Anonymous providers en
 ## Authentication and routes
 
 - `/` — public homepage
-- `/fluidlab` — public 3D workspace with a one-analysis guest AI trial
+- `/fluidlab` — public conceptual 3D MD/TVD workspace
 - `/fluidlab/projects` — signed-in project library
 - `/signin` — Email/Password sign in
 - `/signup` — public registration and missing-profile completion

@@ -52,14 +52,14 @@ test("FluidLab is a public full-screen workspace with guarded saving", async () 
   );
   assert.match(styles, /height:100dvh/);
   assert.match(styles, /\.workspace-scene\{position:absolute;inset:0/);
-  assert.match(source, /Directional survey builder/);
-  assert.match(source, /Section boundaries are mandatory survey stations/);
-  assert.match(source, /Minimum curvature/);
+  assert.match(source, /Conceptual well builder/);
+  assert.match(source, /cumulative MD, cumulative TVD, and bit size/);
+  assert.match(source, /single vertical plane/);
   assert.match(source, /beforeunload/);
   assert.match(source, /exit-overlay/);
-  assert.match(source, /On this device/);
-  assert.match(source, /Create account and save/);
-  assert.match(source, /survey-table/);
+  assert.match(source, /Editing in memory/);
+  assert.match(source, /Sign in to save/);
+  assert.doesNotMatch(source, /surveyStations|inclinationDeg|azimuthDeg/);
   assert.match(styles, /min-height:44px/);
 });
 
@@ -91,18 +91,12 @@ test("the homepage shell is excluded from the FluidLab route", async () => {
   assert.match(source, /history\.forward\(\)/);
 });
 
-test("AI integration remains server-side and supports ephemeral mixed files", async () => {
-  const client = await readFile(new URL("src/fluidlab/ai.ts", root), "utf8");
+test("obsolete AI and local persistence integrations are removed", async () => {
   const backend = await readFile(new URL("functions/index.js", root), "utf8");
-  assert.match(client, /httpsCallable/);
-  assert.doesNotMatch(client, /OPENAI_API_KEY|sk-/);
-  assert.match(backend, /secrets:\s*\["OPENAI_API_KEY"\]/);
-  assert.match(backend, /store: false/);
-  assert.match(backend, /client\.files\s*\.delete/);
-  assert.match(backend, /15 \* 1024 \* 1024/);
-  assert.match(backend, /fluidlabUsers/);
-  assert.match(backend, /reserveQuota/);
-  assert.doesNotMatch(backend, /const allowlist/);
+  assert.doesNotMatch(backend, /OpenAI|analyzeWell|refineWell|createFluidLabVersion/);
+  assert.match(backend, /schemaVersion:2/);
+  await assert.rejects(readFile(new URL("src/fluidlab/ai.ts", root), "utf8"));
+  await assert.rejects(readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"));
 });
 
 test("email authentication has dedicated routes and no Google provider", async () => {
