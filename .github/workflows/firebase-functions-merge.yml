@@ -32,13 +32,6 @@ jobs:
       - run: find functions -path 'functions/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
       - run: npm test --prefix functions
       - run: npm install --global firebase-tools@14.15.2
-      - name: Remove obsolete FluidLab functions
-        run: >-
-          firebase functions:delete
-          analyzeWell refineWell createFluidLabVersion manageFluidLabVersion manageFluidLabProject
-          --region us-central1
-          --project uniqenergy-de71c
-          --force
       - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --message "CI functions deploy"
       - name: Purge obsolete FluidLab project data
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_fluidlab_data }}
