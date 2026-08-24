@@ -4,13 +4,10 @@ import { functions } from "../firebaseClient";
 export interface AISource { location: string | null; excerpt: string | null }
 export interface AIField<T> { value: T | null; confidence: number; source: AISource }
 export interface AIEvidence { confidence:number; source:AISource }
-export interface AITrajectory extends AIEvidence { name:string; type:"vertical"|"inclined-hold"|"build"|"drop"|"turn"|"compound"|"horizontal"|"survey"; length:number|null; endInclination:number|null; endAzimuth:number|null; buildRate:number|null; turnRate:number|null }
-export interface AIHoleSection extends AIEvidence { name:string; diameter:number|null; underreamedDiameter:number|null; startMd:number|null; endMd:number|null }
-export interface AITubular extends AIEvidence { name:string; type:"casing"|"liner"|"tieback"|"tubing"|"other"; topMd:number|null; bottomMd:number|null; nominalSize:number|null; od:number|null; id:number|null; grade:string|null; weight:number|null }
-export interface AICement extends AIEvidence { name:string; tubularName:string|null; topMd:number|null; bottomMd:number|null; excessPercent:number|null; material:string|null }
+export interface AIOpenHoleSection extends AIEvidence { name:string;diameter:number|null;length:number|null;path:"vertical"|"straight"|"curve";endInclination:number|null;endAzimuth:number|null }
 export interface AIWellDraft {
   name:AIField<string>; units:AIField<"metric"|"imperial">; classification:AIField<string>;
-  trajectory:AITrajectory[]; holes:AIHoleSection[]; tubulars:AITubular[]; cement:AICement[];
+  sections:AIOpenHoleSection[];
 }
 export interface AIExtractionResult { assistantMessage: string; draft: AIWellDraft; missingFields: string[]; conflicts: string[]; warnings: string[] }
 export interface FluidLabProfile { firstName: string; lastName: string; email: string; status: "active" | "disabled" }

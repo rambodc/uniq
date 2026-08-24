@@ -33,25 +33,25 @@ test("FluidLab is a public full-screen workspace with guarded saving", async () 
   const styles = await readFile(new URL("src/fluidlab/fluidlab.css", root), "utf8");
   assert.match(styles, /height:100dvh/);
   assert.match(styles, /\.workspace-scene\{position:absolute;inset:0/);
-  assert.match(source, /type EditorTab="trajectory"\|"hole"\|"construction"\|"drillstring"\|"volumes"/);
-  assert.match(source, /Section-based designer/);
-  assert.match(source, /Casing, liners & tubing/);
+  assert.match(source, /Sequential open-hole builder/);
+  assert.match(source, /Every section begins exactly where the previous section ends/);
+  assert.match(source, /Advanced trajectory/);
   assert.match(source, /beforeunload/);
   assert.match(source, /exit-overlay/);
   assert.match(source, /On this device/);
   assert.match(source, /Create account and save/);
-  assert.match(source, /className="well-tree"/);
+  assert.match(source, /open-hole-card/);
   assert.match(styles, /min-height:44px/);
 });
 
 test("FluidLab uses horizontal tabs, mobile-safe fields, and icon camera controls", async () => {
   const source = await readFile(new URL("src/fluidlab/FluidLab.tsx", root), "utf8");
   const styles = await readFile(new URL("src/fluidlab/fluidlab.css", root), "utf8");
-  assert.match(source, /from "lucide-react"/);
-  assert.match(source, /className="tab-strip engineering-tabs"/);
+  assert.match(source, /from\"lucide-react\"/);
+  assert.doesNotMatch(source, /engineering-tabs/);
   assert.match(source, /className="camera-toolbar"/);
   assert.doesNotMatch(source, /className=\{`metrics-dock/);
-  assert.match(styles, /\.tab-strip\{[^}]*overflow-x:auto/);
+  assert.match(styles, /\.open-hole-panel/);
   assert.match(styles, /\.number-field input,.text-field input,.section-editor legend>input:not\(\[type=color\]\),.checks select\{font-size:16px\}/);
   assert.match(styles, /\.camera-toolbar\{top:auto;right:auto;bottom:/);
 });
