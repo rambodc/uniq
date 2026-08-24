@@ -27,17 +27,33 @@ test("public website exposes every marketing route and preserves contact actions
   ]) {
     assert.match(source, new RegExp(route));
   }
-  assert.match(source, /mailto:info@uniqenergy\.com/);
+  assert.doesNotMatch(source, /mailto:/);
+  assert.match(source, /<PublicRoute path=\{path\}/);
+  assert.match(
+    source,
+    /function (AboutPage|SystemsPage|TechnologyPage|SafetyPage|LocationsPage|CareersPage|ContactPage)/,
+  );
   assert.match(source, /tel:\+15877742131/);
-  assert.match(source, /function DetailPage/);
+  assert.doesNotMatch(source, /function DetailPage/);
   assert.match(source, /function setMetadata/);
 });
 
 test("sitemap contains the homepage and all public marketing pages", async () => {
   const sitemap = await readFile(new URL("public/sitemap.xml", root), "utf8");
   assert.equal((sitemap.match(/<url>/g) ?? []).length, 8);
-  for (const route of ["about-us", "drilling-fluid-systems", "technology", "health-safety", "locations", "careers", "contact-us"]) {
-    assert.match(sitemap, new RegExp(`https:\\/\\/uniqenergy-de71c\\.web\\.app\\/${route}`));
+  for (const route of [
+    "about-us",
+    "drilling-fluid-systems",
+    "technology",
+    "health-safety",
+    "locations",
+    "careers",
+    "contact-us",
+  ]) {
+    assert.match(
+      sitemap,
+      new RegExp(`https:\\/\\/uniqenergy-de71c\\.web\\.app\\/${route}`),
+    );
   }
   assert.doesNotMatch(sitemap, /fluidlab|account|signin/);
 });
@@ -81,7 +97,10 @@ test("FluidLab uses an MD-only mobile drawer and icon camera controls", async ()
   assert.match(source, /mobile-menu-button/);
   assert.match(source, /unit-setup/);
   assert.match(source, /type="color"/);
-  assert.match(styles, /\.number-field input,.text-field input\{min-height:44px;font-size:16px\}/);
+  assert.match(
+    styles,
+    /\.number-field input,.text-field input\{min-height:44px;font-size:16px\}/,
+  );
   assert.match(styles, /\.camera-toolbar\{top:auto;right:auto;bottom:/);
   const scene = await readFile(
     new URL("src/fluidlab/WellboreScene.tsx", root),
@@ -94,7 +113,7 @@ test("FluidLab uses an MD-only mobile drawer and icon camera controls", async ()
 
 test("the public shell is excluded from protected editor routes", async () => {
   const source = await readFile(new URL("src/App.tsx", root), "utf8");
-  assert.match(source, /if\(editorPath\(path\)\)/);
+  assert.match(source, /if \(editorPath\(path\)/);
   assert.match(source, /dirtyRef\.current/);
   assert.match(source, /history\.forward\(\)/);
 });
@@ -108,11 +127,16 @@ test("obsolete AI and local persistence integrations are removed", async () => {
   assert.match(backend, /collection\("accounts"\)/);
   assert.doesNotMatch(backend, /fluidlabUsers/);
   await assert.rejects(readFile(new URL("src/fluidlab/ai.ts", root), "utf8"));
-  await assert.rejects(readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"));
+  await assert.rejects(
+    readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"),
+  );
 });
 
 test("account dashboard supports named FluidLab and Fluid Programs projects", async () => {
-  const account = await readFile(new URL("src/account/AccountPortal.tsx", root), "utf8");
+  const account = await readFile(
+    new URL("src/account/AccountPortal.tsx", root),
+    "utf8",
+  );
   const app = await readFile(new URL("src/App.tsx", root), "utf8");
   assert.match(account, /Name your project/);
   assert.match(account, /Fluid Programs/);
