@@ -1,12 +1,85 @@
-import {describe,expect,it} from "vitest";
-import {addIntermediateSection,createProject,deleteIntermediateSection,generateProject,validateProject} from "./engineering";
-describe("MD/TVD conceptual well model",()=>{
-  it("creates schema v2 sections",()=>{const p=createProject();expect(p.version).toBe(2);expect(p.sections.map(s=>s.category)).toEqual(["surface","main"]);expect(validateProject(p)).toEqual([])});
-  it("renders a vertical well",()=>{const p=createProject();p.sections[1].endTvdM=2000;const g=generateProject(p);expect(g.totalHorizontalM).toBeCloseTo(0);expect(g.points.at(-1)?.tvdM).toBe(2000)});
-  it("derives displacement",()=>expect(generateProject(createProject()).totalHorizontalM).toBeGreaterThan(0));
-  it("passes through endpoints",()=>{const p=createProject();addIntermediateSection(p);const g=generateProject(p);for(const s of p.sections){const e=g.sections.find(x=>x.sectionId===s.id)?.points.at(-1);expect(e?.mdM).toBeCloseTo(s.endMdM);expect(e?.tvdM).toBeCloseTo(s.endTvdM)}});
-  it("stays finite and monotonic",()=>{const g=generateProject(createProject());expect(g.points.every(p=>Number.isFinite(p.horizontalM)&&Number.isFinite(p.tvdM))).toBe(true);expect(g.points.every((p,i)=>!i||p.horizontalM>=g.points[i-1].horizontalM)).toBe(true)});
-  it("adds and removes intermediates",()=>{const p=createProject(),id=addIntermediateSection(p);expect(p.sections.map(s=>s.category)).toEqual(["surface","intermediate","main"]);expect(deleteIntermediateSection(p,id)).toBe(true)});
-  it("calculates capacity by MD interval",()=>{const p=createProject();p.sections[0].diameterMm=200;p.sections[1].diameterMm=100;const g=generateProject(p);expect(g.sections[0].capacityM3).toBeCloseTo(Math.PI*.2**2/4*500);expect(g.sections[1].capacityM3).toBeCloseTo(Math.PI*.1**2/4*1500)});
-  it("rejects invalid endpoints and v1",()=>{const p=createProject();p.sections[1].endTvdM=2100;expect(validateProject(p).join()).toMatch(/TVD increase/);expect(validateProject({...p,version:1} as never)).toEqual(["Unsupported FluidLab project schema."])});
+import { describe, expect, it } from "vitest";
+import {
+  confirmSection,
+  createProject,
+  emptyDraft,
+  generateProject,
+  pointAtMd,
+  trajectoryErrors,
+  truncateFrom,
+  validateProject,
+} from "./engineering";
+const project = () => {
+  const p = createProject();
+  confirmSection(p, {
+    name: "Surface",
+    endMdM: 1000,
+    referenceTvdM: 980,
+    diameterMm: 311,
+  });
+  confirmSection(p, {
+    name: "Lateral",
+    endMdM: 2200,
+    referenceTvdM: null,
+    diameterMm: 216,
+  });
+  return p;
+};
+describe("sequential KOP/EOC model", () => {
+  it("starts empty at zero", () => {
+    const p = createProject();
+    expect(p.sections).toEqual([]);
+    expect(emptyDraft().endMdM).toBeNull();
+  });
+  it("confirms ordered sections", () => {
+    const p = project();
+    expect(p.sections.map((s) => s.endMdM)).toEqual([1000, 2200]);
+    expect(validateProject(p)).toEqual([]);
+  });
+  it("keeps reference TVD out of geometry", () => {
+    const a = project(),
+      b = structuredClone(a);
+    b.sections[0].referenceTvdM = 123;
+    expect(generateProject(a).points).toEqual(generateProject(b).points);
+  });
+  it("is vertical without trajectory", () => {
+    const g = generateProject(project());
+    expect(g.totalHorizontalM).toBe(0);
+    expect(g.totalVisualTvdM).toBe(2200);
+  });
+  it("builds from KOP to horizontal at EOC", () => {
+    const p = project();
+    p.trajectory = { enabled: true, kopMdM: 1800, endCurveMdM: 2000 };
+    expect(pointAtMd(p, 1800).inclinationDeg).toBe(0);
+    expect(pointAtMd(p, 2000).inclinationDeg).toBe(90);
+    expect(pointAtMd(p, 2200).tvdM).toBeCloseTo(pointAtMd(p, 2000).tvdM);
+    expect(pointAtMd(p, 2200).horizontalM).toBeGreaterThan(
+      pointAtMd(p, 2000).horizontalM,
+    );
+  });
+  it("supports a curve across section boundaries", () => {
+    const p = project();
+    p.trajectory = { enabled: true, kopMdM: 900, endCurveMdM: 1200 };
+    const g = generateProject(p);
+    expect(g.sections[0].points.some((x) => x.mdM === 900)).toBe(true);
+    expect(g.sections[1].points.some((x) => x.mdM === 1200)).toBe(true);
+  });
+  it("rejects invalid trajectory", () => {
+    const p = project();
+    p.trajectory = { enabled: true, kopMdM: 2000, endCurveMdM: 1800 };
+    expect(trajectoryErrors(p).join()).toMatch(/deeper/);
+  });
+  it("truncates descendants and clears invalid trajectory", () => {
+    const p = project();
+    p.trajectory = { enabled: true, kopMdM: 1800, endCurveMdM: 2000 };
+    const result = truncateFrom(p, 0)!;
+    expect(result.removedCount).toBe(2);
+    expect(result.draft.endMdM).toBe(1000);
+    expect(result.trajectoryCleared).toBe(true);
+    expect(p.sections).toEqual([]);
+  });
+  it("rejects schema v2", () =>
+    expect(validateProject({ ...project(), version: 2 } as never)).toEqual([
+      "Unsupported FluidLab project schema.",
+    ]));
 });

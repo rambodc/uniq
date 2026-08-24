@@ -52,14 +52,14 @@ test("FluidLab is a public full-screen workspace with guarded saving", async () 
   );
   assert.match(styles, /height:100dvh/);
   assert.match(styles, /\.workspace-scene\{position:absolute;inset:0/);
-  assert.match(source, /Conceptual well builder/);
-  assert.match(source, /cumulative MD, cumulative TVD, and bit size/);
-  assert.match(source, /single vertical plane/);
+  assert.match(source, /Sequential well builder/);
+  assert.match(source, /Confirm Section/);
+  assert.match(source, /Add build to horizontal/);
   assert.match(source, /beforeunload/);
   assert.match(source, /exit-overlay/);
-  assert.match(source, /Editing in memory/);
+  assert.match(source, /Unsaved changes/);
   assert.match(source, /Sign in to save/);
-  assert.doesNotMatch(source, /surveyStations|inclinationDeg|azimuthDeg/);
+  assert.doesNotMatch(source, /surveyStations|azimuthDeg/);
   assert.match(styles, /min-height:44px/);
 });
 
@@ -94,7 +94,7 @@ test("the homepage shell is excluded from the FluidLab route", async () => {
 test("obsolete AI and local persistence integrations are removed", async () => {
   const backend = await readFile(new URL("functions/index.js", root), "utf8");
   assert.doesNotMatch(backend, /OpenAI|analyzeWell|refineWell|createFluidLabVersion/);
-  assert.match(backend, /schemaVersion:2/);
+  assert.match(backend, /schemaVersion:\s*3/);
   await assert.rejects(readFile(new URL("src/fluidlab/ai.ts", root), "utf8"));
   await assert.rejects(readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"));
 });

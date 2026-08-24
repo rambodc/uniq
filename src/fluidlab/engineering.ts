@@ -1,60 +1,316 @@
 export type UnitSystem = "metric" | "imperial";
-export type SectionCategory = "surface" | "intermediate" | "main";
-export interface WellSection { id:string; category:SectionCategory; name:string; endMdM:number; endTvdM:number; diameterMm:number; color:string; visible:boolean }
-export interface WellProject { version:2; name:string; unitSystem:UnitSystem; sections:WellSection[]; display:{selectedSectionId:string|null} }
-export interface ProfilePoint { mdM:number; tvdM:number; horizontalM:number; sectionId:string }
-export interface DerivedSection { sectionId:string; startMdM:number; endMdM:number; startTvdM:number; endTvdM:number; horizontalDisplacementM:number; capacityM3:number; points:ProfilePoint[] }
-export interface GeneratedProject { points:ProfilePoint[]; sections:DerivedSection[]; errors:string[]; totalCapacityM3:number; totalHorizontalM:number }
-const colors=["#35dfbd","#43aee8","#8a73e8","#f2b84b","#ef7d65"];
-const uid=(prefix:string)=>`${prefix}-${globalThis.crypto?.randomUUID?.()??Math.random().toString(36).slice(2)}`;
-
-export function createProject(unitSystem:UnitSystem="metric"):WellProject {
-  const surface:WellSection={id:uid("section"),category:"surface",name:"Surface",endMdM:500,endTvdM:500,diameterMm:444.5,color:colors[0],visible:true};
-  const main:WellSection={id:uid("section"),category:"main",name:"Main Hole",endMdM:2000,endTvdM:1700,diameterMm:215.9,color:colors[2],visible:true};
-  return {version:2,name:"New conceptual well",unitSystem,sections:[surface,main],display:{selectedSectionId:surface.id}};
+export interface WellSection {
+  id: string;
+  name: string;
+  endMdM: number;
+  referenceTvdM: number | null;
+  diameterMm: number;
+  color: string;
+  visible: boolean;
 }
-export function addIntermediateSection(project:WellProject){
-  const index=project.sections.length-1, prior=project.sections[index-1], main=project.sections[index];
-  const count=project.sections.filter(section=>section.category==="intermediate").length+1;
-  const section:WellSection={id:uid("section"),category:"intermediate",name:`Intermediate ${count}`,endMdM:(prior.endMdM+main.endMdM)/2,endTvdM:(prior.endTvdM+main.endTvdM)/2,diameterMm:prior.diameterMm,color:colors[index%colors.length],visible:true};
-  project.sections.splice(index,0,section); return section.id;
+export interface WellTrajectory {
+  enabled: boolean;
+  kopMdM: number | null;
+  endCurveMdM: number | null;
 }
-export function deleteIntermediateSection(project:WellProject,id:string){
-  const index=project.sections.findIndex(section=>section.id===id&&section.category==="intermediate"); if(index<0)return false;
-  project.sections.splice(index,1); if(project.display.selectedSectionId===id)project.display.selectedSectionId=project.sections[Math.max(0,index-1)]?.id??null; return true;
+export interface WellProject {
+  version: 3;
+  name: string;
+  unitSystem: UnitSystem;
+  sections: WellSection[];
+  trajectory: WellTrajectory;
+  display: { selectedSectionId: string | null };
 }
-export function validateProject(project:WellProject):string[]{
-  if(!project||project.version!==2||!Array.isArray(project.sections))return["Unsupported FluidLab project schema."];
-  const errors:string[]=[]; if(typeof project.name!=="string"||!project.name.trim()||project.name.length>100)errors.push("Enter a valid project name.");
-  if(!["metric","imperial"].includes(project.unitSystem))errors.push("Choose project units.");
-  if(project.sections.length<2||project.sections.length>20)errors.push("Use between 2 and 20 hole sections.");
-  if(project.sections[0]?.category!=="surface")errors.push("Surface must be the first section.");
-  if(project.sections.at(-1)?.category!=="main")errors.push("Main Hole must be the final section.");
-  if(project.sections.slice(1,-1).some(section=>section.category!=="intermediate"))errors.push("Only Intermediate sections may appear between Surface and Main Hole.");
-  const ids=new Set<string>(); let priorMd=0,priorTvd=0;
-  project.sections.forEach((section,index)=>{const label=section?.name?.trim()||`Section ${index+1}`;
-    if(!section||typeof section.id!=="string"||ids.has(section.id))errors.push("Section IDs must be unique.");else ids.add(section.id);
-    if(typeof section?.name!=="string"||!section.name.trim())errors.push(`Section ${index+1} needs a name.`);
-    if(!Number.isFinite(section?.endMdM)||section.endMdM<=priorMd)errors.push(`${label}: end MD must be greater than ${priorMd}.`);
-    if(!Number.isFinite(section?.endTvdM)||section.endTvdM<priorTvd)errors.push(`${label}: end TVD cannot be less than ${priorTvd}.`);
-    if(Number.isFinite(section?.endMdM)&&Number.isFinite(section?.endTvdM)&&section.endTvdM-priorTvd>section.endMdM-priorMd+1e-8)errors.push(`${label}: TVD increase cannot exceed MD increase.`);
-    if(!Number.isFinite(section?.diameterMm)||section.diameterMm<=0)errors.push(`${label}: enter a positive bit size.`);
-    if(Number.isFinite(section?.endMdM))priorMd=section.endMdM;if(Number.isFinite(section?.endTvdM))priorTvd=section.endTvdM;
-  }); return [...new Set(errors)];
+export interface SectionDraft {
+  name: string;
+  endMdM: number | null;
+  referenceTvdM: number | null;
+  diameterMm: number | null;
 }
-function boundarySlopes(project:WellProject){
-  const md=[0,...project.sections.map(section=>section.endMdM)],tvd=[0,...project.sections.map(section=>section.endTvdM)];
-  const secants=md.slice(1).map((value,index)=>(tvd[index+1]-tvd[index])/(value-md[index])); const slopes=new Array(md.length).fill(0);
-  slopes[0]=secants[0];slopes[slopes.length-1]=secants.at(-1);for(let index=1;index<slopes.length-1;index++){const before=secants[index-1],after=secants[index];slopes[index]=before===0||after===0?0:(2*before*after)/(before+after)}
-  return slopes.map(value=>Math.max(0,Math.min(1,value)));
+export interface ProfilePoint {
+  mdM: number;
+  tvdM: number;
+  horizontalM: number;
+  inclinationDeg: number;
+  sectionId: string;
 }
-function hermite(z0:number,z1:number,m0:number,m1:number,length:number,t:number){const t2=t*t,t3=t2*t;return{value:(2*t3-3*t2+1)*z0+(t3-2*t2+t)*length*m0+(-2*t3+3*t2)*z1+(t3-t2)*length*m1,derivative:Math.max(0,Math.min(1,((6*t2-6*t)*z0+(3*t2-4*t+1)*length*m0+(-6*t2+6*t)*z1+(3*t2-2*t)*length*m1)/length))}}
-export function generateProject(project:WellProject):GeneratedProject{
-  const errors=validateProject(project);if(errors.length)return{points:[],sections:[],errors,totalCapacityM3:0,totalHorizontalM:0};
-  const slopes=boundarySlopes(project),sections:DerivedSection[]=[],points:ProfilePoint[]=[];let startMd=0,startTvd=0,horizontal=0,totalCapacityM3=0;
-  project.sections.forEach((section,index)=>{const length=section.endMdM-startMd,samples=Math.max(16,Math.ceil(length/25)),sectionPoints:ProfilePoint[]=[];let priorDerivative=slopes[index];
-    for(let sample=0;sample<=samples;sample++){const t=sample/samples,curve=hermite(startTvd,section.endTvdM,slopes[index],slopes[index+1],length,t);if(sample>0){const step=length/samples;horizontal+=step*(Math.sqrt(Math.max(0,1-priorDerivative**2))+Math.sqrt(Math.max(0,1-curve.derivative**2)))/2}const point={mdM:startMd+length*t,tvdM:sample===samples?section.endTvdM:curve.value,horizontalM:horizontal,sectionId:section.id};sectionPoints.push(point);if(!points.length||sample>0)points.push(point);priorDerivative=curve.derivative}
-    const capacityM3=Math.PI*(section.diameterMm/1000)**2/4*length;totalCapacityM3+=capacityM3;sections.push({sectionId:section.id,startMdM:startMd,endMdM:section.endMdM,startTvdM:startTvd,endTvdM:section.endTvdM,horizontalDisplacementM:sectionPoints.at(-1)!.horizontalM-sectionPoints[0].horizontalM,capacityM3,points:sectionPoints});startMd=section.endMdM;startTvd=section.endTvdM;
-  });return{points,sections,errors:[],totalCapacityM3,totalHorizontalM:horizontal};
+export interface DerivedSection {
+  sectionId: string;
+  startMdM: number;
+  endMdM: number;
+  startVisualTvdM: number;
+  endVisualTvdM: number;
+  horizontalDisplacementM: number;
+  capacityM3: number;
+  points: ProfilePoint[];
 }
-export const cubicMetresToBbl=(value:number)=>value*6.28981077;
+export interface GeneratedProject {
+  points: ProfilePoint[];
+  sections: DerivedSection[];
+  errors: string[];
+  totalCapacityM3: number;
+  totalHorizontalM: number;
+  totalVisualTvdM: number;
+}
+const colors = ["#35dfbd", "#43aee8", "#8a73e8", "#f2b84b", "#ef7d65"];
+const uid = () =>
+  globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+export const emptyDraft = (): SectionDraft => ({
+  name: "",
+  endMdM: null,
+  referenceTvdM: null,
+  diameterMm: null,
+});
+export function createProject(unitSystem: UnitSystem = "metric"): WellProject {
+  return {
+    version: 3,
+    name: "New conceptual well",
+    unitSystem,
+    sections: [],
+    trajectory: { enabled: false, kopMdM: null, endCurveMdM: null },
+    display: { selectedSectionId: null },
+  };
+}
+export function sectionTopMd(project: WellProject, index: number) {
+  return index ? project.sections[index - 1].endMdM : 0;
+}
+export function sectionTopReferenceTvd(project: WellProject, index: number) {
+  return index ? project.sections[index - 1].referenceTvdM : 0;
+}
+export function draftErrors(project: WellProject, draft: SectionDraft) {
+  const errors: string[] = [],
+    top = project.sections.at(-1)?.endMdM ?? 0;
+  if (
+    draft.endMdM == null ||
+    !Number.isFinite(draft.endMdM) ||
+    draft.endMdM <= top
+  )
+    errors.push(`Bottom MD must be greater than ${top}.`);
+  if (
+    draft.diameterMm == null ||
+    !Number.isFinite(draft.diameterMm) ||
+    draft.diameterMm <= 0
+  )
+    errors.push("Enter a positive bit size.");
+  if (
+    draft.referenceTvdM != null &&
+    (!Number.isFinite(draft.referenceTvdM) || draft.referenceTvdM < 0)
+  )
+    errors.push("Reference TVD must be zero or greater.");
+  if (draft.name.length > 80)
+    errors.push("Section name must be 80 characters or fewer.");
+  return errors;
+}
+export function confirmSection(project: WellProject, draft: SectionDraft) {
+  const errors = draftErrors(project, draft);
+  if (errors.length) return { section: null, errors };
+  const section: WellSection = {
+    id: uid(),
+    name: draft.name.trim(),
+    endMdM: draft.endMdM!,
+    referenceTvdM: draft.referenceTvdM,
+    diameterMm: draft.diameterMm!,
+    color: colors[project.sections.length % colors.length],
+    visible: true,
+  };
+  project.sections.push(section);
+  project.display.selectedSectionId = section.id;
+  return { section, errors: [] };
+}
+export function truncateFrom(project: WellProject, index: number) {
+  if (index < 0 || index >= project.sections.length) return null;
+  const removed = project.sections.slice(index),
+    first = removed[0];
+  project.sections = project.sections.slice(0, index);
+  project.display.selectedSectionId = project.sections.at(-1)?.id ?? null;
+  const total = project.sections.at(-1)?.endMdM ?? 0,
+    trajectoryCleared =
+      project.trajectory.enabled &&
+      Number(project.trajectory.endCurveMdM) > total;
+  if (trajectoryCleared)
+    project.trajectory = { enabled: false, kopMdM: null, endCurveMdM: null };
+  return {
+    draft: {
+      name: first.name,
+      endMdM: first.endMdM,
+      referenceTvdM: first.referenceTvdM,
+      diameterMm: first.diameterMm,
+    },
+    removedCount: removed.length,
+    trajectoryCleared,
+  };
+}
+export function trajectoryErrors(
+  project: WellProject,
+  trajectory = project.trajectory,
+) {
+  if (!trajectory.enabled) return [];
+  const total = project.sections.at(-1)?.endMdM ?? 0,
+    kop = trajectory.kopMdM,
+    eoc = trajectory.endCurveMdM,
+    errors: string[] = [];
+  if (kop == null || !Number.isFinite(kop) || kop < 0)
+    errors.push("Enter a KOP at or below the surface.");
+  if (eoc == null || !Number.isFinite(eoc))
+    errors.push("Enter an End of Curve MD.");
+  if (kop != null && eoc != null && eoc <= kop)
+    errors.push("End of Curve must be deeper than KOP.");
+  if (eoc != null && eoc > total)
+    errors.push("End of Curve cannot exceed total MD.");
+  return errors;
+}
+export function validateProject(project: WellProject) {
+  if (
+    !project ||
+    project.version !== 3 ||
+    !Array.isArray(project.sections) ||
+    !project.trajectory
+  )
+    return ["Unsupported FluidLab project schema."];
+  const errors: string[] = [];
+  if (
+    typeof project.name !== "string" ||
+    !project.name.trim() ||
+    project.name.length > 100
+  )
+    errors.push("Enter a valid project name.");
+  if (!["metric", "imperial"].includes(project.unitSystem))
+    errors.push("Choose project units.");
+  if (project.sections.length < 1 || project.sections.length > 50)
+    errors.push("Confirm between 1 and 50 sections.");
+  const ids = new Set<string>();
+  let prior = 0;
+  project.sections.forEach((section, index) => {
+    if (!section || typeof section.id !== "string" || ids.has(section.id))
+      errors.push("Section IDs must be unique.");
+    else ids.add(section.id);
+    if (typeof section?.name !== "string" || section.name.length > 80)
+      errors.push(`Section ${index + 1} has an invalid name.`);
+    if (!Number.isFinite(section?.endMdM) || section.endMdM <= prior)
+      errors.push(
+        `Section ${index + 1}: Bottom MD must be greater than ${prior}.`,
+      );
+    if (
+      section?.referenceTvdM != null &&
+      (!Number.isFinite(section.referenceTvdM) || section.referenceTvdM < 0)
+    )
+      errors.push(`Section ${index + 1}: Reference TVD is invalid.`);
+    if (!Number.isFinite(section?.diameterMm) || section.diameterMm <= 0)
+      errors.push(`Section ${index + 1}: enter a positive bit size.`);
+    if (Number.isFinite(section?.endMdM)) prior = section.endMdM;
+  });
+  return [...new Set([...errors, ...trajectoryErrors(project)])];
+}
+export function pointAtMd(
+  project: WellProject,
+  mdM: number,
+  sectionId = "",
+): ProfilePoint {
+  const t = project.trajectory;
+  if (
+    !t.enabled ||
+    t.kopMdM == null ||
+    t.endCurveMdM == null ||
+    mdM <= t.kopMdM
+  )
+    return { mdM, tvdM: mdM, horizontalM: 0, inclinationDeg: 0, sectionId };
+  const length = t.endCurveMdM - t.kopMdM,
+    radius = (2 * length) / Math.PI;
+  if (mdM < t.endCurveMdM) {
+    const theta = (mdM - t.kopMdM) / radius;
+    return {
+      mdM,
+      tvdM: t.kopMdM + radius * Math.sin(theta),
+      horizontalM: radius * (1 - Math.cos(theta)),
+      inclinationDeg: (theta * 180) / Math.PI,
+      sectionId,
+    };
+  }
+  return {
+    mdM,
+    tvdM: t.kopMdM + radius,
+    horizontalM: radius + (mdM - t.endCurveMdM),
+    inclinationDeg: 90,
+    sectionId,
+  };
+}
+export function generateProject(project: WellProject): GeneratedProject {
+  const errors = validateProject(project);
+  if (errors.length)
+    return {
+      points: [],
+      sections: [],
+      errors,
+      totalCapacityM3: 0,
+      totalHorizontalM: 0,
+      totalVisualTvdM: 0,
+    };
+  const points: ProfilePoint[] = [],
+    sections: DerivedSection[] = [];
+  let start = 0,
+    totalCapacityM3 = 0;
+  project.sections.forEach((section) => {
+    const boundaries = [start, section.endMdM],
+      t = project.trajectory;
+    if (t.enabled) {
+      if (t.kopMdM! > start && t.kopMdM! < section.endMdM)
+        boundaries.push(t.kopMdM!);
+      if (t.endCurveMdM! > start && t.endCurveMdM! < section.endMdM)
+        boundaries.push(t.endCurveMdM!);
+    }
+    boundaries.sort((a, b) => a - b);
+    const mdValues: number[] = [];
+    for (let part = 0; part < boundaries.length - 1; part++) {
+      const a = boundaries[part],
+        b = boundaries[part + 1],
+        samples = Math.max(2, Math.ceil((b - a) / 25));
+      for (let sample = 0; sample <= samples; sample++) {
+        const md = a + ((b - a) * sample) / samples;
+        if (!mdValues.length || Math.abs(md - mdValues.at(-1)!) > 1e-8)
+          mdValues.push(md);
+      }
+    }
+    const sectionPoints = mdValues.map((md) =>
+        pointAtMd(project, md, section.id),
+      ),
+      first = sectionPoints[0],
+      last = sectionPoints.at(-1)!,
+      capacityM3 =
+        ((Math.PI * (section.diameterMm / 1000) ** 2) / 4) *
+        (section.endMdM - start);
+    totalCapacityM3 += capacityM3;
+    sections.push({
+      sectionId: section.id,
+      startMdM: start,
+      endMdM: section.endMdM,
+      startVisualTvdM: first.tvdM,
+      endVisualTvdM: last.tvdM,
+      horizontalDisplacementM: last.horizontalM - first.horizontalM,
+      capacityM3,
+      points: sectionPoints,
+    });
+    sectionPoints.forEach((point, index) => {
+      if (!points.length || index) points.push(point);
+    });
+    start = section.endMdM;
+  });
+  const last = points.at(-1)!;
+  return {
+    points,
+    sections,
+    errors: [],
+    totalCapacityM3,
+    totalHorizontalM: last.horizontalM,
+    totalVisualTvdM: last.tvdM,
+  };
+}
+export function containingSection(project: WellProject, md: number | null) {
+  if (md == null) return null;
+  return (
+    project.sections.find(
+      (section, index) =>
+        md >= sectionTopMd(project, index) && md <= section.endMdM,
+    ) ?? null
+  );
+}
+export const cubicMetresToBbl = (value: number) => value * 6.28981077;

@@ -8,7 +8,7 @@ UniqEnergy's Vite/React website and the FluidLab conceptual MD/TVD well workspac
 - Firebase Hosting, Email/Password Authentication, Firestore, Storage, and Cloud Functions
 - App Check with reCAPTCHA Enterprise in monitor-only mode
 
-FluidLab infers a smooth, single-plane conceptual profile from section-bottom MD/TVD endpoints and bit sizes. Guest work remains in memory only; signed-in users can store projects in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
+FluidLab builds a sequential hole program from locked section-bottom MDs, optional reference TVDs, and bit sizes. Wells remain vertical unless an applied KOP/End-of-Curve pair defines a single-plane build to horizontal. Guest work remains in memory only; signed-in users can store projects in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
 
 ## Local development
 
