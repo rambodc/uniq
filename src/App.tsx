@@ -1,211 +1,66 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { auth } from "./firebaseClient";
+import { getAccount } from "./fluidlab/projects";
 
 const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
 const FluidPrograms = lazy(() => import("./fluidprograms/FluidPrograms"));
 const AccountPortal = lazy(() => import("./account/AccountPortal"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
-import { auth } from "./firebaseClient";
-import { getAccount } from "./fluidlab/projects";
-
-const EMAIL = "mailto:info@uniqenergy.com?subject=Drilling%20Fluid%20Consultation&body=Hello%20UniqEnergy%20team%2C%0A%0AI%27d%20like%20to%20discuss%20a%20drilling%20fluid%20program.%0A%0ACompany%3A%0AProject%20or%20wellbore%3A%0ABest%20way%20to%20reach%20me%3A";
+const SITE_URL = "https://uniqenergy-de71c.web.app";
+const EMAIL = "mailto:info@uniqenergy.com?subject=Drilling%20Fluid%20Consultation";
+const CAREERS_EMAIL = "mailto:info@uniqenergy.com?subject=Careers%20at%20UniqEnergy";
 const PHONE = "tel:+15877742131";
 
-const navigation = [
-  ["Home", "home"], ["Systems", "systems"], ["Technology", "technology"],
-  ["Safety", "safety"], ["Operations", "operations"], ["Contact", "contact"],
-] as const;
-const facts = [
-  ["50,000 L", "Daily blend capacity"], ["50+", "Custom products"],
-  ["21", "Patents granted & pending"], ["45,000 ft²", "SE Calgary facility"],
-] as const;
-const faqs = [
-  ["How are fluid programs developed?", "Our office, research, and field experts work together to tailor each program to the technical and financial requirements of the wellbore."],
-  ["What is the LUREX Drilling Fluid System?", "LUREX is a specialized anti-accretion product designed to prevent bitumen buildup on metal surfaces by forming a protective barrier."],
-  ["What is Uniq-RM?", "Uniq-RM is a temperature-stable, clay-free oil-based system developed around reduced friction, optimized rheology, and improved lubricity."],
-  ["What blending capacity does UniqEnergy have?", "The SE Calgary blending facility has capacity to blend 50,000 litres of chemical per day."],
-  ["Where can UniqEnergy support operations?", "UniqEnergy has access to traditional mud storage warehouses across Western Canada, supporting access to remote locations."],
-  ["How do I request a consultation?", "Email info@uniqenergy.com or call (587) 774-2131 to begin a conversation about your project."],
-] as const;
+type PublicPage = { path:string; nav:string; eyebrow:string; title:string; accent:string; description:string; summary:string; detail:string; image:string; alt:string; cta:string; ctaHref?:string };
+const publicPages: PublicPage[] = [
+  { path:"/about-us", nav:"About Us", eyebrow:"The UniqEnergy advantage", title:"Built around the", accent:"wellbore.", description:"Meet the office, research, and field expertise behind UniqEnergy's customized drilling fluid solutions.", summary:"No two wellbores are the same. Neither should the mud programs be.", detail:"Our office, research, and field experts work together to develop customized, cost-effective fluid solutions around the technical and financial requirements of each operation.", image:"/images/about-3d.png", alt:"Abstract precision forms converging around an engineered fluid core", cta:"Talk to our team" },
+  { path:"/drilling-fluid-systems", nav:"Fluid Systems", eyebrow:"Purpose-built fluid systems", title:"Performance in", accent:"every blend.", description:"Explore UniqEnergy drilling fluid systems engineered for demanding field conditions and project economics.", summary:"Focused chemistry and field-ready thinking for demanding drilling conditions.", detail:"Our portfolio includes LUREX anti-accretion technology and the temperature-stable, clay-free Uniq-RM oil-based system, supported by customized program development.", image:"/images/systems-3d.png", alt:"Engineered drilling fluid flowing through a precision wellbore structure", cta:"Discuss a fluid program" },
+  { path:"/technology", nav:"Technology", eyebrow:"Technology that solves field problems", title:"Protect the system.", accent:"Keep drilling.", description:"Discover UniqEnergy drilling fluid technology, research capabilities, and field-focused innovation.", summary:"Research, chemistry, and field feedback come together to solve practical drilling challenges.", detail:"LUREX is designed to capture oil and bitumen, separating it from water-based drilling fluid and helping prevent shaker screen blinding. UniqEnergy holds 21 patents granted and pending.", image:"/images/technology-3d.png", alt:"Advanced laboratory vessels analyzing a luminous drilling fluid sample", cta:"Explore a technical challenge" },
+  { path:"/health-safety", nav:"Health & Safety", eyebrow:"Everyone owns safety", title:"Safety in", accent:"every decision.", description:"Learn about UniqEnergy's continuously improving health, safety, and environmental approach.", summary:"Safe work is a shared responsibility across the office, facility, and field.", detail:"Our continuously improving health, safety, and environmental program supports disciplined operations and is backed by valid COR certification.", image:"/images/safety-3d.png", alt:"Protective shield surrounding controlled industrial field equipment", cta:"Speak with our team" },
+  { path:"/locations", nav:"Locations", eyebrow:"Where the work happens", title:"Western Canadian", accent:"reach.", description:"See how UniqEnergy supports drilling operations from Calgary across Western Canada.", summary:"Blending capacity and warehouse access help us support operations across the region.", detail:"Our 45,000-square-foot southeast Calgary facility can blend 50,000 litres of chemical per day, with access to traditional mud storage warehouses across Western Canada.", image:"/images/locations-3d.png", alt:"Western Canadian landscape connected by drilling fluid logistics routes", cta:"Plan your supply" },
+  { path:"/careers", nav:"Careers", eyebrow:"Build what comes next", title:"Bring your thinking", accent:"to the field.", description:"Learn about future career opportunities with UniqEnergy's office, research, and field teams.", summary:"Technical curiosity, collaboration, and field awareness shape our work.", detail:"We are always interested in hearing from people who care about practical innovation and better drilling outcomes. Detailed opportunities will be added here as they become available.", image:"/images/careers-3d.png", alt:"Collaborative technical team gathered around an illuminated workspace", cta:"Introduce yourself", ctaHref:CAREERS_EMAIL },
+  { path:"/contact-us", nav:"Contact Us", eyebrow:"Start a conversation", title:"Let’s engineer a", accent:"better outcome.", description:"Contact UniqEnergy in Calgary to discuss drilling fluid systems, technical challenges, and field support.", summary:"Tell us about the operation, the challenge, and where you want to go next.", detail:"Connect with our Calgary team to begin a conversation about your project, wellbore, or drilling fluid program.", image:"/images/contact-3d.png", alt:"Two engineered forms connected by a luminous technical bridge", cta:"Request a consultation" },
+];
+const publicPaths = new Set(publicPages.map((page) => page.path));
+const facts = [["50,000 L","Daily blend capacity"],["50+","Custom products"],["21","Patents granted & pending"],["45,000 ft²","SE Calgary facility"]] as const;
+const authPaths = ["/signin","/signup","/forgot-password"] as const;
+const editorPath = (value:string) => /^\/account\/projects\/[^/]+\/(fluidlab|fluid-programs)$/.test(value);
+const validPath = (value:string) => value === "/" || value === "/fluidlab" || value === "/account" || value === "/account/profile" || publicPaths.has(value) || editorPath(value) || authPaths.includes(value as typeof authPaths[number]) ? value : "/";
 
-function Logo() { return <span className="logo"><i aria-hidden="true"/><span>Uniq<strong>Energy</strong></span></span>; }
-function scrollToSection(id: string) { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }
-const authPaths = ["/signin", "/signup", "/forgot-password"] as const;
-type RoutePath = string;
-const editorPath = (value: string) => /^\/account\/projects\/[^/]+\/(fluidlab|fluid-programs)$/.test(value);
-const validPath = (value: string): RoutePath => value === "/fluidlab" || value === "/account" || value === "/account/profile" || editorPath(value) || authPaths.includes(value as typeof authPaths[number]) ? value : "/";
+function Logo(){return <span className="logo"><i aria-hidden="true"/><span>Uniq<strong>Energy</strong></span></span>}
+function Reveal({children,className=""}:{children:ReactNode;className?:string}){const reduce=useReducedMotion();return <motion.div className={className} initial={reduce?false:{opacity:0,y:28}} whileInView={{opacity:1,y:0}} viewport={{once:true,margin:"-80px"}} transition={{duration:.7,ease:[.22,1,.36,1]}}>{children}</motion.div>}
+function Button({children,href=EMAIL}:{children:ReactNode;href?:string}){return <a className="button-primary" href={href}>{children}<b aria-hidden="true">↗</b></a>}
+function RouteLink({to,navigate,children,className=""}:{to:string;navigate:(path:string)=>void;children:ReactNode;className?:string}){return <a className={className} href={to} onClick={(event)=>{event.preventDefault();navigate(to)}}>{children}</a>}
 
-function Header({ page, onHome, onFluidLab }: { page: "home" | "fluidlab"; onHome: (section?: string) => void; onFluidLab: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState("home");
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (page !== "home") return;
-    const sections = navigation.map(([, id]) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
-    const observer = new IntersectionObserver((entries) => {
-      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (visible) setActive(visible.target.id);
-    }, { rootMargin: "-25% 0px -60%", threshold: [0, .15, .4] });
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
-  }, [page]);
-  useEffect(() => {
-    document.body.classList.toggle("menu-open", open);
-    if (open) closeRef.current?.focus();
-    return () => document.body.classList.remove("menu-open");
-  }, [open]);
-  const go = (id: string) => { setOpen(false); onHome(id); };
-  return <header className="site-header">
-    <button className="brand-button" onClick={() => onHome("home")} aria-label="UniqEnergy home"><Logo/></button>
-    <nav className="nav-pill" aria-label="Primary navigation">
-      {navigation.slice(0, 5).map(([label, id]) => <button key={id} className={page === "home" && active === id ? "active" : ""} onClick={() => go(id)}>{label}</button>)}
-      <button onClick={() => { setOpen(false); onFluidLab(); }}>UniqAccount</button>
-    </nav>
-    <a className="header-cta" href={EMAIL}><span>Request a consultation</span><b aria-hidden="true">↗</b></a>
-    <button className="menu-trigger" onClick={() => setOpen(true)} aria-expanded={open} aria-controls="mobile-navigation" aria-label="Open menu"><i/><i/></button>
-    <AnimatePresence>{open && <motion.div id="mobile-navigation" className="mobile-menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="mobile-menu-top"><Logo/><button ref={closeRef} onClick={() => setOpen(false)} aria-label="Close menu">×</button></div>
-      <nav aria-label="Mobile navigation">{navigation.slice(0, 5).map(([label, id], index) => <motion.button key={id} onClick={() => go(id)} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .04 }}><span>0{index + 1}</span>{label}<b>↗</b></motion.button>)}<motion.button onClick={() => { setOpen(false); onFluidLab(); }} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><span>06</span>UniqAccount<b>↗</b></motion.button></nav>
-      <a href={EMAIL} className="button-primary">Request a consultation <b>↗</b></a>
-    </motion.div>}</AnimatePresence>
-  </header>;
+function Header({path,navigate,onFluidLab}:{path:string;navigate:(path:string)=>void;onFluidLab:()=>void}){
+  const [open,setOpen]=useState(false);const closeRef=useRef<HTMLButtonElement>(null);
+  useEffect(()=>{document.body.classList.toggle("menu-open",open);if(open)closeRef.current?.focus();return()=>document.body.classList.remove("menu-open")},[open]);
+  const go=(target:string)=>{setOpen(false);navigate(target)};const primary=publicPages.slice(0,5);
+  return <header className="site-header"><button className="brand-button" onClick={()=>go("/")} aria-label="UniqEnergy home"><Logo/></button><nav className="nav-pill" aria-label="Primary navigation">{primary.map((item)=><button key={item.path} className={path===item.path?"active":""} onClick={()=>go(item.path)}>{item.nav}</button>)}<button onClick={onFluidLab}>UniqAccount</button></nav><a className="header-cta" href={EMAIL}><span>Request a consultation</span><b aria-hidden="true">↗</b></a><button className="menu-trigger" onClick={()=>setOpen(true)} aria-expanded={open} aria-controls="mobile-navigation" aria-label="Open menu"><i/><i/></button><AnimatePresence>{open&&<motion.div id="mobile-navigation" className="mobile-menu" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><div className="mobile-menu-top"><Logo/><button ref={closeRef} onClick={()=>setOpen(false)} aria-label="Close menu">×</button></div><nav aria-label="Mobile navigation"><motion.button onClick={()=>go("/")}><span>01</span>Home<b>↗</b></motion.button>{publicPages.map((item,index)=><motion.button key={item.path} onClick={()=>go(item.path)} initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{delay:index*.035}}><span>{String(index+2).padStart(2,"0")}</span>{item.nav}<b>↗</b></motion.button>)}<motion.button onClick={()=>{setOpen(false);onFluidLab()}}><span>09</span>UniqAccount<b>↗</b></motion.button></nav></motion.div>}</AnimatePresence></header>
 }
 
-function Reveal({ children, className = "" }: { children: ReactNode; className?: string }) {
-  const reduce = useReducedMotion();
-  return <motion.div className={className} initial={reduce ? false : { opacity: 0, y: 28 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-80px" }} transition={{ duration: .7, ease: [.22, 1, .36, 1] }}>{children}</motion.div>;
-}
-function Button({ children, href = EMAIL }: { children: ReactNode; href?: string }) { return <a className="button-primary" href={href}>{children}<b aria-hidden="true">↗</b></a>; }
-function SectionHeading({ eyebrow, title, text }: { eyebrow: string; title: ReactNode; text: string }) { return <div className="section-heading"><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{text}</p></div>; }
+function Hero(){return <section className="hero" id="home"><div className="hero-grid" aria-hidden="true"/><div className="hero-orbit" aria-hidden="true"><i/><i/><i/></div><div className="hero-horizon" aria-hidden="true"/><motion.div className="hero-content" initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.8}}><span className="eyebrow">The future of fluid performance</span><h1><em>Engineer the fluid.</em><br/>Advance the wellbore.</h1><p>Customized drilling fluid systems engineered around demanding field conditions, technical performance, and project economics.</p><Button>Request a consultation</Button></motion.div><div className="hero-proof"><small>Verified capability</small><div>{facts.map(([value,label])=><article key={label}><strong>{value}</strong><span>{label}</span></article>)}</div></div></section>}
 
-function Hero() {
-  return <section className="hero" id="home">
-    <div className="hero-grid" aria-hidden="true"/><div className="hero-orbit" aria-hidden="true"><i/><i/><i/></div><div className="hero-horizon" aria-hidden="true"/>
-    <motion.div className="hero-content" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .8 }}>
-      <span className="eyebrow">The future of fluid performance</span>
-      <h1><em>Engineer the fluid.</em><br/>Advance the wellbore.</h1>
-      <p>Customized drilling fluid systems engineered around demanding field conditions, technical performance, and project economics.</p>
-      <Button>Request a consultation</Button>
-    </motion.div>
-    <div className="hero-proof"><small>Verified capability</small><div>{facts.map(([value, label]) => <article key={label}><strong>{value}</strong><span>{label}</span></article>)}</div></div>
-  </section>;
-}
+function Home({navigate}:{navigate:(path:string)=>void}){const [about,systems,technology,...cards]=publicPages;return <main id="main"><Hero/><section className="home-intro section-wide"><Reveal className="home-intro-copy"><span className="eyebrow">{about.eyebrow}</span><h2>{about.summary}</h2><p>{about.detail}</p><RouteLink to={about.path} navigate={navigate} className="text-link">Discover our approach <b>↗</b></RouteLink></Reveal><Reveal className="editorial-image"><img src={about.image} alt={about.alt}/></Reveal></section><section className="home-features section-wide" aria-label="Core capabilities">{[systems,technology].map((item,index)=><Reveal className={`feature-story feature-${index+1}`} key={item.path}><RouteLink to={item.path} navigate={navigate} className="feature-visual"><img src={item.image} alt={item.alt}/><span>0{index+1}</span></RouteLink><div><span className="eyebrow">{item.eyebrow}</span><h2>{item.title} <em>{item.accent}</em></h2><p>{item.summary}</p><RouteLink to={item.path} navigate={navigate} className="text-link">Explore {item.nav.toLowerCase()} <b>↗</b></RouteLink></div></Reveal>)}</section><section className="overview section-wide"><Reveal className="overview-heading"><span className="eyebrow">Capability beyond chemistry</span><h2>Ready for every part of the <em>operation.</em></h2></Reveal><div className="overview-grid">{cards.map((item,index)=><Reveal className={`overview-card overview-card-${index+1}`} key={item.path}><RouteLink to={item.path} navigate={navigate}><div className="overview-image"><img src={item.image} alt={item.alt}/><span>0{index+3}</span></div><div className="overview-copy"><small>{item.eyebrow}</small><h3>{item.nav}</h3><p>{item.summary}</p><b aria-hidden="true">↗</b></div></RouteLink></Reveal>)}</div></section><ContactBand/></main>}
+function ContactBand(){return <section className="contact"><div className="contact-orbit" aria-hidden="true"/><Reveal><span className="eyebrow">Built around your wellbore</span><h2>Let’s engineer a<br/><em>better outcome.</em></h2><p>Tell us about the operation, the challenge, and where you want to go next.</p><Button>Request a consultation</Button></Reveal></section>}
 
-function Introduction() {
-  return <section className="intro section" aria-labelledby="intro-title">
-    <Reveal className="intro-copy"><span className="eyebrow">The UniqEnergy advantage</span><h2 id="intro-title">No two wellbores<br/>are the same.</h2><p>Neither should the mud programs be. Our office, research, and field experts work together to develop customized, cost-effective fluid solutions.</p><Button>Talk to our team</Button></Reveal>
-    <Reveal className="image-frame"><img src="/images/field-engineers.jpg" width="1200" height="800" alt="Two drilling fluid technicians reviewing field data"/><span>Office. Research. Field.</span></Reveal>
-  </section>;
-}
+function DetailPage({page,navigate}:{page:PublicPage;navigate:(path:string)=>void}){const isContact=page.path==="/contact-us";return <main id="main" className="detail-page"><section className="detail-hero"><div className="detail-glow" aria-hidden="true"/><motion.div className="detail-copy" initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.7}}><span className="eyebrow">{page.eyebrow}</span><h1>{page.title}<br/><em>{page.accent}</em></h1><p>{page.summary}</p><Button href={page.ctaHref}>{page.cta}</Button></motion.div><motion.div className="detail-visual" initial={{opacity:0,scale:.96}} animate={{opacity:1,scale:1}} transition={{duration:.8}}><img src={page.image} alt={page.alt}/></motion.div></section><section className="detail-intro section-wide"><Reveal><span className="eyebrow">A closer look</span><h2>{page.summary}</h2></Reveal><Reveal className="detail-body"><p>{page.detail}</p>{isContact&&<div className="contact-details"><a href="mailto:info@uniqenergy.com">info@uniqenergy.com</a><a href={PHONE}>(587) 774-2131</a><address>Suite 1900, 635 – 8th Avenue SW<br/>Calgary, AB T2P 3M3</address></div>}<RouteLink to="/" navigate={navigate} className="text-link">Return to the overview <b>↗</b></RouteLink></Reveal></section>{!isContact&&<ContactBand/>}</main>}
 
-function Systems() {
-  return <section className="systems section-wide" id="systems" aria-labelledby="systems-title">
-    <Reveal><SectionHeading eyebrow="Purpose-built fluid systems" title={<>Performance, built into <em>every blend.</em></>} text="Focused chemistry and field-ready thinking for demanding drilling conditions."/></Reveal>
-    <div className="product-grid">
-      <Reveal className="product-card product-lurex"><img src="/images/lurex-fluid.jpg" width="1200" height="800" alt="Macro view of drilling fluid interaction"/><div><span>01 / Anti-accretion</span><h3 id="systems-title">LUREX</h3><p>Designed to prevent bitumen buildup on metal surfaces by forming a protective barrier.</p><a href="#technology" onClick={(event) => { event.preventDefault(); scrollToSection("technology"); }}>Explore technology <b>↗</b></a></div></Reveal>
-      <Reveal className="product-card product-rm"><img src="/images/uniq-rm-study.jpg" width="1200" height="800" alt="Laboratory vessels and drilling fluid material study"/><div><span>02 / Oil-based system</span><h3>Uniq-RM</h3><p>Temperature-stable and clay-free, developed around optimized rheology and improved lubricity.</p><a href={EMAIL}>Discuss the system <b>↗</b></a></div></Reveal>
-    </div>
-  </section>;
-}
+function Footer({navigate,onFluidLab}:{navigate:(path:string)=>void;onFluidLab:()=>void}){return <footer><div className="footer-main"><div className="footer-brand"><Logo/><p>Customized drilling fluid systems for demanding Western Canadian operations.</p></div><div><small>Explore</small>{publicPages.slice(0,4).map((item)=><RouteLink key={item.path} to={item.path} navigate={navigate}>{item.nav}</RouteLink>)}</div><div><small>Company</small>{publicPages.slice(4).map((item)=><RouteLink key={item.path} to={item.path} navigate={navigate}>{item.nav}</RouteLink>)}<button onClick={onFluidLab}>UniqAccount</button></div><div><small>Get in touch</small><a href="mailto:info@uniqenergy.com">info@uniqenergy.com</a><a href={PHONE}>(587) 774-2131</a><address>Suite 1900, 635 – 8th Avenue SW<br/>Calgary, AB T2P 3M3</address></div></div><div className="footer-base"><span>© {new Date().getFullYear()} UniqEnergy Solutions Inc.</span><span>Proudly Canadian</span></div></footer>}
 
-function Technology() {
-  return <section className="technology section" id="technology" aria-labelledby="technology-title">
-    <Reveal className="tech-visual"><div className="rings" aria-hidden="true"><i/><i/><i/></div><div className="molecule"><span>LUREX</span><small>WBM protection</small></div><article><strong>21</strong><span>Patents granted<br/>and pending</span></article></Reveal>
-    <Reveal className="tech-copy"><span className="eyebrow">Technology that solves field problems</span><h2 id="technology-title">Protect the system.<br/><em>Keep drilling.</em></h2><p>LUREX captures oil and bitumen, separating it from the water-based drilling fluid and helping prevent shaker screen blinding.</p><ol><li><b>01</b><span>Oil and bitumen enter circulation</span></li><li><b>02</b><span>LUREX captures and separates</span></li><li><b>03</b><span>Cleaner WBM reaches the screens</span></li></ol></Reveal>
-  </section>;
-}
+function setMetadata(page?:PublicPage){const title=page?`${page.nav} | UniqEnergy Solutions`:"UniqEnergy Solutions | Drilling Fluid Innovation";const description=page?.description??"Customized, cost-effective drilling fluid systems engineered for the technical and financial needs of every wellbore.";const url=`${SITE_URL}${page?.path??"/"}`;document.title=title;const set=(selector:string,value:string)=>document.querySelector(selector)?.setAttribute("content",value);set('meta[name="description"]',description);set('meta[property="og:title"]',title);set('meta[property="og:description"]',description);set('meta[property="og:url"]',url);set('meta[property="og:image"]',`${SITE_URL}${page?.image??"/images/fluid-horizon.jpg"}`);document.querySelector('link[rel="canonical"]')?.setAttribute("href",url)}
 
-function Capabilities() {
-  const cards = [
-    ["Technology", "Chemistry that solves field problems", "/images/blending-lab-concept.jpg", "Research and blending facility"],
-    ["Safety", "Everyone owns safety", "/images/safety-quality.jpg", "Technician performing a controlled sample inspection"],
-    ["Operations", "Reach where the work happens", "/images/western-canada.jpg", "Western Canadian land drilling operation"],
-  ] as const;
-  return <section className="capabilities section-wide" id="safety" aria-labelledby="capabilities-title">
-    <Reveal><SectionHeading eyebrow="Technology. Safety. Reach." title={<>Built for the <em>operation.</em></>} text="The capabilities behind a responsive Western Canadian drilling fluid partner."/></Reveal>
-    <div className="capability-grid">{cards.map(([label, title, src, alt]) => <Reveal className="capability-card" key={label}><img src={src} width="1000" height="700" alt={alt}/><div><span>{label}</span><h3 id={label === "Safety" ? "capabilities-title" : undefined}>{title}</h3><p>{label === "Safety" ? "A continuously improving HSE program supported by valid COR certification." : label === "Operations" ? "Warehouse access across Western Canada helps support remote operations." : "Research, customization, and field feedback come together."}</p></div></Reveal>)}</div>
-  </section>;
-}
-
-function Operations() {
-  return <section className="operations section" id="operations" aria-labelledby="operations-title">
-    <Reveal className="operations-copy"><span className="eyebrow">Scale meets precision</span><h2 id="operations-title">Built to blend.<br/><em>Ready to adapt.</em></h2><p>Large-scale Western Canadian blending capacity backed by supply-chain resilience and thousands of possible blend combinations.</p><Button>Start a conversation</Button></Reveal>
-    <Reveal className="operations-panel"><div className="operations-image"><img src="/images/blending-lab-concept.jpg" width="1200" height="800" alt="Conceptual modern blending and quality-control facility"/><span>Concept image / pending company photography</span></div><div className="operations-stats"><article><small>Daily capacity</small><strong>50,000 L</strong><p>Chemical blending capacity per day.</p></article><article><small>Annual supply</small><strong>4,000 MT</strong><p>Raw materials imported annually.</p></article></div></Reveal>
-  </section>;
-}
-
-function FAQ() {
-  const [open, setOpen] = useState(0);
-  return <section className="faq section-wide" aria-labelledby="faq-title">
-    <Reveal><SectionHeading eyebrow="Straight answers" title="Frequently asked questions" text="A quick overview of our systems, capacity, and field support."/></Reveal>
-    <div className="faq-shell"><div className="faq-list">{faqs.map(([question, answer], index) => <article className={open === index ? "open" : ""} key={question}><h3><button onClick={() => setOpen(open === index ? -1 : index)} aria-expanded={open === index}>{question}<b>{open === index ? "−" : "+"}</b></button></h3><div className="faq-answer" aria-hidden={open !== index}><p>{answer}</p></div></article>)}</div><aside><span>Still have a question?</span><p>Bring our team the next technical challenge.</p><Button>Ask the team</Button></aside></div>
-  </section>;
-}
-
-function Contact() {
-  return <section className="contact" id="contact" aria-labelledby="contact-title"><div className="contact-orbit" aria-hidden="true"/><Reveal><span className="eyebrow">Built around your wellbore</span><h2 id="contact-title">Let’s engineer a<br/><em>better outcome.</em></h2><p>Tell us about the operation, the challenge, and where you want to go next.</p><Button>Request a consultation</Button></Reveal></section>;
-}
-
-function Footer({ onFluidLab }: { onFluidLab: () => void }) {
-  return <footer><div className="footer-main"><div className="footer-brand"><Logo/><p>Customized drilling fluid systems for demanding Western Canadian operations.</p></div><div><small>Explore</small>{navigation.slice(1, 5).map(([label, id]) => <button key={id} onClick={() => scrollToSection(id)}>{label}</button>)}<button onClick={onFluidLab}>FluidLab</button></div><div><small>Get in touch</small><a href="mailto:info@uniqenergy.com">info@uniqenergy.com</a><a href={PHONE}>(587) 774-2131</a><address>Suite 1900, 635 – 8th Avenue SW<br/>Calgary, AB T2P 3M3</address></div></div><div className="footer-base"><span>© {new Date().getFullYear()} UniqEnergy Solutions Inc.</span><span>Proudly Canadian</span></div></footer>;
-}
-
-export default function App() {
-  const [path, setPath] = useState(() => {
-    const normalized = validPath(location.pathname);
-    if (normalized !== location.pathname) history.replaceState({}, "", normalized);
-    return normalized;
-  });
-  const pathRef = useRef(path);
-  const dirtyRef = useRef(false);
-  const [exitRequest, setExitRequest] = useState(0);
-  useEffect(() => { pathRef.current = path; }, [path]);
-  useEffect(() => {
-    const update = () => {
-      const normalized = validPath(location.pathname);
-      if (editorPath(pathRef.current) && dirtyRef.current && !editorPath(normalized)) {
-        history.forward();
-        setExitRequest((value) => value + 1);
-        return;
-      }
-      if (normalized !== location.pathname) history.replaceState({}, "", normalized);
-      pathRef.current = normalized;
-      setPath(normalized);
-    };
-    addEventListener("popstate", update);
-    return () => removeEventListener("popstate", update);
-  }, []);
-  const page = editorPath(path) ? "fluidlab" : "home";
-  const home = (section = "home") => {
-    if (location.pathname !== "/") { history.pushState({}, "", "/"); setPath("/"); requestAnimationFrame(() => setTimeout(() => scrollToSection(section), 0)); }
-    else scrollToSection(section);
-    document.title = "UniqEnergy Solutions | Drilling Fluid Innovation";
-    document.querySelector('meta[name="description"]')?.setAttribute("content", "Customized, cost-effective drilling fluid systems engineered for the technical and financial needs of every wellbore.");
-    document.querySelector('link[rel="canonical"]')?.setAttribute("href", "https://uniqenergy-de71c.web.app/");
-    document.querySelector('meta[property="og:title"]')?.setAttribute("content", "UniqEnergy Solutions | Drilling Fluid Innovation");
-    document.querySelector('meta[property="og:url"]')?.setAttribute("content", "https://uniqenergy-de71c.web.app/");
-  };
-  const navigate = useCallback((target: string) => {
-    const url = new URL(target, location.origin);
-    const normalized = validPath(url.pathname);
-    history.pushState({}, "", normalized + url.search);
-    pathRef.current = normalized;
-    setPath(normalized);
-    window.scrollTo(0, 0);
-  }, []);
-  const lab = () => { void (async () => { if (!auth.currentUser) { navigate("/signin?returnTo=/account"); return; } try { await getAccount(); navigate("/account"); } catch { navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email || "")}`); } })(); };
-  useEffect(() => {
-    if (path !== "/fluidlab") return;
-    void (async () => {
-      if (!auth.currentUser) { navigate("/signin?returnTo=/account"); return; }
-      try { await getAccount(); navigate("/account"); }
-      catch { navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email || "")}`); }
-    })();
-  }, [navigate, path]);
-  if (path === "/fluidlab") return <main className="route-loading"><span>Opening your UniqEnergy Account…</span></main>;
-  if (authPaths.includes(path as typeof authPaths[number])) return <Suspense fallback={<main className="route-loading"><span>Loading secure access…</span></main>}><AuthPage path={path as typeof authPaths[number]} navigate={navigate}/></Suspense>;
-  if (path === "/account" || path === "/account/profile") return <Suspense fallback={<main className="route-loading"><span>Loading account…</span></main>}><AccountPortal page={path === "/account/profile" ? "profile" : "projects"} navigate={navigate}/></Suspense>;
-  if (page === "fluidlab" && path.endsWith("/fluidlab")) return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }} exitRequest={exitRequest} onConfirmBrowserExit={() => { dirtyRef.current = false; history.back(); }}/></Suspense>;
-  if (page === "fluidlab") return <Suspense fallback={<main className="route-loading"><span>Loading Fluid Programs…</span></main>}><FluidPrograms projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }}/></Suspense>;
-  return <><a className="skip-link" href="#main">Skip to content</a><Header page={page} onHome={home} onFluidLab={() => navigate("/signin")}/><main id="main"><Hero/><Introduction/><Systems/><Technology/><Capabilities/><Operations/><FAQ/><Contact/></main><Footer onFluidLab={lab}/></>;
+export default function App(){
+  const [path,setPath]=useState(()=>{const normalized=validPath(location.pathname);if(normalized!==location.pathname)history.replaceState({},"",normalized);return normalized});const pathRef=useRef(path);const dirtyRef=useRef(false);const [exitRequest,setExitRequest]=useState(0);
+  useEffect(()=>{pathRef.current=path},[path]);useEffect(()=>{const update=()=>{const normalized=validPath(location.pathname);if(editorPath(pathRef.current)&&dirtyRef.current&&!editorPath(normalized)){history.forward();setExitRequest((value)=>value+1);return}if(normalized!==location.pathname)history.replaceState({},"",normalized);pathRef.current=normalized;setPath(normalized)};addEventListener("popstate",update);return()=>removeEventListener("popstate",update)},[]);
+  const navigate=useCallback((target:string)=>{const url=new URL(target,location.origin);const normalized=validPath(url.pathname);history.pushState({},"",normalized+url.search);pathRef.current=normalized;setPath(normalized);window.scrollTo(0,0)},[]);
+  const lab=()=>{void(async()=>{if(!auth.currentUser){navigate("/signin?returnTo=/account");return}try{await getAccount();navigate("/account")}catch{navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email||"")}`)}})()};
+  useEffect(()=>{if(path==="/"||publicPaths.has(path))setMetadata(publicPages.find((page)=>page.path===path))},[path]);useEffect(()=>{if(path!=="/fluidlab")return;void(async()=>{if(!auth.currentUser){navigate("/signin?returnTo=/account");return}try{await getAccount();navigate("/account")}catch{navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email||"")}`)}})()},[navigate,path]);
+  if(path==="/fluidlab")return <main className="route-loading"><span>Opening your UniqEnergy Account…</span></main>;
+  if(authPaths.includes(path as typeof authPaths[number]))return <Suspense fallback={<main className="route-loading"><span>Loading secure access…</span></main>}><AuthPage path={path as typeof authPaths[number]} navigate={navigate}/></Suspense>;
+  if(path==="/account"||path==="/account/profile")return <Suspense fallback={<main className="route-loading"><span>Loading account…</span></main>}><AccountPortal page={path==="/account/profile"?"profile":"projects"} navigate={navigate}/></Suspense>;
+  if(editorPath(path)&&path.endsWith("/fluidlab"))return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty)=>{dirtyRef.current=dirty}} exitRequest={exitRequest} onConfirmBrowserExit={()=>{dirtyRef.current=false;history.back()}}/></Suspense>;
+  if(editorPath(path))return <Suspense fallback={<main className="route-loading"><span>Loading Fluid Programs…</span></main>}><FluidPrograms projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty)=>{dirtyRef.current=dirty}}/></Suspense>;
+  const page=publicPages.find((item)=>item.path===path);return <><a className="skip-link" href="#main">Skip to content</a><Header path={path} navigate={navigate} onFluidLab={()=>navigate("/signin")}/>{page?<DetailPage page={page} navigate={navigate}/>:<Home navigate={navigate}/>}<Footer navigate={navigate} onFluidLab={lab}/></>
 }

@@ -14,31 +14,32 @@ test("production shell has canonical single-homepage metadata", async () => {
   assert.match(html, /id="root"/);
 });
 
-test("homepage exposes every menu target and preserves contact actions", async () => {
+test("public website exposes every marketing route and preserves contact actions", async () => {
   const source = await readFile(new URL("src/App.tsx", root), "utf8");
-  for (const id of [
-    "home",
-    "systems",
-    "technology",
-    "safety",
-    "operations",
-    "contact",
+  for (const route of [
+    "/about-us",
+    "/drilling-fluid-systems",
+    "/technology",
+    "/health-safety",
+    "/locations",
+    "/careers",
+    "/contact-us",
   ]) {
-    assert.match(source, new RegExp(`id="${id}"`));
+    assert.match(source, new RegExp(route));
   }
   assert.match(source, /mailto:info@uniqenergy\.com/);
   assert.match(source, /tel:\+15877742131/);
-  assert.doesNotMatch(
-    source,
-    /function (SystemsPage|TechnologyPage|CareersPage|NotFound)/,
-  );
+  assert.match(source, /function DetailPage/);
+  assert.match(source, /function setMetadata/);
 });
 
-test("sitemap contains the homepage and FluidLab", async () => {
+test("sitemap contains the homepage and all public marketing pages", async () => {
   const sitemap = await readFile(new URL("public/sitemap.xml", root), "utf8");
-  assert.equal((sitemap.match(/<url>/g) ?? []).length, 2);
-  assert.match(sitemap, /https:\/\/uniqenergy-de71c\.web\.app\//);
-  assert.match(sitemap, /https:\/\/uniqenergy-de71c\.web\.app\/fluidlab/);
+  assert.equal((sitemap.match(/<url>/g) ?? []).length, 8);
+  for (const route of ["about-us", "drilling-fluid-systems", "technology", "health-safety", "locations", "careers", "contact-us"]) {
+    assert.match(sitemap, new RegExp(`https:\\/\\/uniqenergy-de71c\\.web\\.app\\/${route}`));
+  }
+  assert.doesNotMatch(sitemap, /fluidlab|account|signin/);
 });
 
 test("FluidLab is an account project workspace with autosaving", async () => {
@@ -91,9 +92,9 @@ test("FluidLab uses an MD-only mobile drawer and icon camera controls", async ()
   assert.match(scene, /depthTest=\{false\}/);
 });
 
-test("the homepage shell is excluded from the FluidLab route", async () => {
+test("the public shell is excluded from protected editor routes", async () => {
   const source = await readFile(new URL("src/App.tsx", root), "utf8");
-  assert.match(source, /if \(page === "fluidlab"\) return/);
+  assert.match(source, /if\(editorPath\(path\)\)/);
   assert.match(source, /dirtyRef\.current/);
   assert.match(source, /history\.forward\(\)/);
 });
