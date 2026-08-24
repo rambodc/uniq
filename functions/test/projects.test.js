@@ -19,3 +19,11 @@ test("server validates sequential sections and KOP EOC", () => {
   assert.match(source, /trajectory\.endCurveMdM\s*<=\s*trajectory\.kopMdM/);
   assert.match(source, /section\.diameterMm\s*<=\s*0/);
 });
+test("server supports secure Fluid Programs chat", () => {
+  assert.match(source, /type === "fluid-programs"/);
+  assert.match(source, /sendFluidProgramsMessage/);
+  assert.match(source, /secrets: \["OPENAI_API_KEY"\]/);
+  assert.match(source, /count >= 50/);
+  assert.match(source, /model: "gpt-5-mini"/);
+  assert.match(source, /Chat history can only be changed/);
+});

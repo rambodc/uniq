@@ -8,7 +8,7 @@ UniqEnergy's Vite/React website and the FluidLab conceptual MD-only well workspa
 - Firebase Hosting, Email/Password Authentication, Firestore, Storage, and Cloud Functions
 - App Check with reCAPTCHA Enterprise in monitor-only mode
 
-UniqEnergy Account is the parent platform. Authentication and a version-one account profile are required before users can create cloud projects. FluidLab is its first project type and builds a sequential hole program from section-bottom MDs, bit sizes, and section colors. Projects autosave through ownership-checked callable Functions; there is no guest editor or manual save flow. Client access to Firestore and Storage remains denied by rules.
+UniqEnergy Account is the parent platform. Authentication and a version-one account profile are required before users can create cloud projects. FluidLab builds sequential conceptual wells, while Fluid Programs provides a saved drilling-fluids educational chat backed by a secret-protected OpenAI Function. Projects autosave through ownership-checked callable Functions; there is no guest editor or manual save flow. Client access to Firestore and Storage remains denied by rules.
 
 ## Local development
 
@@ -42,6 +42,7 @@ Firebase Authentication must have Email/Password enabled. Anonymous authenticati
 - `/account` — protected applications and projects dashboard
 - `/account/profile` — protected profile and logout
 - `/account/projects/:projectId/fluidlab` — protected FluidLab editor
+- `/account/projects/:projectId/fluid-programs` — protected Fluid Programs conversation
 - `/signin` — Email/Password sign in
 - `/signup` — public registration and missing-profile completion
 - `/forgot-password` — Firebase password reset

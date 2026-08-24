@@ -12,6 +12,7 @@ import {
 import { useReducedMotion } from "motion/react";
 import {
   Check,
+  ArrowLeft,
   Box,
   Maximize2,
   Menu,
@@ -198,9 +199,9 @@ export default function FluidLab({
     if (!auth.currentUser) { navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`); return; }
     let active = true;
     void getProject(projectId)
-      .then((project) => {
+      .then(({ project }) => {
         if (!active) return;
-        if (project.type !== "fluidlab" || !project.data) throw new Error("Unsupported project");
+        if (project.type !== "fluidlab" || !project.data || !("sections" in project.data)) throw new Error("Unsupported project");
         setDesign(project.data);
         designRef.current = project.data;
         setTrajectoryDraft(project.data.trajectory);
@@ -396,7 +397,7 @@ export default function FluidLab({
           className="workspace-brand"
           onClick={() => (dirty ? setExitOpen(true) : navigate("/account"))}
         >
-          <span aria-hidden="true">←</span>
+          <ArrowLeft className="workspace-back-icon" aria-hidden="true" />
           <i />
           Uniq<strong>Energy</strong>
           <span>/ FluidLab</span>

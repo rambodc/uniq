@@ -2,6 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
+const FluidPrograms = lazy(() => import("./fluidprograms/FluidPrograms"));
 const AccountPortal = lazy(() => import("./account/AccountPortal"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
 import { auth } from "./firebaseClient";
@@ -31,7 +32,7 @@ function Logo() { return <span className="logo"><i aria-hidden="true"/><span>Uni
 function scrollToSection(id: string) { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 const authPaths = ["/signin", "/signup", "/forgot-password"] as const;
 type RoutePath = string;
-const editorPath = (value: string) => /^\/account\/projects\/[^/]+\/fluidlab$/.test(value);
+const editorPath = (value: string) => /^\/account\/projects\/[^/]+\/(fluidlab|fluid-programs)$/.test(value);
 const validPath = (value: string): RoutePath => value === "/fluidlab" || value === "/account" || value === "/account/profile" || editorPath(value) || authPaths.includes(value as typeof authPaths[number]) ? value : "/";
 
 function Header({ page, onHome, onFluidLab }: { page: "home" | "fluidlab"; onHome: (section?: string) => void; onFluidLab: () => void }) {
@@ -58,13 +59,13 @@ function Header({ page, onHome, onFluidLab }: { page: "home" | "fluidlab"; onHom
     <button className="brand-button" onClick={() => onHome("home")} aria-label="UniqEnergy home"><Logo/></button>
     <nav className="nav-pill" aria-label="Primary navigation">
       {navigation.slice(0, 5).map(([label, id]) => <button key={id} className={page === "home" && active === id ? "active" : ""} onClick={() => go(id)}>{label}</button>)}
-      <button className={page === "fluidlab" ? "active" : ""} onClick={() => { setOpen(false); onFluidLab(); }}>FluidLab</button>
+      <button onClick={() => { setOpen(false); onFluidLab(); }}>UniqAccount</button>
     </nav>
     <a className="header-cta" href={EMAIL}><span>Request a consultation</span><b aria-hidden="true">↗</b></a>
     <button className="menu-trigger" onClick={() => setOpen(true)} aria-expanded={open} aria-controls="mobile-navigation" aria-label="Open menu"><i/><i/></button>
     <AnimatePresence>{open && <motion.div id="mobile-navigation" className="mobile-menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       <div className="mobile-menu-top"><Logo/><button ref={closeRef} onClick={() => setOpen(false)} aria-label="Close menu">×</button></div>
-      <nav aria-label="Mobile navigation">{navigation.slice(0, 5).map(([label, id], index) => <motion.button key={id} onClick={() => go(id)} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .04 }}><span>0{index + 1}</span>{label}<b>↗</b></motion.button>)}<motion.button onClick={() => { setOpen(false); onFluidLab(); }} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><span>06</span>FluidLab<b>↗</b></motion.button></nav>
+      <nav aria-label="Mobile navigation">{navigation.slice(0, 5).map(([label, id], index) => <motion.button key={id} onClick={() => go(id)} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .04 }}><span>0{index + 1}</span>{label}<b>↗</b></motion.button>)}<motion.button onClick={() => { setOpen(false); onFluidLab(); }} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}><span>06</span>UniqAccount<b>↗</b></motion.button></nav>
       <a href={EMAIL} className="button-primary">Request a consultation <b>↗</b></a>
     </motion.div>}</AnimatePresence>
   </header>;
@@ -204,6 +205,7 @@ export default function App() {
   if (path === "/fluidlab") return <main className="route-loading"><span>Opening your UniqEnergy Account…</span></main>;
   if (authPaths.includes(path as typeof authPaths[number])) return <Suspense fallback={<main className="route-loading"><span>Loading secure access…</span></main>}><AuthPage path={path as typeof authPaths[number]} navigate={navigate}/></Suspense>;
   if (path === "/account" || path === "/account/profile") return <Suspense fallback={<main className="route-loading"><span>Loading account…</span></main>}><AccountPortal page={path === "/account/profile" ? "profile" : "projects"} navigate={navigate}/></Suspense>;
-  if (page === "fluidlab") return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }} exitRequest={exitRequest} onConfirmBrowserExit={() => { dirtyRef.current = false; history.back(); }}/></Suspense>;
-  return <><a className="skip-link" href="#main">Skip to content</a><Header page={page} onHome={home} onFluidLab={lab}/><main id="main"><Hero/><Introduction/><Systems/><Technology/><Capabilities/><Operations/><FAQ/><Contact/></main><Footer onFluidLab={lab}/></>;
+  if (page === "fluidlab" && path.endsWith("/fluidlab")) return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }} exitRequest={exitRequest} onConfirmBrowserExit={() => { dirtyRef.current = false; history.back(); }}/></Suspense>;
+  if (page === "fluidlab") return <Suspense fallback={<main className="route-loading"><span>Loading Fluid Programs…</span></main>}><FluidPrograms projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }}/></Suspense>;
+  return <><a className="skip-link" href="#main">Skip to content</a><Header page={page} onHome={home} onFluidLab={() => navigate("/signin")}/><main id="main"><Hero/><Introduction/><Systems/><Technology/><Capabilities/><Operations/><FAQ/><Contact/></main><Footer onFluidLab={lab}/></>;
 }

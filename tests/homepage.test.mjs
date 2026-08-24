@@ -100,12 +100,24 @@ test("the homepage shell is excluded from the FluidLab route", async () => {
 
 test("obsolete AI and local persistence integrations are removed", async () => {
   const backend = await readFile(new URL("functions/index.js", root), "utf8");
-  assert.doesNotMatch(backend, /OpenAI|analyzeWell|refineWell|createFluidLabVersion/);
+  assert.doesNotMatch(backend, /analyzeWell|refineWell|createFluidLabVersion/);
+  assert.match(backend, /sendFluidProgramsMessage/);
+  assert.match(backend, /secrets:\s*\["OPENAI_API_KEY"\]/);
   assert.match(backend, /schemaVersion:\s*1/);
   assert.match(backend, /collection\("accounts"\)/);
   assert.doesNotMatch(backend, /fluidlabUsers/);
   await assert.rejects(readFile(new URL("src/fluidlab/ai.ts", root), "utf8"));
   await assert.rejects(readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"));
+});
+
+test("account dashboard supports named FluidLab and Fluid Programs projects", async () => {
+  const account = await readFile(new URL("src/account/AccountPortal.tsx", root), "utf8");
+  const app = await readFile(new URL("src/App.tsx", root), "utf8");
+  assert.match(account, /Name your project/);
+  assert.match(account, /Fluid Programs/);
+  assert.match(account, /createFluidProgramsProject/);
+  assert.match(app, /UniqAccount/);
+  assert.match(app, /fluid-programs/);
 });
 
 test("email authentication has dedicated routes and no Google provider", async () => {
