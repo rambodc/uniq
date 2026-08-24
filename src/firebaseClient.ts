@@ -13,7 +13,9 @@ const app = initializeApp({
 });
 
 export const auth = getAuth(app);
-void setPersistence(auth, browserLocalPersistence).catch((error) => console.warn("Firebase auth persistence unavailable", error));
+export const authReady = setPersistence(auth, browserLocalPersistence)
+  .catch((error) => console.warn("Firebase auth persistence unavailable", error))
+  .then(() => auth.authStateReady());
 const appCheckKey = import.meta.env.VITE_APPCHECK_SITE_KEY;
 if (appCheckKey && typeof window !== "undefined") {
   try {

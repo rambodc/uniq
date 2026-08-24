@@ -24,7 +24,7 @@ import {
   GalleryVerticalEnd,
   X,
 } from "lucide-react";
-import { auth } from "../firebaseClient";
+import { auth, authReady } from "../firebaseClient";
 import {
   confirmSection,
   applySectionEdit,
@@ -198,10 +198,18 @@ export default function FluidLab({
     return () => removeEventListener("keydown", close);
   }, [drawerOpen]);
   useEffect(() => {
-    if (!auth.currentUser) { navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`); return; }
     let active = true;
-    void getProject(projectId)
-      .then(({ project }) => {
+    void authReady.then(() => {
+      if (!active) return;
+      if (!auth.currentUser) {
+        navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`);
+        return;
+      }
+      return getProject(projectId);
+    })
+      .then((result) => {
+        if (!result) return;
+        const { project } = result;
         if (!active) return;
         if (project.type !== "fluidlab" || !project.data || !("sections" in project.data)) throw new Error("Unsupported project");
         setDesign(project.data);

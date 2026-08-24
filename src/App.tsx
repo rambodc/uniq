@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { auth } from "./firebaseClient";
+import { auth, authReady } from "./firebaseClient";
 import { getAccount } from "./fluidlab/projects";
 
 const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
@@ -55,8 +55,8 @@ export default function App(){
   const [path,setPath]=useState(()=>{const normalized=validPath(location.pathname);if(normalized!==location.pathname)history.replaceState({},"",normalized);return normalized});const pathRef=useRef(path);const dirtyRef=useRef(false);const [exitRequest,setExitRequest]=useState(0);
   useEffect(()=>{pathRef.current=path},[path]);useEffect(()=>{const update=()=>{const normalized=validPath(location.pathname);if(editorPath(pathRef.current)&&dirtyRef.current&&!editorPath(normalized)){history.forward();setExitRequest((value)=>value+1);return}if(normalized!==location.pathname)history.replaceState({},"",normalized);pathRef.current=normalized;setPath(normalized)};addEventListener("popstate",update);return()=>removeEventListener("popstate",update)},[]);
   const navigate=useCallback((target:string)=>{const url=new URL(target,location.origin);const normalized=validPath(url.pathname);history.pushState({},"",normalized+url.search);pathRef.current=normalized;setPath(normalized);window.scrollTo(0,0)},[]);
-  const lab=()=>{void(async()=>{if(!auth.currentUser){navigate("/signin?returnTo=/account");return}try{await getAccount();navigate("/account")}catch{navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email||"")}`)}})()};
-  useEffect(()=>{if(path==="/"||publicPaths.has(path))setMetadata(publicPages.find((page)=>page.path===path))},[path]);useEffect(()=>{if(path!=="/fluidlab")return;void(async()=>{if(!auth.currentUser){navigate("/signin?returnTo=/account");return}try{await getAccount();navigate("/account")}catch{navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email||"")}`)}})()},[navigate,path]);
+  const lab=()=>{void(async()=>{await authReady;if(!auth.currentUser){navigate("/signin?returnTo=/account");return}try{await getAccount();navigate("/account")}catch{navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email||"")}`)}})()};
+  useEffect(()=>{if(path==="/"||publicPaths.has(path))setMetadata(publicPages.find((page)=>page.path===path))},[path]);useEffect(()=>{if(path!=="/fluidlab")return;void(async()=>{await authReady;if(!auth.currentUser){navigate("/signin?returnTo=/account");return}try{await getAccount();navigate("/account")}catch{navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email||"")}`)}})()},[navigate,path]);
   if(path==="/fluidlab")return <main className="route-loading"><span>Opening your UniqEnergy Account…</span></main>;
   if(authPaths.includes(path as typeof authPaths[number]))return <Suspense fallback={<main className="route-loading"><span>Loading secure access…</span></main>}><AuthPage path={path as typeof authPaths[number]} navigate={navigate}/></Suspense>;
   if(path==="/account"||path==="/account/profile")return <Suspense fallback={<main className="route-loading"><span>Loading account…</span></main>}><AccountPortal page={path==="/account/profile"?"profile":"projects"} navigate={navigate}/></Suspense>;

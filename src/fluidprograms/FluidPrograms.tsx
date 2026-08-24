@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, BrainCircuit, Send } from "lucide-react";
-import { auth } from "../firebaseClient";
+import { auth, authReady } from "../firebaseClient";
 import { getProject, renameFluidProgramsProject, sendFluidProgramsMessage, type FluidProgramsData } from "../fluidlab/projects";
 import "./fluid-programs.css";
 
@@ -9,7 +9,7 @@ export default function FluidPrograms({ projectId, navigate, onDirtyChange }: { 
   const [name, setName] = useState(""), [data, setData] = useState<FluidProgramsData>({ version: 1, messages: [] }), [revision, setRevision] = useState(0), [message, setMessage] = useState(""), [remaining, setRemaining] = useState(50), [state, setState] = useState<"loading" | "saved" | "editing" | "saving" | "sending" | "failed" | "conflict">("loading"), [error, setError] = useState("");
   const bottom = useRef<HTMLDivElement>(null), loaded = useRef(false), revisionRef = useRef(0), dataRef = useRef(data), nameRef = useRef(name);
   useEffect(() => { dataRef.current = data; nameRef.current = name; }, [data, name]);
-  useEffect(() => { if (!auth.currentUser) { navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`); return; } let active = true; void getProject(projectId).then(({ project, remaining: allowance }) => { if (!active) return; if (project.type !== "fluid-programs" || !project.data || !("messages" in project.data)) throw new Error(); setName(project.name); setData(project.data); dataRef.current = project.data; setRevision(project.revision); revisionRef.current = project.revision; setRemaining(allowance ?? 50); loaded.current = true; setState("saved"); }).catch(() => { if (active) { setError("This Fluid Programs project could not be opened."); setState("failed"); } }); return () => { active = false; }; }, [navigate, projectId]);
+  useEffect(() => { let active = true; void authReady.then(() => { if (!active) return; if (!auth.currentUser) { navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`); return; } return getProject(projectId); }).then((result) => { if (!active || !result) return; const { project, remaining: allowance } = result; if (project.type !== "fluid-programs" || !project.data || !("messages" in project.data)) throw new Error(); setName(project.name); setData(project.data); dataRef.current = project.data; setRevision(project.revision); revisionRef.current = project.revision; setRemaining(allowance ?? 50); loaded.current = true; setState("saved"); }).catch(() => { if (active) { setError("This Fluid Programs project could not be opened."); setState("failed"); } }); return () => { active = false; }; }, [navigate, projectId]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [data.messages.length, state]);
