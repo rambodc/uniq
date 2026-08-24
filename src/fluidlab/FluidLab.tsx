@@ -9,26 +9,21 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { useReducedMotion } from "motion/react";
 import {
   Check,
   Box,
-  FolderOpen,
-  LogIn,
-  LogOut,
   Maximize2,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Plus,
-  Save,
   Trash2,
   GalleryVerticalEnd,
   X,
 } from "lucide-react";
-import { auth, ensureFluidLabIdentity } from "../firebaseClient";
+import { auth } from "../firebaseClient";
 import {
   confirmSection,
   applySectionEdit,
@@ -48,7 +43,7 @@ import {
   type WellProject,
   type WellTrajectory,
 } from "./engineering";
-import { createProject, getProject, updateProject } from "./projects";
+import { autosaveProject, getProject } from "./projects";
 import "./fluidlab.css";
 const Scene = lazy(() => import("./WellboreScene")),
   toLength = (m: number, u: UnitSystem) =>
@@ -109,14 +104,14 @@ function Modal({ children }: { children: ReactNode }) {
   );
 }
 export default function FluidLab({
-  onHome,
-  onAuth,
+  projectId,
+  navigate,
   onDirtyChange,
   exitRequest,
   onConfirmBrowserExit,
 }: {
-  onHome: (section?: string) => void;
-  onAuth: (path: string) => void;
+  projectId: string;
+  navigate: (path: string) => void;
   onDirtyChange: (dirty: boolean) => void;
   exitRequest: number;
   onConfirmBrowserExit: () => void;
@@ -129,15 +124,12 @@ export default function FluidLab({
       kopMdM: null,
       endCurveMdM: null,
     }),
-    [projectId, setProjectId] = useState(() =>
-      new URLSearchParams(location.search).get("project"),
-    ),
-    [revision, setRevision] = useState(0),
+    [, setRevision] = useState(0),
     [saveState, setSaveState] = useState<
-      "editing" | "saving" | "saved" | "failed"
-    >("editing"),
-    [user, setUser] = useState<User | null>(null),
-    [authReady, setAuthReady] = useState(false),
+      "loading" | "editing" | "saving" | "saved" | "failed" | "offline" | "conflict"
+    >("loading"),
+    [loaded, setLoaded] = useState(false),
+    [savedAt, setSavedAt] = useState<Date | null>(null),
     [collapsed, setCollapsed] = useState(false),
     [drawerOpen, setDrawerOpen] = useState(false),
     [view, setView] = useState<"perspective" | "profile">("perspective"),
@@ -145,17 +137,19 @@ export default function FluidLab({
     [visible, setVisible] = useState(!document.hidden),
     [notice, setNotice] = useState(""),
     [exitOpen, setExitOpen] = useState(false),
-    [conflict, setConflict] = useState(false),
     [deleteIndex, setDeleteIndex] = useState<number | null>(null),
     [editIndex, setEditIndex] = useState<number | null>(null),
     [editDraft, setEditDraft] = useState<SectionDraft>(() => emptyDraft()),
     [selectedId, setSelectedId] = useState<string | null>(null);
   const reduced = Boolean(useReducedMotion()),
     generated = useMemo(() => generateProject(design), [design]),
-    account = Boolean(user && !user.isAnonymous),
     units = design.unitSystem ?? "metric",
     unitsChosen = design.unitSystem !== null,
     saving = useRef(false),
+    queued = useRef(false),
+    retryCount = useRef(0),
+    revisionRef = useRef(0),
+    designRef = useRef(design),
     drawerTrigger = useRef<HTMLButtonElement>(null),
     trajectoryDirty =
       JSON.stringify(trajectoryDraft) !== JSON.stringify(design.trajectory),
@@ -165,21 +159,11 @@ export default function FluidLab({
         draft.endMdM != null ||
         draft.diameterMm != null),
     dirty =
-      saveState !== "saved" ||
+      ["editing", "saving", "failed", "offline", "conflict"].includes(saveState) ||
       draftTouched ||
       trajectoryDirty ||
       editIndex !== null;
-  useEffect(
-    () =>
-      onAuthStateChanged(auth, (current) => {
-        setUser(current);
-        setAuthReady(true);
-      }),
-    [],
-  );
-  useEffect(() => {
-    void ensureFluidLabIdentity();
-  }, []);
+  useEffect(() => { designRef.current = design; }, [design]);
   useEffect(() => {
     const change = () => setVisible(!document.hidden);
     document.addEventListener("visibilitychange", change);
@@ -211,29 +195,34 @@ export default function FluidLab({
     return () => removeEventListener("keydown", close);
   }, [drawerOpen]);
   useEffect(() => {
-    if (!projectId || !account) return;
+    if (!auth.currentUser) { navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`); return; }
     let active = true;
     void getProject(projectId)
       .then((project) => {
         if (!active) return;
-        setDesign(project.design!);
-        setTrajectoryDraft(project.design!.trajectory);
+        if (project.type !== "fluidlab" || !project.data) throw new Error("Unsupported project");
+        setDesign(project.data);
+        designRef.current = project.data;
+        setTrajectoryDraft(project.data.trajectory);
         setDraft(emptyDraft());
-        setDraftOpen(false);
-        setSelectedId(project.design!.sections.at(-1)?.id ?? null);
+        setDraftOpen(project.data.sections.length === 0);
+        setSelectedId(project.data.sections.at(-1)?.id ?? null);
         setRevision(project.revision);
+        revisionRef.current = project.revision;
         setSaveState("saved");
+        setSavedAt(project.updatedAt ? new Date(project.updatedAt) : new Date());
+        setLoaded(true);
       })
       .catch(() => {
         if (active) {
           setNotice("This project could not be opened.");
-          setProjectId(null);
+          setSaveState("failed");
         }
       });
     return () => {
       active = false;
     };
-  }, [projectId, account]);
+  }, [projectId, navigate]);
   const updateDesign = (recipe: (next: WellProject) => void) => {
     setDesign((current) => {
       const next = structuredClone(current);
@@ -316,65 +305,59 @@ export default function FluidLab({
         "The applied trajectory was cleared because it exceeded the new total MD.",
       );
   };
-  const canSave =
-    design.sections.length > 0 &&
-    !draftOpen &&
-    editIndex == null &&
-    !trajectoryDirty &&
-    !generated.errors.length;
-  const save = useCallback(async () => {
-    if (!canSave) {
-      setNotice(
-        draftOpen
-          ? "Confirm or discard the current section draft before saving."
-          : editIndex != null
-            ? "Apply or cancel the section edit before saving."
-          : "Apply the trajectory changes before saving.",
-      );
+  const performAutosave = useCallback(async () => {
+    if (saving.current || saveState === "conflict") {
+      if (saving.current) queued.current = true;
       return;
     }
-    if (!account) {
-      onAuth(
-        `/signin?returnTo=${encodeURIComponent(location.pathname + location.search)}`,
-      );
+    const snapshot = structuredClone(designRef.current);
+    if (!snapshot.name.trim()) {
+      setSaveState("failed");
+      setNotice("Enter a project name before autosaving.");
       return;
     }
-    if (saving.current) return;
     saving.current = true;
     setSaveState("saving");
+    let conflictFound = false;
     try {
-      if (projectId) {
-        const saved = await updateProject(
-          projectId,
-          design,
-          revision,
-          crypto.randomUUID(),
-        );
-        setRevision(saved.revision);
-      } else {
-        const saved = await createProject(design);
-        setProjectId(saved.id);
-        setRevision(saved.revision);
-        history.replaceState({}, "", `/fluidlab?project=${saved.id}`);
-      }
+      const saved = await autosaveProject(
+        projectId,
+        snapshot.name,
+        snapshot,
+        revisionRef.current,
+        crypto.randomUUID(),
+      );
+      revisionRef.current = saved.revision;
+      setRevision(saved.revision);
+      setSavedAt(saved.updatedAt ? new Date(saved.updatedAt) : new Date());
+      retryCount.current = 0;
       setSaveState("saved");
     } catch (error) {
-      if (String((error as { code?: string }).code).includes("aborted"))
-        setConflict(true);
-      setSaveState("failed");
+      const code = String((error as { code?: string }).code || "");
+      if (code.includes("aborted")) {
+        conflictFound = true;
+        setSaveState("conflict");
+      }
+      else if (/unavailable|deadline|network|internal/.test(code)) {
+        setSaveState("offline");
+        if (retryCount.current < 4) {
+          const delay = Math.min(8000, 1000 * 2 ** retryCount.current++);
+          window.setTimeout(() => setSaveState("editing"), delay);
+        } else setSaveState("failed");
+      } else setSaveState("failed");
     } finally {
       saving.current = false;
+      if (queued.current && !conflictFound) {
+        queued.current = false;
+        window.setTimeout(() => setSaveState("editing"), 0);
+      }
     }
-  }, [
-    account,
-    canSave,
-    design,
-    draftOpen,
-    editIndex,
-    onAuth,
-    projectId,
-    revision,
-  ]);
+  }, [projectId, saveState]);
+  useEffect(() => {
+    if (!loaded || saveState !== "editing") return;
+    const timer = window.setTimeout(() => void performAutosave(), 1000);
+    return () => window.clearTimeout(timer);
+  }, [design, loaded, performAutosave, saveState]);
   const kopSection = containingSection(design, trajectoryDraft.kopMdM),
     eocSection = containingSection(design, trajectoryDraft.endCurveMdM),
     topMd = design.sections.at(-1)?.endMdM ?? 0;
@@ -408,56 +391,16 @@ export default function FluidLab({
           />
         </Suspense>
       </div>
-      <header className="workspace-topbar">
+      <header className="workspace-topbar compact">
         <button
           className="workspace-brand"
-          onClick={() => (dirty ? setExitOpen(true) : onHome())}
+          onClick={() => (dirty ? setExitOpen(true) : navigate("/account"))}
         >
+          <span aria-hidden="true">←</span>
           <i />
           Uniq<strong>Energy</strong>
           <span>/ FluidLab</span>
         </button>
-        <div className="workspace-title">
-          <input
-            value={design.name}
-            onChange={(event) =>
-              updateDesign((next) => (next.name = event.target.value))
-            }
-          />
-          <small>Sequential sections · optional KOP/EOC build</small>
-        </div>
-        <div className="workspace-status">
-          <span className={saveState}>
-            {saveState === "saving"
-              ? "Saving…"
-              : saveState === "saved"
-                ? "Saved to cloud"
-                : saveState === "failed"
-                  ? "Save failed"
-                  : "Unsaved changes"}
-          </span>
-          <button disabled={!canSave} onClick={() => void save()}>
-            <Save /> {account ? "Save" : "Sign in to save"}
-          </button>
-          {account && (
-            <button onClick={() => onAuth("/fluidlab/projects")}>
-              <FolderOpen /> Projects
-            </button>
-          )}
-          {authReady &&
-            (account ? (
-              <button title="Sign out" onClick={() => void signOut(auth)}>
-                <LogOut />
-              </button>
-            ) : (
-              <button
-                title="Sign in"
-                onClick={() => onAuth("/signin?returnTo=/fluidlab")}
-              >
-                <LogIn />
-              </button>
-            ))}
-        </div>
       </header>
       <button ref={drawerTrigger} className="mobile-menu-button" aria-label="Open well builder" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu/><b>Builder</b></button>
       {drawerOpen && (
@@ -489,6 +432,13 @@ export default function FluidLab({
           <button className="mobile-drawer-close" aria-label="Close well builder" onClick={closeDrawer}><X/></button>
         </div>
         <div className="panel-body editor-content">
+          <section className="project-identity">
+            <label><span>Project name</span><input value={design.name} maxLength={100} onChange={(event) => updateDesign((next) => { next.name = event.target.value; })}/></label>
+            <div className={`autosave-state ${saveState}`}><i />
+              <span>{saveState === "loading" ? "Loading project…" : saveState === "saving" ? "Saving…" : saveState === "saved" ? `Saved${savedAt ? ` ${savedAt.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}` : ""}` : saveState === "offline" ? "Offline · retrying" : saveState === "conflict" ? "Cloud conflict · reload required" : saveState === "failed" ? "Autosave needs attention" : "Changes pending"}</span>
+              {saveState === "conflict" && <button onClick={() => location.reload()}>Reload</button>}
+            </div>
+          </section>
           {!unitsChosen ? <section className="unit-setup"><span>Step 1</span><h2>Choose project units</h2><p>This choice is permanent for this project.</p><div><button onClick={() => updateDesign((next) => { next.unitSystem = "metric"; })}>Metric<small>metres · millimetres</small></button><button onClick={() => updateDesign((next) => { next.unitSystem = "imperial"; })}>Imperial<small>feet · inches</small></button></div></section> : <div className="locked-units"><span>Units</span><strong>{units === "metric" ? "Metric · m / mm" : "Imperial · ft / in"}</strong><small>Locked for this project</small></div>}
           {unitsChosen && <>
           <section className="trajectory-card">
@@ -818,21 +768,11 @@ export default function FluidLab({
               onClick={() => {
                 onDirtyChange(false);
                 if (exitRequest) onConfirmBrowserExit();
-                else onHome();
+                else navigate("/account");
               }}
             >
               Leave without saving
             </button>
-          </div>
-        </Modal>
-      )}
-      {conflict && (
-        <Modal>
-          <h2>Newer cloud changes exist</h2>
-          <p>Reload the saved project before continuing.</p>
-          <div>
-            <button onClick={() => setConflict(false)}>Keep this screen</button>
-            <button onClick={() => location.reload()}>Reload project</button>
           </div>
         </Modal>
       )}

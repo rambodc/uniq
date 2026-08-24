@@ -8,7 +8,7 @@ UniqEnergy's Vite/React website and the FluidLab conceptual MD-only well workspa
 - Firebase Hosting, Email/Password Authentication, Firestore, Storage, and Cloud Functions
 - App Check with reCAPTCHA Enterprise in monitor-only mode
 
-FluidLab builds a sequential hole program from locked section-bottom MDs, bit sizes, and section colors. Wells remain vertical unless an applied KOP/End-of-Curve pair defines a single-plane build to horizontal. Project units are selected once before construction and remain locked. Guest work remains in memory only; signed-in users can store projects in Firestore through ownership-checked callable Functions. Client access to Firestore and Storage remains denied by rules.
+UniqEnergy Account is the parent platform. Authentication and a version-one account profile are required before users can create cloud projects. FluidLab is its first project type and builds a sequential hole program from section-bottom MDs, bit sizes, and section colors. Projects autosave through ownership-checked callable Functions; there is no guest editor or manual save flow. Client access to Firestore and Storage remains denied by rules.
 
 ## Local development
 
@@ -31,15 +31,17 @@ npm test --prefix functions
 npm run lint --prefix functions
 ```
 
-Create a local `.env.local` from the Firebase web-app values and `VITE_APPCHECK_SITE_KEY`. Environment files are ignored. Never put `OPENAI_API_KEY` in the frontend or GitHub; it is bound to AI Functions from Firebase Secret Manager.
+Create a local `.env.local` from the Firebase web-app values and `VITE_APPCHECK_SITE_KEY`. Environment files are ignored.
 
-Firebase Authentication must have both Email/Password and Anonymous providers enabled. Production callable Functions enforce App Check; use a registered App Check debug token for local calls against deployed Functions.
+Firebase Authentication must have Email/Password enabled. Anonymous authentication is not used. Production callable Functions enforce App Check; use a registered App Check debug token for local calls against deployed Functions.
 
 ## Authentication and routes
 
 - `/` — public homepage
-- `/fluidlab` — public conceptual 3D MD-only workspace
-- `/fluidlab/projects` — signed-in project library
+- `/fluidlab` — authentication-aware entry to the account platform
+- `/account` — protected applications and projects dashboard
+- `/account/profile` — protected profile and logout
+- `/account/projects/:projectId/fluidlab` — protected FluidLab editor
 - `/signin` — Email/Password sign in
 - `/signup` — public registration and missing-profile completion
 - `/forgot-password` — Firebase password reset

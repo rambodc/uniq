@@ -2,8 +2,10 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
-const ProjectLibrary = lazy(() => import("./fluidlab/ProjectLibrary"));
+const AccountPortal = lazy(() => import("./account/AccountPortal"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
+import { auth } from "./firebaseClient";
+import { getAccount } from "./fluidlab/projects";
 
 const EMAIL = "mailto:info@uniqenergy.com?subject=Drilling%20Fluid%20Consultation&body=Hello%20UniqEnergy%20team%2C%0A%0AI%27d%20like%20to%20discuss%20a%20drilling%20fluid%20program.%0A%0ACompany%3A%0AProject%20or%20wellbore%3A%0ABest%20way%20to%20reach%20me%3A";
 const PHONE = "tel:+15877742131";
@@ -28,8 +30,9 @@ const faqs = [
 function Logo() { return <span className="logo"><i aria-hidden="true"/><span>Uniq<strong>Energy</strong></span></span>; }
 function scrollToSection(id: string) { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 const authPaths = ["/signin", "/signup", "/forgot-password"] as const;
-type RoutePath = "/" | "/fluidlab" | "/fluidlab/projects" | typeof authPaths[number];
-const validPath = (value: string): RoutePath => value === "/fluidlab" || value === "/fluidlab/projects" || authPaths.includes(value as typeof authPaths[number]) ? value as RoutePath : "/";
+type RoutePath = string;
+const editorPath = (value: string) => /^\/account\/projects\/[^/]+\/fluidlab$/.test(value);
+const validPath = (value: string): RoutePath => value === "/fluidlab" || value === "/account" || value === "/account/profile" || editorPath(value) || authPaths.includes(value as typeof authPaths[number]) ? value : "/";
 
 function Header({ page, onHome, onFluidLab }: { page: "home" | "fluidlab"; onHome: (section?: string) => void; onFluidLab: () => void }) {
   const [open, setOpen] = useState(false);
@@ -159,7 +162,7 @@ export default function App() {
   useEffect(() => {
     const update = () => {
       const normalized = validPath(location.pathname);
-      if (pathRef.current === "/fluidlab" && dirtyRef.current && normalized !== "/fluidlab") {
+      if (editorPath(pathRef.current) && dirtyRef.current && !editorPath(normalized)) {
         history.forward();
         setExitRequest((value) => value + 1);
         return;
@@ -171,7 +174,7 @@ export default function App() {
     addEventListener("popstate", update);
     return () => removeEventListener("popstate", update);
   }, []);
-  const page = path.startsWith("/fluidlab") ? "fluidlab" : "home";
+  const page = editorPath(path) ? "fluidlab" : "home";
   const home = (section = "home") => {
     if (location.pathname !== "/") { history.pushState({}, "", "/"); setPath("/"); requestAnimationFrame(() => setTimeout(() => scrollToSection(section), 0)); }
     else scrollToSection(section);
@@ -181,7 +184,6 @@ export default function App() {
     document.querySelector('meta[property="og:title"]')?.setAttribute("content", "UniqEnergy Solutions | Drilling Fluid Innovation");
     document.querySelector('meta[property="og:url"]')?.setAttribute("content", "https://uniqenergy-de71c.web.app/");
   };
-  const lab = () => { if (location.pathname !== "/fluidlab") { history.pushState({}, "", "/fluidlab"); setPath("/fluidlab"); } window.scrollTo({ top: 0, behavior: "smooth" }); };
   const navigate = useCallback((target: string) => {
     const url = new URL(target, location.origin);
     const normalized = validPath(url.pathname);
@@ -190,8 +192,18 @@ export default function App() {
     setPath(normalized);
     window.scrollTo(0, 0);
   }, []);
+  const lab = () => { void (async () => { if (!auth.currentUser) { navigate("/signin?returnTo=/account"); return; } try { await getAccount(); navigate("/account"); } catch { navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email || "")}`); } })(); };
+  useEffect(() => {
+    if (path !== "/fluidlab") return;
+    void (async () => {
+      if (!auth.currentUser) { navigate("/signin?returnTo=/account"); return; }
+      try { await getAccount(); navigate("/account"); }
+      catch { navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email || "")}`); }
+    })();
+  }, [navigate, path]);
+  if (path === "/fluidlab") return <main className="route-loading"><span>Opening your UniqEnergy Account…</span></main>;
   if (authPaths.includes(path as typeof authPaths[number])) return <Suspense fallback={<main className="route-loading"><span>Loading secure access…</span></main>}><AuthPage path={path as typeof authPaths[number]} navigate={navigate}/></Suspense>;
-  if (path === "/fluidlab/projects") return <Suspense fallback={<main className="route-loading"><span>Loading projects…</span></main>}><ProjectLibrary navigate={navigate}/></Suspense>;
-  if (page === "fluidlab") return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab onHome={home} onAuth={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }} exitRequest={exitRequest} onConfirmBrowserExit={() => { dirtyRef.current = false; history.back(); }}/></Suspense>;
+  if (path === "/account" || path === "/account/profile") return <Suspense fallback={<main className="route-loading"><span>Loading account…</span></main>}><AccountPortal page={path === "/account/profile" ? "profile" : "projects"} navigate={navigate}/></Suspense>;
+  if (page === "fluidlab") return <Suspense fallback={<main className="route-loading"><span>Loading FluidLab…</span></main>}><FluidLab projectId={path.split("/")[3]} navigate={navigate} onDirtyChange={(dirty) => { dirtyRef.current = dirty; }} exitRequest={exitRequest} onConfirmBrowserExit={() => { dirtyRef.current = false; history.back(); }}/></Suspense>;
   return <><a className="skip-link" href="#main">Skip to content</a><Header page={page} onHome={home} onFluidLab={lab}/><main id="main"><Hero/><Introduction/><Systems/><Technology/><Capabilities/><Operations/><FAQ/><Contact/></main><Footer onFluidLab={lab}/></>;
 }

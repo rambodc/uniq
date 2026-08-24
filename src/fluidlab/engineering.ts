@@ -13,12 +13,11 @@ export interface WellTrajectory {
   endCurveMdM: number | null;
 }
 export interface WellProject {
-  version: 4;
+  version: 1;
   name: string;
   unitSystem: UnitSystem | null;
   sections: WellSection[];
   trajectory: WellTrajectory;
-  display: { selectedSectionId: string | null };
 }
 export interface SectionDraft {
   name: string;
@@ -62,12 +61,11 @@ export const emptyDraft = (): SectionDraft => ({
 });
 export function createProject(unitSystem: UnitSystem | null = null): WellProject {
   return {
-    version: 4,
+    version: 1,
     name: "New conceptual well",
     unitSystem,
     sections: [],
     trajectory: { enabled: false, kopMdM: null, endCurveMdM: null },
-    display: { selectedSectionId: null },
   };
 }
 export function sectionTopMd(project: WellProject, index: number) {
@@ -106,7 +104,6 @@ export function confirmSection(project: WellProject, draft: SectionDraft) {
     visible: true,
   };
   project.sections.push(section);
-  project.display.selectedSectionId = section.id;
   return { section, errors: [] };
 }
 export function editSectionErrors(
@@ -161,7 +158,6 @@ export function applySectionEdit(
   section.endMdM = draft.endMdM!;
   section.diameterMm = draft.diameterMm!;
   section.color = draft.color;
-  project.display.selectedSectionId = section.id;
   return { section, errors: [] };
 }
 export function truncateFrom(project: WellProject, index: number) {
@@ -169,7 +165,6 @@ export function truncateFrom(project: WellProject, index: number) {
   const removed = project.sections.slice(index),
     first = removed[0];
   project.sections = project.sections.slice(0, index);
-  project.display.selectedSectionId = project.sections.at(-1)?.id ?? null;
   const total = project.sections.at(-1)?.endMdM ?? 0,
     trajectoryCleared =
       project.trajectory.enabled &&
@@ -209,7 +204,7 @@ export function trajectoryErrors(
 export function validateProject(project: WellProject) {
   if (
     !project ||
-    project.version !== 4 ||
+    project.version !== 1 ||
     !Array.isArray(project.sections) ||
     !project.trajectory
   )

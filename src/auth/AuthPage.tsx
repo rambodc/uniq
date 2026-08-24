@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { createUserWithEmailAndPassword, EmailAuthProvider, linkWithCredential, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ArrowLeft, LockKeyhole, Mail, UserRound } from "lucide-react";
 import { auth } from "../firebaseClient";
-import { getProfile, registerProfile } from "../fluidlab/projects";
+import { getAccount, registerAccount } from "../fluidlab/projects";
 import "./auth.css";
 
 export type AuthPath = "/signin" | "/signup" | "/forgot-password";
@@ -12,7 +12,7 @@ function authMessage(error: unknown) {
   if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) return "The email or password is incorrect.";
   if (code.includes("email-already-in-use")) return "An account already exists for this email. Sign in instead.";
   if (code.includes("weak-password")) return "Use a password with at least eight characters.";
-  if (code.includes("user-disabled") || code.includes("permission-denied")) return "This FluidLab account is disabled. Contact UniqEnergy for access.";
+  if (code.includes("user-disabled") || code.includes("permission-denied")) return "This UniqEnergy account is disabled. Contact UniqEnergy for access.";
   if (code.includes("too-many-requests") || code.includes("resource-exhausted")) return "Too many attempts. Please wait and try again.";
   if (code.includes("network-request-failed") || code.includes("unavailable")) return "The service could not be reached. Check your connection and try again.";
   if (code.includes("operation-not-allowed")) return "Email sign-in is not enabled for this Firebase project.";
@@ -34,7 +34,7 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
   const [working, setWorking] = useState(false);
 
   useEffect(() => {
-    document.title = path === "/signin" ? "Sign in | UniqEnergy FluidLab" : path === "/signup" ? "Create account | UniqEnergy FluidLab" : "Reset password | UniqEnergy FluidLab";
+    document.title = path === "/signin" ? "Sign in | UniqEnergy Account" : path === "/signup" ? "Create account | UniqEnergy Account" : "Reset password | UniqEnergy Account";
   }, [path]);
 
   const submit = async (event: FormEvent) => {
@@ -49,8 +49,8 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
       if (path === "/signin") {
         await signInWithEmailAndPassword(auth, email.trim(), password);
         try {
-          await getProfile();
-          navigate(query.get("returnTo") || "/fluidlab");
+          await getAccount();
+          navigate(query.get("returnTo") || "/account");
         } catch (profileError) {
           const profileCode = typeof profileError === "object" && profileError && "code" in profileError ? String(profileError.code) : "";
           if (profileCode.includes("failed-precondition") || profileCode.includes("not-found")) {
@@ -65,12 +65,11 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
       if (!profileOnly) {
         if (password.length < 8) throw Object.assign(new Error(), { code: "auth/weak-password" });
         if (password !== confirm) throw Object.assign(new Error(), { code: "profile/password-mismatch" });
-        if (auth.currentUser?.isAnonymous) await linkWithCredential(auth.currentUser, EmailAuthProvider.credential(email.trim(), password));
-        else await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await createUserWithEmailAndPassword(auth, email.trim(), password);
         setProfileOnly(true);
       }
-      await registerProfile(firstName.trim(), lastName.trim());
-      navigate(query.get("returnTo") || "/fluidlab");
+      await registerAccount(firstName.trim(), lastName.trim());
+      navigate(query.get("returnTo") || "/account");
     } catch (requestError) {
       const code = typeof requestError === "object" && requestError && "code" in requestError ? String(requestError.code) : "";
       if (code.includes("password-mismatch")) setError("Passwords do not match.");
@@ -83,24 +82,24 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
     <div className="auth-grid" aria-hidden="true"/><div className="auth-orbit" aria-hidden="true"/>
     <button className="auth-back" onClick={() => navigate("/")}><ArrowLeft/> Home</button>
     <form className="auth-card" onSubmit={submit}>
-      <div className="auth-brand"><i/>Uniq<strong>Energy</strong><span>/ FluidLab</span></div>
-      <span className="auth-eyebrow">Secure engineering workspace</span>
+      <div className="auth-brand"><i/>Uniq<strong>Energy</strong><span>/ Account</span></div>
+      <span className="auth-eyebrow">Your UniqEnergy workspace</span>
       <h1>{path === "/signin" ? "Welcome back." : path === "/signup" ? (profileOnly ? "Complete your profile." : "Create your account.") : "Reset your password."}</h1>
-      <p>{path === "/signin" ? "Sign in to save and manage conceptual MD-only well designs." : path === "/signup" ? "Create an account to save FluidLab projects securely in the cloud." : "We’ll send a secure reset link to your account email."}</p>
+      <p>{path === "/signin" ? "Sign in to access your projects and UniqEnergy applications." : path === "/signup" ? "Create one account for FluidLab and future UniqEnergy applications." : "We’ll send a secure reset link to your account email."}</p>
       {error && <div className="auth-alert error" role="alert">{error}</div>}
       {status && <div className="auth-alert success" role="status">{status}</div>}
       {path === "/signup" && <div className="auth-name-row"><label><span>First name</span><div><UserRound/><input autoComplete="given-name" required value={firstName} onChange={(event) => setFirstName(event.target.value)}/></div></label><label><span>Last name</span><div><UserRound/><input autoComplete="family-name" required value={lastName} onChange={(event) => setLastName(event.target.value)}/></div></label></div>}
       {!profileOnly && <label><span>Email address</span><div><Mail/><input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)}/></div></label>}
       {path !== "/forgot-password" && !profileOnly && <label><span>Password</span><div><LockKeyhole/><input type="password" minLength={8} autoComplete={path === "/signin" ? "current-password" : "new-password"} required value={password} onChange={(event) => setPassword(event.target.value)}/></div></label>}
       {path === "/signup" && !profileOnly && <label><span>Confirm password</span><div><LockKeyhole/><input type="password" minLength={8} autoComplete="new-password" required value={confirm} onChange={(event) => setConfirm(event.target.value)}/></div></label>}
-      <button className="auth-submit" disabled={working}>{working ? "Please wait…" : path === "/signin" ? "Sign in to FluidLab" : path === "/signup" ? "Create account" : "Send reset link"}</button>
+      <button className="auth-submit" disabled={working}>{working ? "Please wait…" : path === "/signin" ? "Sign in to UniqEnergy" : path === "/signup" ? "Create account" : "Send reset link"}</button>
       <div className="auth-links">
-        {path === "/signin" && <><button type="button" onClick={() => navigate("/forgot-password")}>Forgot password?</button><span>New to FluidLab? <button type="button" onClick={() => navigate("/signup")}>Create an account</button></span></>}
+        {path === "/signin" && <><button type="button" onClick={() => navigate("/forgot-password")}>Forgot password?</button><span>New to UniqEnergy? <button type="button" onClick={() => navigate("/signup")}>Create an account</button></span></>}
         {path === "/signup" && <span>Already registered? <button type="button" onClick={() => navigate("/signin")}>Sign in</button></span>}
         {path === "/forgot-password" && <button type="button" onClick={() => navigate("/signin")}>Return to sign in</button>}
       </div>
       {profileOnly && <button className="auth-signout" type="button" onClick={async () => { await signOut(auth); navigate("/signin"); }}>Use a different account</button>}
-      <small>Conceptual planning visualization only. Section MD and KOP/EOC inputs do not define a directional survey.</small>
+      <small>Your UniqEnergy Account securely organizes your applications and projects.</small>
     </form>
   </main>;
 }

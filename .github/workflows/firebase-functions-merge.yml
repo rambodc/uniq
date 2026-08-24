@@ -5,8 +5,8 @@ on:
     paths: ["functions/**", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
   workflow_dispatch:
     inputs:
-      purge_fluidlab_data:
-        description: "Purge FluidLab projects and nested versions after deployment"
+      purge_legacy_account_data:
+        description: "Permanently purge the complete legacy fluidlabUsers tree"
         required: false
         default: false
         type: boolean
@@ -33,6 +33,9 @@ jobs:
       - run: npm test --prefix functions
       - run: npm install --global firebase-tools@14.15.2
       - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --message "CI functions deploy"
-      - name: Purge obsolete FluidLab project data
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_fluidlab_data }}
-        run: node functions/purge-fluidlab-projects.js --confirm
+      - name: Report legacy data before deletion
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_legacy_account_data }}
+        run: node functions/purge-legacy-account-data.js
+      - name: Purge and verify legacy account data
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_legacy_account_data }}
+        run: node functions/purge-legacy-account-data.js --confirm

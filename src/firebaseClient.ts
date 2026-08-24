@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
-import { browserLocalPersistence, getAuth, setPersistence, signInAnonymously } from "firebase/auth";
+import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
 import { getFunctions } from "firebase/functions";
 
 const app = initializeApp({
@@ -14,11 +14,6 @@ const app = initializeApp({
 
 export const auth = getAuth(app);
 void setPersistence(auth, browserLocalPersistence).catch((error) => console.warn("Firebase auth persistence unavailable", error));
-export async function ensureFluidLabIdentity() {
-  if (auth.currentUser) return auth.currentUser;
-  return (await signInAnonymously(auth)).user;
-}
-
 const appCheckKey = import.meta.env.VITE_APPCHECK_SITE_KEY;
 if (appCheckKey && typeof window !== "undefined") {
   try {

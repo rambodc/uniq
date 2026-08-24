@@ -41,7 +41,7 @@ test("sitemap contains the homepage and FluidLab", async () => {
   assert.match(sitemap, /https:\/\/uniqenergy-de71c\.web\.app\/fluidlab/);
 });
 
-test("FluidLab is a public full-screen workspace with guarded saving", async () => {
+test("FluidLab is an account project workspace with autosaving", async () => {
   const source = await readFile(
     new URL("src/fluidlab/FluidLab.tsx", root),
     "utf8",
@@ -57,8 +57,10 @@ test("FluidLab is a public full-screen workspace with guarded saving", async () 
   assert.match(source, /Add build to horizontal/);
   assert.match(source, /beforeunload/);
   assert.match(source, /exit-overlay/);
-  assert.match(source, /Unsaved changes/);
-  assert.match(source, /Sign in to save/);
+  assert.match(source, /autosaveProject/);
+  assert.match(source, /Offline · retrying/);
+  assert.match(source, /Cloud conflict · reload required/);
+  assert.doesNotMatch(source, /Sign in to save|>Save</);
   assert.doesNotMatch(source, /surveyStations|azimuthDeg/);
   assert.match(styles, /min-height:44px/);
 });
@@ -99,7 +101,9 @@ test("the homepage shell is excluded from the FluidLab route", async () => {
 test("obsolete AI and local persistence integrations are removed", async () => {
   const backend = await readFile(new URL("functions/index.js", root), "utf8");
   assert.doesNotMatch(backend, /OpenAI|analyzeWell|refineWell|createFluidLabVersion/);
-  assert.match(backend, /schemaVersion:\s*4/);
+  assert.match(backend, /schemaVersion:\s*1/);
+  assert.match(backend, /collection\("accounts"\)/);
+  assert.doesNotMatch(backend, /fluidlabUsers/);
   await assert.rejects(readFile(new URL("src/fluidlab/ai.ts", root), "utf8"));
   await assert.rejects(readFile(new URL("src/fluidlab/persistence.ts", root), "utf8"));
 });

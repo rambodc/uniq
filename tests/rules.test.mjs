@@ -17,8 +17,8 @@ after(async () => environment?.cleanup());
 test("Firestore denies every browser read and write", async () => {
   const anonymous = environment.unauthenticatedContext();
   const signedIn = environment.authenticatedContext("user-1", { email: "engineer@example.com" });
-  await assertFails(getDoc(doc(anonymous.firestore(), "fluidlabUsers/user-1")));
-  await assertFails(setDoc(doc(signedIn.firestore(), "fluidlabUsers/user-1"), { status: "active" }));
+  await assertFails(getDoc(doc(anonymous.firestore(), "accounts/user-1")));
+  await assertFails(setDoc(doc(signedIn.firestore(), "accounts/user-1"), { status: "active" }));
   await assertFails(getDoc(doc(signedIn.firestore(), "fluidlabUsage/user-1")));
 });
 
