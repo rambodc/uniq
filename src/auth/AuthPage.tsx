@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { ArrowLeft, LockKeyhole, Mail, UserRound } from "lucide-react";
-import { auth } from "../firebaseClient";
+import { auth, authReady } from "../firebaseClient";
 import { getAccount, registerAccount } from "../fluidlab/projects";
 import "./auth.css";
 
@@ -22,6 +22,7 @@ function authMessage(error: unknown) {
 
 export default function AuthPage({ path, navigate }: { path: AuthPath; navigate: (path: string) => void }) {
   const query = new URLSearchParams(location.search);
+  const returnTo = query.get("returnTo") || "/account";
   const completing = path === "/signup" && Boolean(auth.currentUser) && query.get("complete") === "1";
   const [profileOnly, setProfileOnly] = useState(completing);
   const [firstName, setFirstName] = useState("");
@@ -32,6 +33,32 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [working, setWorking] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(path !== "/signin");
+
+  useEffect(() => {
+    if (path !== "/signin") return;
+    let active = true;
+    void authReady.then(async () => {
+      if (!active) return;
+      if (!auth.currentUser) {
+        setSessionChecked(true);
+        return;
+      }
+      try {
+        await getAccount();
+        if (active) navigate(returnTo);
+      } catch (profileError) {
+        if (!active) return;
+        const code = typeof profileError === "object" && profileError && "code" in profileError ? String(profileError.code) : "";
+        if (code.includes("failed-precondition") || code.includes("not-found")) {
+          navigate(`/signup?complete=1&email=${encodeURIComponent(auth.currentUser.email || "")}`);
+        } else {
+          setSessionChecked(true);
+        }
+      }
+    });
+    return () => { active = false; };
+  }, [navigate, path, returnTo]);
 
   useEffect(() => {
     document.title = path === "/signin" ? "Sign in | UniqEnergy Account" : path === "/signup" ? "Create account | UniqEnergy Account" : "Reset password | UniqEnergy Account";
@@ -77,6 +104,8 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
       else setError(authMessage(requestError));
     } finally { setWorking(false); }
   };
+
+  if (!sessionChecked) return <main className="route-loading"><span>Opening your UniqEnergy Account…</span></main>;
 
   return <main className="auth-page">
     <div className="auth-grid" aria-hidden="true"/><div className="auth-orbit" aria-hidden="true"/>

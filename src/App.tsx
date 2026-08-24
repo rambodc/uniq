@@ -912,6 +912,14 @@ export default function App() {
     pathRef.current = path;
   }, [path]);
   useEffect(() => {
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  }, []);
+  useEffect(() => {
+    if (path === "/" || publicPaths.has(path)) {
+      requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+    }
+  }, [path]);
+  useEffect(() => {
     const update = () => {
       const normalized = validPath(location.pathname);
       if (
@@ -994,6 +1002,7 @@ export default function App() {
         }
       >
         <AuthPage
+          key={path}
           path={path as (typeof authPaths)[number]}
           navigate={navigate}
         />
@@ -1063,7 +1072,7 @@ export default function App() {
       <Header
         path={path}
         navigate={navigate}
-        onFluidLab={() => navigate("/signin")}
+        onFluidLab={lab}
       />
       {publicPaths.has(path) ? (
         <PublicRoute path={path} navigate={navigate} />
