@@ -571,6 +571,7 @@ function AboutPage({ navigate }: { navigate: (path: string) => void }) {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
         >
+          <span className="page-label">About Us</span>
           <PageHeading page={page} />
           <RouteButton to="/contact-us" navigate={navigate}>
             Discuss your operation
@@ -646,31 +647,13 @@ function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
       <Suspense fallback={<div className="technology-loading">Preparing the well journey…</div>}>
         <TechnologyJourney onContact={() => navigate("/contact-us")} />
       </Suspense>
-      <section className="technology-chemistry section-wide">
-        <Reveal className="technology-chemistry-copy">
-          <span className="eyebrow">Chemistry meets current information</span>
-          <h2>Digital connection.<br /><em>Physical performance.</em></h2>
-          <p>Technology is useful when it strengthens the work. Field observations and technical review inform customized fluid programs, while laboratory and field feedback help the team continue refining the response.</p>
-          <div className="technology-proof">
-            <span><strong>50+</strong> custom products</span>
-            <span><strong>LUREX</strong> anti-accretion technology</span>
-            <span><strong>Uniq-RM</strong> oil-based system</span>
-            <span><strong>21</strong> patents granted or pending</span>
-          </div>
-        </Reveal>
-        <Reveal className="technology-lab-visual">
-          <img src="/images/about-lab-connected.webp" alt="Laboratory specialist reviewing drilling-fluid chemistry and physical performance" />
-          <div className="technology-orbits" aria-hidden="true"><i /><i /><i /><b /></div>
-          <small>LABORATORY ↔ FIELD</small>
-        </Reveal>
-      </section>
       <section className="technology-loop section-wide">
         <Reveal>
           <span className="eyebrow">One connected operating loop</span>
           <h2>Technology that returns<br /><em>to the field.</em></h2>
         </Reveal>
         <div className="technology-loop-steps">
-          {["Observe in the field", "Share current information", "Review together", "Refine the fluid response"].map((step, index) => <Reveal key={step}><span>0{index + 1}</span><strong>{step}</strong>{index < 3 && <b aria-hidden="true">→</b>}</Reveal>)}
+          {["Engineer the chemistry", "Connect the information", "Strengthen the decision"].map((step, index) => <Reveal key={step}><span>0{index + 1}</span><strong>{step}</strong>{index < 2 && <b aria-hidden="true">→</b>}</Reveal>)}
         </div>
       </section>
       <section className="technology-closing">
