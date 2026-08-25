@@ -181,6 +181,10 @@ test("Contact page has simplified navigation, connected 3D, adaptive form, and i
   assert.match(scene, /frameloop=\{active \? "always" : "demand"\}/);
   const styles = await readFile(new URL("src/styles.css", root), "utf8");
   assert.match(styles, /touch-action:pan-y/);
+  assert.match(app, /path === "\/contact-us"/);
+  assert.match(app, /minimum-scale=1, maximum-scale=1, user-scalable=no/);
+  assert.match(app, /viewport\.content/);
+  assert.match(app, /width=device-width, initial-scale=1\.0/);
   assert.match(styles, /contact-page\{width:100%;max-width:100vw;overflow-x:clip\}/);
   assert.match(styles, /\.site-header\{width:min\(calc\(100% - 64px\),1350px\)\}/);
 });

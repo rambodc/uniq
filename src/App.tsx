@@ -1002,6 +1002,13 @@ export default function App() {
       setMetadata(publicPages.find((page) => page.path === path));
   }, [path]);
   useEffect(() => {
+    const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!viewport) return;
+    viewport.content = path === "/contact-us"
+      ? "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
+      : "width=device-width, initial-scale=1.0";
+  }, [path]);
+  useEffect(() => {
     if (path !== "/fluidlab") return;
     void (async () => {
       await authReady;
