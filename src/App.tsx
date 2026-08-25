@@ -35,17 +35,17 @@ const publicPages: PublicPage[] = [
   {
     path: "/about-us",
     nav: "About Us",
-    eyebrow: "Connected from office to wellsite",
-    title: "One team. One view",
-    accent: "of the operation.",
+    eyebrow: "The UniqEnergy advantage",
+    title: "Built to move with",
+    accent: "the operation.",
     description:
-      "See how UniqEnergy connects field engineers, office specialists, and clients through responsive support, mobile workflows, and current field information.",
+      "Discover the five strengths UniqEnergy brings together around the wellbore: responsive support, connected technology, specialty chemistry, experienced people, and Western Canadian reach.",
     summary:
-      "Field engineers, office specialists, and clients work from current field information to make faster, more confident fluid decisions.",
+      "Responsive support, connected field intelligence, specialized chemistry, experienced people, and Western Canadian reach—working as one system around the wellbore.",
     detail:
-      "Mobile reporting and shared operational visibility keep the people around the well aligned—from field observations to technical support and client communication.",
-    image: "/images/about-field-connected.webp",
-    alt: "Field engineer reviewing current operating information on a rugged device at a Western Canadian drilling rig",
+      "Five distinct capabilities come together as one accountable operating partner.",
+    image: "/images/field-engineers.jpg",
+    alt: "Experienced field engineers reviewing operating information together at a Western Canadian drilling rig",
     cta: "Discuss your operation",
   },
   {
@@ -506,25 +506,63 @@ function PageHeading({ page }: { page: PublicPage }) {
 
 function AboutPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[0];
-  const workflow = [
-    { number: "01", label: "Field", title: "Capture what is happening now.", copy: "Mobile reporting brings fluid conditions and operational observations into a shared workflow from the wellsite.", status: "Field update" },
-    { number: "02", label: "Office", title: "Turn visibility into support.", copy: "Technical specialists can review current information, add context, and support the next decision without waiting for delayed reports.", status: "Technical review" },
-    { number: "03", label: "Client", title: "Keep stakeholders aligned.", copy: "Clear, timely communication gives clients a better view of the operation and the reasoning behind fluid decisions.", status: "Shared context" },
-  ];
-  const capabilities = [
-    ["01", "Respond without layers", "Direct communication between the people closest to the work helps technical questions move quickly from the rig to the right specialist."],
-    ["02", "Work from current information", "Mobile applications, shared reporting, and real-time field visibility reduce information gaps across the operation."],
-    ["03", "Engineer for the wellbore", "Fluid programs are developed around actual operating conditions, technical requirements, and project economics—not a generic template."],
-    ["04", "Keep experience close", "Field knowledge, laboratory thinking, and office support work as one connected technical team."],
+  const pillars = [
+    {
+      number: "01",
+      eyebrow: "Responsiveness & dedicated support",
+      title: "Support without the runaround.",
+      copy: "Direct access to technical people keeps questions close to the people who can act on them. Fewer communication layers help field response, product coordination, and technical support move with the operation.",
+      image: "/images/field-engineers.jpg",
+      alt: "Two field engineers reviewing operating information beside drilling equipment",
+      proofs: ["Direct technical access", "Rapid field response", "Coordinated mobilization"],
+    },
+    {
+      number: "02",
+      eyebrow: "Connected field intelligence",
+      title: "Connected information. Faster decisions.",
+      copy: "Mobile applications and shared field reporting give office specialists and clients current visibility into the work. Better context supports clearer communication and more confident fluid decisions.",
+      image: "/images/about-field-connected.webp",
+      alt: "Field engineer using a rugged mobile device at a Western Canadian drilling rig",
+      proofs: ["Mobile field reporting", "Current operational visibility", "Field, office, and client alignment"],
+      workflow: true,
+    },
+    {
+      number: "03",
+      eyebrow: "Specialty chemistry & custom products",
+      title: "Chemistry shaped by the well.",
+      copy: "Customized fluid programs bring laboratory thinking and field feedback together around actual operating conditions, technical requirements, and project economics.",
+      image: "/images/about-lab-connected.webp",
+      alt: "Laboratory specialist evaluating a drilling fluid sample beside technical equipment",
+      proofs: ["50+ custom products", "LUREX and Uniq-RM", "21 patents granted or pending"],
+    },
+    {
+      number: "04",
+      eyebrow: "Field expertise & people first",
+      title: "Experience where it matters.",
+      copy: "Experienced field engineers bring practical Western Canadian knowledge to the wellsite. Continuous learning, proactive troubleshooting, and close office collaboration keep sound technical judgment near the work.",
+      image: "/images/about-team-connected.webp",
+      alt: "Field and office specialists reviewing current operational information together",
+      proofs: ["Experienced field engineers", "Continuous technical learning", "Proactive problem solving"],
+    },
+    {
+      number: "05",
+      eyebrow: "Regional capacity & reach",
+      title: "Built in Calgary. Ready across Western Canada.",
+      copy: "Our southeast Calgary blending base and access to traditional mud-storage warehouses across Western Canada support dependable supply for operations across the region.",
+      image: "/images/western-canada.jpg",
+      alt: "Western Canadian drilling operation set against the Rocky Mountains",
+      proofs: ["45,000 ft² Calgary facility", "50,000 L daily blend capacity", "Western Canadian warehouse access"],
+    },
   ];
   return (
     <main id="main" className="standalone-page about-page">
       <section className="about-hero">
         <div className="about-hero-media">
           <motion.img initial={{ opacity: 0, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.9 }} src={page.image} alt={page.alt} />
-          <div className="about-live-card" aria-label="Connected operating workflow">
-            <span><i /> Current field visibility</span>
-            <div><b>Field</b><i /><b>Office</b><i /><b>Client</b></div>
+          <div className="about-five-card" aria-label="Five connected strengths">
+            <span>Five strengths</span>
+            <div>{pillars.map((pillar) => <i key={pillar.number}>{pillar.number}</i>)}</div>
+            <strong>One system around the wellbore</strong>
           </div>
         </div>
         <motion.div
@@ -538,30 +576,23 @@ function AboutPage({ navigate }: { navigate: (path: string) => void }) {
           </RouteButton>
         </motion.div>
       </section>
-      <section className="about-intro section-wide">
-        <Reveal className="about-intro-heading">
-          <span className="eyebrow">A connected operating model</span>
-          <h2>Built around the wellbore. <em>Connected around the work.</em></h2>
-        </Reveal>
-        <Reveal className="about-intro-copy"><p>Good fluid decisions depend on more than chemistry. They depend on the right people seeing the right field information while it can still shape the operation.</p><p>{page.detail}</p></Reveal>
+      <section className="about-five-intro section-wide">
+        <Reveal><span className="eyebrow">Five connected capabilities</span><h2>Different strengths.<br /><em>One accountable team.</em></h2></Reveal>
+        <Reveal><p>No single capability defines UniqEnergy. Our advantage comes from how responsive support, current information, specialty chemistry, experienced people, and regional capacity work together around each operation.</p></Reveal>
       </section>
-      <section className="about-workflow section-wide" aria-labelledby="workflow-title">
-        <Reveal className="about-section-heading"><span className="eyebrow">Field to office to client</span><h2 id="workflow-title">One clear line through the <em>operation.</em></h2><p>Technology supports the conversation. Experienced people still make the decisions.</p></Reveal>
-        <div className="workflow-grid">
-          {workflow.map((item) => <Reveal className="workflow-card" key={item.label}><div className="workflow-card-top"><span>{item.number}</span><small>{item.status}</small></div><div className="workflow-signal" aria-hidden="true"><i /><i /><i /></div><strong>{item.label}</strong><h3>{item.title}</h3><p>{item.copy}</p></Reveal>)}
-        </div>
-      </section>
-      <section className="about-capabilities section-wide" aria-labelledby="capabilities-title">
-        <Reveal className="about-section-heading"><span className="eyebrow">How we work differently</span><h2 id="capabilities-title">Responsive by design. <em>Technical by nature.</em></h2></Reveal>
-        <div className="about-capability-grid">
-          {capabilities.map(([number, title, copy]) => <Reveal className="about-capability" key={title}><span>{number}</span><h3>{title}</h3><p>{copy}</p></Reveal>)}
-        </div>
-      </section>
-      <section className="about-editorial section-wide">
-        <Reveal className="about-editorial-main"><img src="/images/about-team-connected.webp" alt="Field and office specialists reviewing current operational information together" /><div><span className="eyebrow">People stay in the loop</span><h2>Technology connects the team. <em>Experience guides it.</em></h2><p>Shared information shortens the distance between a field observation and technical support. It gives the office better context, helps clients stay informed, and keeps experienced judgment close to the well.</p></div></Reveal>
-        <Reveal className="about-editorial-lab"><img src="/images/about-lab-connected.webp" alt="Laboratory specialist evaluating a drilling fluid sample beside technical equipment" /><div><small>From observation to formulation</small><h3>Digital visibility, grounded in physical performance.</h3><p>Field communication and laboratory work come together to shape fluid solutions around the conditions that matter.</p></div></Reveal>
-      </section>
-      <section className="about-promise"><div className="about-promise-grid" aria-hidden="true" /><Reveal><span className="eyebrow">The UniqEnergy advantage</span><h2>Better information.<br />Faster alignment.<br /><em>Stronger field decisions.</em></h2><RouteButton to="/contact-us" navigate={navigate}>Discuss your operation</RouteButton></Reveal></section>
+      <div className="about-pillar-list">
+        {pillars.map((pillar, index) => (
+          <section className={`about-pillar section-wide ${index % 2 ? "about-pillar-reverse" : ""}`} key={pillar.number}>
+            <Reveal className="about-pillar-visual"><img src={pillar.image} alt={pillar.alt} /><span>{pillar.number}</span></Reveal>
+            <Reveal className="about-pillar-copy">
+              <span className="eyebrow">{pillar.eyebrow}</span><h2>{pillar.title}</h2><p>{pillar.copy}</p>
+              {pillar.workflow && <div className="about-mini-workflow" aria-label="Field to office to client workflow"><b>Field</b><i /><b>Office</b><i /><b>Client</b></div>}
+              <div className="about-proof-list">{pillar.proofs.map((proof) => <span key={proof}>{proof}</span>)}</div>
+            </Reveal>
+          </section>
+        ))}
+      </div>
+      <section className="about-promise"><div className="about-promise-grid" aria-hidden="true" /><Reveal><span className="eyebrow">One accountable partner</span><h2>Five strengths.<br /><em>One team around the wellbore.</em></h2><p>Responsive support, connected information, specialized chemistry, experienced people, and regional reach—aligned around the work.</p><RouteButton to="/contact-us" navigate={navigate}>Discuss your operation</RouteButton></Reveal></section>
     </main>
   );
 }

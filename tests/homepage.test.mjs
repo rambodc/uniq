@@ -38,21 +38,23 @@ test("public website exposes every marketing route and preserves contact actions
   assert.match(source, /function setMetadata/);
 });
 
-test("homepage hero is focused and the About page presents connected operations", async () => {
+test("homepage hero is focused and the About page presents five balanced strengths", async () => {
   const source = await readFile(new URL("src/App.tsx", root), "utf8");
   const hero = source.slice(source.indexOf("function Hero("), source.indexOf("function Home("));
   assert.doesNotMatch(hero, /Customized drilling fluid systems engineered around/);
   assert.doesNotMatch(hero, /Contact Us|RouteButton/);
   for (const message of [
-    "Connected from office to wellsite",
-    "One team. One view",
-    "Field to office to client",
-    "Respond without layers",
-    "Work from current information",
-    "Engineer for the wellbore",
-    "Keep experience close",
-    "Better information.",
-    "Stronger field decisions.",
+    "Built to move with",
+    "Support without the runaround.",
+    "Connected information. Faster decisions.",
+    "Chemistry shaped by the well.",
+    "Experience where it matters.",
+    "Built in Calgary. Ready across Western Canada.",
+    "Five strengths.",
+    "One team around the wellbore.",
+    "50+ custom products",
+    "45,000 ft² Calgary facility",
+    "50,000 L daily blend capacity",
   ]) {
     assert.match(source, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -60,10 +62,12 @@ test("homepage hero is focused and the About page presents connected operations"
     "about-field-connected.webp",
     "about-team-connected.webp",
     "about-lab-connected.webp",
+    "field-engineers.jpg",
+    "western-canada.jpg",
   ]) {
     assert.match(source, new RegExp(asset));
   }
-  assert.doesNotMatch(source, /predictive diagnostics|automated dosing|guaranteed uptime/i);
+  assert.doesNotMatch(source, /24\/7 support|predictive diagnostics|automated dosing|autonomous control|guaranteed uptime|guaranteed ROI|multiple owned facilities/i);
 });
 
 test("sitemap contains the homepage and all public marketing pages", async () => {
