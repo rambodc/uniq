@@ -174,9 +174,15 @@ test("Contact page has simplified navigation, connected 3D, adaptive form, and i
   assert.match(scene, /gridHelper/);
   assert.match(scene, /camera\.position\.lerp/);
   assert.match(scene, /points ref=\{particles\}/);
+  assert.match(scene, /sphereGeometry args=\{\[compact \? \.22 : \.3/);
+  assert.doesNotMatch(scene, /cylinderGeometry|torusGeometry/);
   assert.match(scene, /prefers-reduced-motion/);
   assert.match(scene, /IntersectionObserver/);
   assert.match(scene, /frameloop=\{active \? "always" : "demand"\}/);
+  const styles = await readFile(new URL("src/styles.css", root), "utf8");
+  assert.match(styles, /touch-action:pan-y/);
+  assert.match(styles, /contact-page\{width:100%;max-width:100vw;overflow-x:clip\}/);
+  assert.match(styles, /\.site-header\{width:min\(calc\(100% - 64px\),1350px\)\}/);
 });
 
 test("FluidLab is an account project workspace with autosaving", async () => {

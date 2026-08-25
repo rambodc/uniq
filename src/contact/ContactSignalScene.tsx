@@ -37,8 +37,7 @@ function SignalNetwork({ active, compact }: { active: boolean; compact: boolean 
     <gridHelper args={[70, compact ? 32 : 52, "#1596a0", "#0a4b58"]} position={[0, -.1, 0]} />
     {paths.map((path, index) => <Line key={index} points={path.getPoints(compact ? 32 : 64)} color={index % 2 ? "#32c9ed" : "#1ce7be"} lineWidth={compact ? 1.2 : 1.8} transparent opacity={.68} />)}
     {paths.map((path, index) => { const point = path.getPointAt(0); return <mesh key={`node-${index}`} position={point}><sphereGeometry args={[.28, 18, 18]} /><meshStandardMaterial color="#32c9ed" emissive="#1ce7be" emissiveIntensity={2.2} /></mesh>; })}
-    <mesh position={[0, .45, 0]}><cylinderGeometry args={[1.2, 1.6, .28, 48]} /><meshPhysicalMaterial color="#19dbb7" emissive="#0c8f82" emissiveIntensity={1.3} metalness={.3} roughness={.22} /></mesh>
-    <mesh position={[0, 1.3, 0]}><torusGeometry args={[1.25, .045, 12, 64]} /><meshBasicMaterial color="#74ffe4" transparent opacity={.8} /></mesh>
+    <mesh position={[0, .42, 0]}><sphereGeometry args={[compact ? .22 : .3, 24, 24]} /><meshStandardMaterial color="#baffef" emissive="#1ce7be" emissiveIntensity={3.2} /></mesh>
     <points ref={particles}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><pointsMaterial color="#c5fff3" size={compact ? .18 : .25} sizeAttenuation transparent opacity={.95} depthWrite={false} /></points>
   </group>;
 }
