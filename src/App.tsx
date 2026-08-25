@@ -394,7 +394,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
         <Reveal className="home-intro-copy">
           <span className="eyebrow">One connected operation</span>
           <h2>One team around<br /><em>the wellbore.</em></h2>
-          <p>Responsive people. Current information. Purpose-built chemistry.</p>
+          <p>Responsive people. Smarter fluids.</p>
           <RouteLink to={about.path} navigate={navigate} className="text-link">
             Discover our approach <b>↗</b>
           </RouteLink>

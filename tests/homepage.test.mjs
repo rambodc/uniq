@@ -75,7 +75,7 @@ test("homepage follows its hero with a concise transparent 3D well feature", asy
   const scene = await readFile(new URL("src/home/HomeWellScene.tsx", root), "utf8");
   const home = app.slice(app.indexOf("function Home("), app.indexOf("function ContactBand("));
   assert.match(home, /One team around/);
-  assert.match(home, /Responsive people\. Current information\. Purpose-built chemistry\./);
+  assert.match(home, /Responsive people\. Smarter fluids\./);
   assert.match(home, /<HomeWellScene/);
   assert.doesNotMatch(home, /Responsive support, connected field intelligence, specialized chemistry, experienced people/);
   assert.match(scene, /meshPhysicalMaterial/);

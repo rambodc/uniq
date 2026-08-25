@@ -15,10 +15,10 @@ function TransparentWell({ active, compact }: { active: boolean; compact: boolea
   const count = compact ? 42 : 88, positions = useMemo(() => new Float32Array(count * 3), [count]);
   useFrame(({ camera, clock }) => {
     if (!active) return;
-    const travel = .05 + ((Math.sin(clock.elapsedTime * .16) + 1) / 2) * .72;
+    const travel = .04 + ((Math.sin(clock.elapsedTime * .16) + 1) / 2) * .78;
     const target = curve.getPointAt(travel);
     const orbit = clock.elapsedTime * .09;
-    const desired = target.clone().add(new THREE.Vector3(11 + Math.cos(orbit) * 2.2, 5.5, 20 + Math.sin(orbit) * 2.8));
+    const desired = target.clone().add(new THREE.Vector3((compact ? 6.5 : 9) + Math.cos(orbit) * (compact ? 1.2 : 2), compact ? 3.2 : 4.5, (compact ? 12 : 17) + Math.sin(orbit) * (compact ? 1.5 : 2.5)));
     camera.position.lerp(desired, .022);
     camera.lookAt(target.x, target.y, target.z);
     if (group.current) group.current.rotation.y = Math.sin(clock.elapsedTime * .12) * .055;
@@ -43,7 +43,7 @@ function TransparentWell({ active, compact }: { active: boolean; compact: boolea
 }
 
 function Scene({ active, compact }: { active: boolean; compact: boolean }) {
-  return <Canvas frameloop={active ? "always" : "demand"} dpr={[1, compact ? 1.15 : 1.6]} camera={{ position: [12, 8, 22], fov: 45 }} gl={{ antialias: !compact, alpha: true, powerPreference: "high-performance" }}>
+  return <Canvas frameloop={active ? "always" : "demand"} dpr={[1, compact ? 1.15 : 1.6]} camera={{ position: [compact ? 7 : 10, compact ? 5 : 7, compact ? 13 : 19], fov: compact ? 49 : 45 }} gl={{ antialias: !compact, alpha: true, powerPreference: "high-performance" }}>
     <fog attach="fog" args={["#041923", 28, 84]} /><ambientLight intensity={1.5} /><directionalLight position={[12, 16, 13]} intensity={2.7} color="#e0fffa" /><pointLight position={[-4, 2, 5]} intensity={24} color="#1ce7be" distance={38} />
     <Suspense fallback={null}><TransparentWell active={active} compact={compact} /></Suspense>
   </Canvas>;
