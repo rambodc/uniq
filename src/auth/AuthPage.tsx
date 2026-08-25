@@ -111,7 +111,7 @@ export default function AuthPage({ path, navigate }: { path: AuthPath; navigate:
     <div className="auth-grid" aria-hidden="true"/><div className="auth-orbit" aria-hidden="true"/>
     <button className="auth-back" onClick={() => navigate("/")}><ArrowLeft/> Home</button>
     <form className="auth-card" onSubmit={submit}>
-      <div className="auth-brand"><img src="/brand/uniqenergy-logo-light-text.png" alt="UniqEnergy Solutions"/><span>/ Account</span></div>
+      <div className="auth-brand"><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/></div>
       <span className="auth-eyebrow">Your UniqEnergy workspace</span>
       <h1>{path === "/signin" ? "Welcome back." : path === "/signup" ? (profileOnly ? "Complete your profile." : "Create your account.") : "Reset your password."}</h1>
       <p>{path === "/signin" ? "Sign in to access your projects and UniqEnergy applications." : path === "/signup" ? "Create one account for FluidLab and future UniqEnergy applications." : "We’ll send a secure reset link to your account email."}</p>
