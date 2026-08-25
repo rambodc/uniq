@@ -7,18 +7,20 @@ import * as THREE from "three";
 function DownholePipe({ active, compact }: { active: boolean; compact: boolean }) {
   const pipe = useRef<THREE.Group>(null), particles = useRef<THREE.Points>(null);
   const curve = useMemo(() => new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-7, 9, 0), new THREE.Vector3(-7, 2, 0), new THREE.Vector3(-7, -8, 0),
-    new THREE.Vector3(-5.5, -15, 0), new THREE.Vector3(0, -20, 0), new THREE.Vector3(10, -21, 0), new THREE.Vector3(23, -21, 0),
+    new THREE.Vector3(5, 11, 0), new THREE.Vector3(5, 3, 0), new THREE.Vector3(5, -8, 0),
+    new THREE.Vector3(6.5, -15, 0), new THREE.Vector3(12, -20, 0), new THREE.Vector3(21, -21, 0), new THREE.Vector3(34, -21, 0),
   ]), []);
-  const tube = useMemo(() => new THREE.TubeGeometry(curve, compact ? 90 : 180, .43, compact ? 8 : 16, false), [compact, curve]);
+  const tube = useMemo(() => new THREE.TubeGeometry(curve, compact ? 90 : 180, .6, compact ? 10 : 18, false), [compact, curve]);
   const line = useMemo(() => curve.getPoints(compact ? 90 : 180), [compact, curve]);
   const count = compact ? 38 : 78, positions = useMemo(() => new Float32Array(count * 3), [count]);
   useFrame(({ camera, clock }) => {
     if (!active) return;
-    camera.position.x = 9 + Math.sin(clock.elapsedTime * .12) * .75;
-    camera.position.y = -4 + Math.cos(clock.elapsedTime * .1) * .45;
-    camera.lookAt(3, -8, 0);
-    if (pipe.current) pipe.current.rotation.y = Math.sin(clock.elapsedTime * .14) * .045;
+    const travel = .08 + ((Math.sin(clock.elapsedTime * .19 - Math.PI / 2) + 1) / 2) * .74;
+    const target = curve.getPointAt(travel);
+    const desired = target.clone().add(new THREE.Vector3(compact ? 9 : 12, compact ? 4 : 5.5, compact ? 18 : 21));
+    camera.position.lerp(desired, .025);
+    camera.lookAt(target.x, target.y, target.z);
+    if (pipe.current) pipe.current.rotation.y = Math.sin(clock.elapsedTime * .14) * .035;
     if (!particles.current) return;
     const values = particles.current.geometry.attributes.position.array as Float32Array;
     for (let index = 0; index < count; index++) {
@@ -28,17 +30,17 @@ function DownholePipe({ active, compact }: { active: boolean; compact: boolean }
     particles.current.geometry.attributes.position.needsUpdate = true;
   });
   return <group ref={pipe}>
-    <mesh geometry={tube}><meshStandardMaterial color="#0b6470" metalness={.38} roughness={.28} transparent opacity={.88} emissive="#073e45" emissiveIntensity={.5} /></mesh>
-    <Line points={line} color="#45f4d1" lineWidth={compact ? 2 : 3.2} transparent opacity={.95} />
-    <points ref={particles}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><pointsMaterial color="#a1ffed" size={compact ? .18 : .25} transparent opacity={.98} sizeAttenuation /></points>
-    <gridHelper args={[95, 48, "#1a7982", "#0b3c47"]} position={[5, 9.2, 0]} />
-    <gridHelper args={[75, 30, "#135b66", "#082f39"]} position={[4, -22, 0]} rotation={[Math.PI / 2, 0, 0]} />
+    <mesh geometry={tube}><meshStandardMaterial color="#159aa0" metalness={.32} roughness={.24} transparent opacity={.96} emissive="#0a7777" emissiveIntensity={.9} /></mesh>
+    <Line points={line} color="#76ffe4" lineWidth={compact ? 3 : 4.5} transparent opacity={1} />
+    <points ref={particles}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><pointsMaterial color="#d1fff6" size={compact ? .25 : .34} transparent opacity={1} sizeAttenuation /></points>
+    <gridHelper args={[100, 50, "#24a1a8", "#0d5660"]} position={[12, 11.2, 0]} />
+    <gridHelper args={[80, 32, "#1a7a83", "#0a4650"]} position={[16, -22, 0]} rotation={[Math.PI / 2, 0, 0]} />
   </group>;
 }
 
 function PipeScene({ active, compact }: { active: boolean; compact: boolean }) {
-  return <Canvas frameloop={active ? "always" : "demand"} dpr={[1, compact ? 1.2 : 1.7]} camera={{ position: [9, -4, 18], fov: 44 }} gl={{ antialias: !compact, alpha: true, powerPreference: "high-performance" }}>
-    <fog attach="fog" args={["#03131d", 20, 68]} /><ambientLight intensity={1.15} /><directionalLight position={[9, 13, 11]} intensity={2.3} color="#e1fffb" /><pointLight position={[-7, 1, 4]} intensity={18} color="#1ce7be" distance={28} />
+  return <Canvas frameloop={active ? "always" : "demand"} dpr={[1, compact ? 1.2 : 1.7]} camera={{ position: [17, 14, 23], fov: 46 }} gl={{ antialias: !compact, alpha: true, powerPreference: "high-performance" }}>
+    <fog attach="fog" args={["#03131d", 28, 82]} /><ambientLight intensity={1.55} /><directionalLight position={[13, 16, 14]} intensity={3} color="#e1fffb" /><pointLight position={[5, 2, 5]} intensity={28} color="#1ce7be" distance={38} />
     <Suspense fallback={null}><DownholePipe active={active} compact={compact} /></Suspense>
   </Canvas>;
 }

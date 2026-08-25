@@ -96,6 +96,8 @@ test("Technology page uses natural flow, three technology pillars, and qualified
   assert.match(journey, /canRenderWebGL/);
   assert.match(journey, /IntersectionObserver/);
   assert.match(journey, /frameloop=\{active \? "always" : "demand"\}/);
+  assert.match(journey, /curve\.getPointAt\(travel\)/);
+  assert.match(journey, /camera\.position\.lerp\(desired/);
   assert.doesNotMatch(journey, /function Rig|addEventListener\("scroll"|activeChapter|scroll to travel/i);
   assert.doesNotMatch(app + journey, /predictive diagnostics|automated dosing|autonomous control|proprietary analytics|guaranteed performance|direct client app access/i);
 });
