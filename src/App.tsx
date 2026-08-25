@@ -86,17 +86,17 @@ const publicPages: PublicPage[] = [
     path: "/health-safety",
     nav: "Health & Safety",
     eyebrow: "Everyone owns safety",
-    title: "Safety in",
-    accent: "every decision.",
+    title: "Safe work is how",
+    accent: "the work gets done.",
     description:
-      "Learn about UniqEnergy's continuously improving health, safety, and environmental approach.",
+      "Learn how UniqEnergy supports safe work through shared responsibility, prepared people, practical risk awareness, and continuous HSE improvement.",
     summary:
-      "Safe work is a shared responsibility across the office, facility, and field.",
+      "Policies, training, communication, and personal ownership connect safety across the office, facility, field, and client operation.",
     detail:
-      "Our continuously improving health, safety, and environmental program supports disciplined operations and is backed by valid COR certification.",
-    image: "/images/safety-3d.png",
-    alt: "Protective shield surrounding controlled industrial field equipment",
-    cta: "Speak with our team",
+      "Our HSE program is reviewed and improved to strengthen risk awareness and operating practices, supported by a valid COR certification.",
+    image: "/images/field-engineers.jpg",
+    alt: "UniqEnergy field engineers wearing protective equipment at a Western Canadian drilling site",
+    cta: "Discuss safety and compliance",
   },
   {
     path: "/locations",
@@ -649,36 +649,132 @@ function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
 
 function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[3];
+  const principles = [
+    {
+      number: "01",
+      title: "Shared responsibility",
+      copy: "Safe work depends on individual ownership, clear expectations, and open communication across the office, facility, and field.",
+    },
+    {
+      number: "02",
+      title: "Prepared people",
+      copy: "Policies and employee training help our people recognize hazards, understand requirements, and approach each task with discipline.",
+    },
+    {
+      number: "03",
+      title: "Continuous improvement",
+      copy: "Our HSE program is reviewed and improved to strengthen risk awareness, communication, and operating practices.",
+    },
+  ];
+  const complianceMarks = [
+    {
+      name: "Energy Safety Canada",
+      status: "Safety platform",
+      image: "/images/compliance/energy-safety-canada.jpg",
+    },
+    {
+      name: "ComplyWorks",
+      status: "Compliance platform",
+      image: "/images/compliance/complyworks.png",
+    },
+    {
+      name: "ISNetworld",
+      status: "Compliance platform",
+      image: "/images/compliance/isnetworld.jpg",
+    },
+    {
+      name: "Certificate of Recognition",
+      status: "Valid COR certification",
+      image: "/images/compliance/cor.jpg",
+    },
+  ];
   return (
     <main id="main" className="standalone-page safety-page">
-      <section className="safety-hero">
+      <section className="safety-hero-new">
+        <img className="safety-hero-image" src={page.image} alt={page.alt} />
+        <div className="safety-hero-grid" aria-hidden="true" />
         <motion.div
-          className="standalone-copy"
+          className="safety-hero-copy"
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <PageHeading page={page} />
+          <div className="page-label">Health &amp; Safety</div>
+          <span className="eyebrow">{page.eyebrow}</span>
+          <h1>{page.title}<br /><em>{page.accent}</em></h1>
+          <p>{page.summary}</p>
           <RouteButton to="/contact-us" navigate={navigate}>
-            Contact Us
+            {page.cta}
           </RouteButton>
         </motion.div>
-        <div className="safety-shield">
-          <img src={page.image} alt={page.alt} />
+      </section>
+
+      <section className="safety-commitment section-wide">
+        <Reveal className="safety-section-heading">
+          <span className="eyebrow">An operating priority</span>
+          <h2>Committed to excellence<br /><em>in safety.</em></h2>
+        </Reveal>
+        <Reveal className="safety-commitment-copy">
+          <p>Health and safety are operating priorities at UniqEnergy, supported by clear policies, employee training, practical risk awareness, and compliance practices.</p>
+          <p>Every employee has an active role in following requirements, communicating concerns, and helping improve HSE performance. That shared responsibility connects our office, facility, field teams, and client operations.</p>
+        </Reveal>
+      </section>
+
+      <section className="safety-principles-new section-wide" aria-label="Safety principles">
+        {principles.map((principle) => (
+          <Reveal className="safety-principle" key={principle.number}>
+            <span>{principle.number}</span>
+            <h2>{principle.title}</h2>
+            <p>{principle.copy}</p>
+          </Reveal>
+        ))}
+      </section>
+
+      <section className="safety-process section-wide">
+        <Reveal className="safety-process-visual">
+          <img src="/images/safety-quality.jpg" alt="Worker in protective equipment inspecting a drilling-fluid sample in a controlled facility" />
+          <span>People + process</span>
+        </Reveal>
+        <Reveal className="safety-process-copy">
+          <img className="safety-watermark" src="/brand/uniqenergy-mark-512.png" alt="" aria-hidden="true" />
+          <span className="eyebrow">From facility to field</span>
+          <h2>Discipline follows<br /><em>the work.</em></h2>
+          <p>Safe field execution starts before anyone arrives at the wellsite. It includes facility practices, controlled chemical handling, technical review, clear communication, and attention to the conditions around each task.</p>
+          <div className="safety-process-points">
+            <span>Field execution</span>
+            <span>Facility practices</span>
+            <span>Technical review</span>
+          </div>
+        </Reveal>
+      </section>
+
+      <section className="safety-compliance">
+        <div className="section-wide">
+          <Reveal className="safety-compliance-heading">
+            <span className="eyebrow">Visible compliance</span>
+            <h2>Recognized systems.<br /><em>Clear standing.</em></h2>
+            <p>Clients can review UniqEnergy’s current safety and compliance standing through these recognized systems. UniqEnergy maintains a valid COR certification.</p>
+          </Reveal>
+          <div className="safety-marks">
+            {complianceMarks.map((mark) => (
+              <Reveal className="safety-mark" key={mark.name}>
+                <div><img src={mark.image} alt={`${mark.name} mark`} /></div>
+                <small>{mark.status}</small>
+                <strong>{mark.name}</strong>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
-      <section className="safety-principles section-wide">
+
+      <section className="safety-closing">
+        <div className="safety-closing-grid" aria-hidden="true" />
         <Reveal>
-          <strong>01</strong>
-          <h2>Shared responsibility</h2>
-          <p>Everyone owns safety across the office, facility, and field.</p>
-        </Reveal>
-        <Reveal>
-          <strong>02</strong>
-          <h2>Continuous improvement</h2>
-          <p>{page.detail}</p>
+          <span className="eyebrow">Disciplined by design</span>
+          <h2>Safety belongs<br /><em>in every decision.</em></h2>
+          <p>Prepared people, clear communication, and continuous improvement help keep safety connected to the way work is planned and carried out.</p>
+          <RouteButton to="/contact-us" navigate={navigate}>{page.cta}</RouteButton>
         </Reveal>
       </section>
-      <ContactBand navigate={navigate} />
     </main>
   );
 }

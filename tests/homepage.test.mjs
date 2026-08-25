@@ -120,6 +120,31 @@ test("Technology page uses natural flow, three technology pillars, and qualified
   assert.doesNotMatch(app + journey, /predictive diagnostics|automated dosing|autonomous control|proprietary analytics|guaranteed performance|direct client app access/i);
 });
 
+test("Health and Safety page presents people, operating discipline, and accurate compliance language", async () => {
+  const source = await readFile(new URL("src/App.tsx", root), "utf8");
+  const safety = source.slice(source.indexOf("function SafetyPage("), source.indexOf("function LocationsPage("));
+  for (const message of [
+    "Health &amp; Safety",
+    "Safe work is how",
+    "Committed to excellence",
+    "Shared responsibility",
+    "Prepared people",
+    "Continuous improvement",
+    "Energy Safety Canada",
+    "ComplyWorks",
+    "ISNetworld",
+    "Valid COR certification",
+    "Discuss safety and compliance",
+    "safety-quality.jpg",
+    "energy-safety-canada.jpg",
+    "complyworks.png",
+    "isnetworld.jpg",
+    "cor.jpg",
+  ]) assert.match(source, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(source, /field-engineers\.jpg/);
+  assert.doesNotMatch(safety, /zero incidents|guaranteed protection|fixed training|all four certifications/i);
+});
+
 test("sitemap contains the homepage and all public marketing pages", async () => {
   const sitemap = await readFile(new URL("public/sitemap.xml", root), "utf8");
   assert.equal((sitemap.match(/<url>/g) ?? []).length, 8);
