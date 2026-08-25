@@ -38,6 +38,34 @@ test("public website exposes every marketing route and preserves contact actions
   assert.match(source, /function setMetadata/);
 });
 
+test("homepage hero is focused and the About page presents connected operations", async () => {
+  const source = await readFile(new URL("src/App.tsx", root), "utf8");
+  const hero = source.slice(source.indexOf("function Hero("), source.indexOf("function Home("));
+  assert.doesNotMatch(hero, /Customized drilling fluid systems engineered around/);
+  assert.doesNotMatch(hero, /Contact Us|RouteButton/);
+  for (const message of [
+    "Connected from office to wellsite",
+    "One team. One view",
+    "Field to office to client",
+    "Respond without layers",
+    "Work from current information",
+    "Engineer for the wellbore",
+    "Keep experience close",
+    "Better information.",
+    "Stronger field decisions.",
+  ]) {
+    assert.match(source, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const asset of [
+    "about-field-connected.webp",
+    "about-team-connected.webp",
+    "about-lab-connected.webp",
+  ]) {
+    assert.match(source, new RegExp(asset));
+  }
+  assert.doesNotMatch(source, /predictive diagnostics|automated dosing|guaranteed uptime/i);
+});
+
 test("sitemap contains the homepage and all public marketing pages", async () => {
   const sitemap = await readFile(new URL("public/sitemap.xml", root), "utf8");
   assert.equal((sitemap.match(/<url>/g) ?? []).length, 8);

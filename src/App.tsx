@@ -35,18 +35,18 @@ const publicPages: PublicPage[] = [
   {
     path: "/about-us",
     nav: "About Us",
-    eyebrow: "The UniqEnergy advantage",
-    title: "Built around the",
-    accent: "wellbore.",
+    eyebrow: "Connected from office to wellsite",
+    title: "One team. One view",
+    accent: "of the operation.",
     description:
-      "Meet the office, research, and field expertise behind UniqEnergy's customized drilling fluid solutions.",
+      "See how UniqEnergy connects field engineers, office specialists, and clients through responsive support, mobile workflows, and current field information.",
     summary:
-      "No two wellbores are the same. Neither should the mud programs be.",
+      "Field engineers, office specialists, and clients work from current field information to make faster, more confident fluid decisions.",
     detail:
-      "Our office, research, and field experts work together to develop customized, cost-effective fluid solutions around the technical and financial requirements of each operation.",
-    image: "/images/about-3d.png",
-    alt: "Abstract precision forms converging around an engineered fluid core",
-    cta: "Talk to our team",
+      "Mobile reporting and shared operational visibility keep the people around the well aligned—from field observations to technical support and client communication.",
+    image: "/images/about-field-connected.webp",
+    alt: "Field engineer reviewing current operating information on a rugged device at a Western Canadian drilling rig",
+    cta: "Discuss your operation",
   },
   {
     path: "/drilling-fluid-systems",
@@ -345,7 +345,7 @@ function Header({
   );
 }
 
-function Hero({ navigate }: { navigate: (path: string) => void }) {
+function Hero() {
   return (
     <section className="hero" id="home">
       <div className="hero-grid" aria-hidden="true" />
@@ -367,13 +367,6 @@ function Hero({ navigate }: { navigate: (path: string) => void }) {
           <br />
           Advance the wellbore.
         </h1>
-        <p>
-          Customized drilling fluid systems engineered around demanding field
-          conditions, technical performance, and project economics.
-        </p>
-        <RouteButton to="/contact-us" navigate={navigate}>
-          Contact Us
-        </RouteButton>
       </motion.div>
       <div className="hero-proof">
         <small>Verified capability</small>
@@ -394,7 +387,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
   const [about, systems, technology, ...cards] = publicPages;
   return (
     <main id="main">
-      <Hero navigate={navigate} />
+      <Hero />
       <section className="home-intro section-wide">
         <Reveal className="home-intro-copy">
           <span className="eyebrow">{about.eyebrow}</span>
@@ -513,9 +506,27 @@ function PageHeading({ page }: { page: PublicPage }) {
 
 function AboutPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[0];
+  const workflow = [
+    { number: "01", label: "Field", title: "Capture what is happening now.", copy: "Mobile reporting brings fluid conditions and operational observations into a shared workflow from the wellsite.", status: "Field update" },
+    { number: "02", label: "Office", title: "Turn visibility into support.", copy: "Technical specialists can review current information, add context, and support the next decision without waiting for delayed reports.", status: "Technical review" },
+    { number: "03", label: "Client", title: "Keep stakeholders aligned.", copy: "Clear, timely communication gives clients a better view of the operation and the reasoning behind fluid decisions.", status: "Shared context" },
+  ];
+  const capabilities = [
+    ["01", "Respond without layers", "Direct communication between the people closest to the work helps technical questions move quickly from the rig to the right specialist."],
+    ["02", "Work from current information", "Mobile applications, shared reporting, and real-time field visibility reduce information gaps across the operation."],
+    ["03", "Engineer for the wellbore", "Fluid programs are developed around actual operating conditions, technical requirements, and project economics—not a generic template."],
+    ["04", "Keep experience close", "Field knowledge, laboratory thinking, and office support work as one connected technical team."],
+  ];
   return (
     <main id="main" className="standalone-page about-page">
       <section className="about-hero">
+        <div className="about-hero-media">
+          <motion.img initial={{ opacity: 0, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.9 }} src={page.image} alt={page.alt} />
+          <div className="about-live-card" aria-label="Connected operating workflow">
+            <span><i /> Current field visibility</span>
+            <div><b>Field</b><i /><b>Office</b><i /><b>Client</b></div>
+          </div>
+        </div>
         <motion.div
           className="standalone-copy"
           initial={{ opacity: 0, y: 24 }}
@@ -523,35 +534,34 @@ function AboutPage({ navigate }: { navigate: (path: string) => void }) {
         >
           <PageHeading page={page} />
           <RouteButton to="/contact-us" navigate={navigate}>
-            Contact Us
+            Discuss your operation
           </RouteButton>
         </motion.div>
-        <motion.img
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          src={page.image}
-          alt={page.alt}
-        />
       </section>
-      <section className="about-story section-wide">
-        <Reveal>
-          <span className="eyebrow">One connected team</span>
-          <h2>
-            Office. Research.
-            <br />
-            <em>Field.</em>
-          </h2>
+      <section className="about-intro section-wide">
+        <Reveal className="about-intro-heading">
+          <span className="eyebrow">A connected operating model</span>
+          <h2>Built around the wellbore. <em>Connected around the work.</em></h2>
         </Reveal>
-        <Reveal>
-          <p>{page.detail}</p>
-          <div className="page-points">
-            <span>Technical requirements</span>
-            <span>Project economics</span>
-            <span>Field performance</span>
-          </div>
-        </Reveal>
+        <Reveal className="about-intro-copy"><p>Good fluid decisions depend on more than chemistry. They depend on the right people seeing the right field information while it can still shape the operation.</p><p>{page.detail}</p></Reveal>
       </section>
-      <ContactBand navigate={navigate} />
+      <section className="about-workflow section-wide" aria-labelledby="workflow-title">
+        <Reveal className="about-section-heading"><span className="eyebrow">Field to office to client</span><h2 id="workflow-title">One clear line through the <em>operation.</em></h2><p>Technology supports the conversation. Experienced people still make the decisions.</p></Reveal>
+        <div className="workflow-grid">
+          {workflow.map((item) => <Reveal className="workflow-card" key={item.label}><div className="workflow-card-top"><span>{item.number}</span><small>{item.status}</small></div><div className="workflow-signal" aria-hidden="true"><i /><i /><i /></div><strong>{item.label}</strong><h3>{item.title}</h3><p>{item.copy}</p></Reveal>)}
+        </div>
+      </section>
+      <section className="about-capabilities section-wide" aria-labelledby="capabilities-title">
+        <Reveal className="about-section-heading"><span className="eyebrow">How we work differently</span><h2 id="capabilities-title">Responsive by design. <em>Technical by nature.</em></h2></Reveal>
+        <div className="about-capability-grid">
+          {capabilities.map(([number, title, copy]) => <Reveal className="about-capability" key={title}><span>{number}</span><h3>{title}</h3><p>{copy}</p></Reveal>)}
+        </div>
+      </section>
+      <section className="about-editorial section-wide">
+        <Reveal className="about-editorial-main"><img src="/images/about-team-connected.webp" alt="Field and office specialists reviewing current operational information together" /><div><span className="eyebrow">People stay in the loop</span><h2>Technology connects the team. <em>Experience guides it.</em></h2><p>Shared information shortens the distance between a field observation and technical support. It gives the office better context, helps clients stay informed, and keeps experienced judgment close to the well.</p></div></Reveal>
+        <Reveal className="about-editorial-lab"><img src="/images/about-lab-connected.webp" alt="Laboratory specialist evaluating a drilling fluid sample beside technical equipment" /><div><small>From observation to formulation</small><h3>Digital visibility, grounded in physical performance.</h3><p>Field communication and laboratory work come together to shape fluid solutions around the conditions that matter.</p></div></Reveal>
+      </section>
+      <section className="about-promise"><div className="about-promise-grid" aria-hidden="true" /><Reveal><span className="eyebrow">The UniqEnergy advantage</span><h2>Better information.<br />Faster alignment.<br /><em>Stronger field decisions.</em></h2><RouteButton to="/contact-us" navigate={navigate}>Discuss your operation</RouteButton></Reveal></section>
     </main>
   );
 }
