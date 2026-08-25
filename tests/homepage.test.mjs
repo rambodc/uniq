@@ -70,14 +70,15 @@ test("homepage hero is focused and the About page presents five balanced strengt
   assert.doesNotMatch(source, /24\/7 support|predictive diagnostics|automated dosing|autonomous control|guaranteed uptime|guaranteed ROI|multiple owned facilities/i);
 });
 
-test("homepage follows its hero with a concise transparent 3D well feature", async () => {
+test("homepage hero uses the transparent 3D well without a duplicate intro section", async () => {
   const app = await readFile(new URL("src/App.tsx", root), "utf8");
   const scene = await readFile(new URL("src/home/HomeWellScene.tsx", root), "utf8");
+  const hero = app.slice(app.indexOf("function Hero("), app.indexOf("function Home("));
   const home = app.slice(app.indexOf("function Home("), app.indexOf("function ContactBand("));
-  assert.match(home, /One team around/);
-  assert.match(home, /Responsive people\. Smarter fluids\./);
-  assert.match(home, /<HomeWellScene/);
-  assert.doesNotMatch(home, /Responsive support, connected field intelligence, specialized chemistry, experienced people/);
+  assert.match(hero, /hero-well/);
+  assert.match(hero, /<HomeWellScene/);
+  assert.doesNotMatch(hero, /hero-horizon|fluid-horizon/);
+  assert.doesNotMatch(home, /One team around|home-well section-wide|Responsive people\. Smarter fluids\./);
   assert.match(scene, /meshPhysicalMaterial/);
   assert.match(scene, /opacity=\{\.22\}/);
   assert.match(scene, /curve\.getPointAt\(travel\)/);

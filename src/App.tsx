@@ -350,13 +350,9 @@ function Header({
 function Hero() {
   return (
     <section className="hero" id="home">
-      <div className="hero-grid" aria-hidden="true" />
-      <div className="hero-orbit" aria-hidden="true">
-        <i />
-        <i />
-        <i />
+      <div className="hero-well">
+        <Suspense fallback={<div className="home-well-scene home-well-fallback" />}><HomeWellScene /></Suspense>
       </div>
-      <div className="hero-horizon" aria-hidden="true" />
       <motion.div
         className="hero-content"
         initial={{ opacity: 0, y: 24 }}
@@ -386,21 +382,10 @@ function Hero() {
 }
 
 function Home({ navigate }: { navigate: (path: string) => void }) {
-  const [about, systems, technology, ...cards] = publicPages;
+  const [, systems, technology, ...cards] = publicPages;
   return (
     <main id="main">
       <Hero />
-      <section className="home-well section-wide">
-        <Reveal className="home-intro-copy">
-          <span className="eyebrow">One connected operation</span>
-          <h2>One team around<br /><em>the wellbore.</em></h2>
-          <p>Responsive people. Smarter fluids.</p>
-          <RouteLink to={about.path} navigate={navigate} className="text-link">
-            Discover our approach <b>↗</b>
-          </RouteLink>
-        </Reveal>
-        <Suspense fallback={<div className="home-well-scene home-well-fallback" />}><HomeWellScene /></Suspense>
-      </section>
       <section
         className="home-features section-wide"
         aria-label="Core capabilities"
