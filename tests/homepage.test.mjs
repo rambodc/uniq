@@ -70,6 +70,32 @@ test("homepage hero is focused and the About page presents five balanced strengt
   assert.doesNotMatch(source, /24\/7 support|predictive diagnostics|automated dosing|autonomous control|guaranteed uptime|guaranteed ROI|multiple owned facilities/i);
 });
 
+test("Technology page presents a connected, adaptive well journey without unsupported claims", async () => {
+  const app = await readFile(new URL("src/App.tsx", root), "utf8");
+  const journey = await readFile(new URL("src/technology/TechnologyJourney.tsx", root), "utf8");
+  for (const message of [
+    "Capture at the field.",
+    "Connect the operation.",
+    "Keep clients informed.",
+    "Turn information into fluid decisions.",
+    "Representative workflow",
+    "Discuss a technical challenge",
+    "50+ custom products",
+    "LUREX",
+    "Uniq-RM",
+    "21",
+    "Observe in the field",
+    "Share current information",
+    "Review together",
+    "Refine the fluid response",
+  ]) assert.match(app + journey, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(journey, /prefers-reduced-motion/);
+  assert.match(journey, /canRenderWebGL/);
+  assert.match(journey, /IntersectionObserver/);
+  assert.match(journey, /frameloop=\{active \? "always" : "demand"\}/);
+  assert.doesNotMatch(app + journey, /predictive diagnostics|automated dosing|autonomous control|proprietary analytics|guaranteed performance|direct client app access/i);
+});
+
 test("sitemap contains the homepage and all public marketing pages", async () => {
   const sitemap = await readFile(new URL("public/sitemap.xml", root), "utf8");
   assert.equal((sitemap.match(/<url>/g) ?? []).length, 8);

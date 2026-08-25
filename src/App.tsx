@@ -15,6 +15,7 @@ const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
 const FluidPrograms = lazy(() => import("./fluidprograms/FluidPrograms"));
 const AccountPortal = lazy(() => import("./account/AccountPortal"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
+const TechnologyJourney = lazy(() => import("./technology/TechnologyJourney"));
 const SITE_URL = "https://uniqenergy-de71c.web.app";
 const PHONE = "tel:+15877742131";
 
@@ -68,12 +69,12 @@ const publicPages: PublicPage[] = [
     path: "/technology",
     nav: "Technology",
     eyebrow: "Technology that solves field problems",
-    title: "Protect the system.",
-    accent: "Keep drilling.",
+    title: "Connected technology.",
+    accent: "Practical decisions.",
     description:
-      "Discover UniqEnergy drilling fluid technology, research capabilities, and field-focused innovation.",
+      "Explore how UniqEnergy connects mobile field reporting, current operational visibility, specialized chemistry, and wellbore innovation.",
     summary:
-      "Research, chemistry, and field feedback come together to solve practical drilling challenges.",
+      "From the field to the office—and back to the wellbore—better information supports better fluid decisions.",
     detail:
       "LUREX is designed to capture oil and bitumen, separating it from water-based drilling fluid and helping prevent shaker screen blinding. UniqEnergy holds 21 patents granted and pending.",
     image: "/images/technology-3d.png",
@@ -640,52 +641,41 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
 }
 
 function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
-  const page = publicPages[2];
   return (
     <main id="main" className="standalone-page technology-page">
-      <section className="technology-hero">
-        <motion.div
-          className="tech-page-visual"
-          initial={{ opacity: 0, rotate: -2 }}
-          animate={{ opacity: 1, rotate: 0 }}
-        >
-          <img src={page.image} alt={page.alt} />
-          <strong>21</strong>
-          <span>
-            Patents granted
-            <br />
-            and pending
-          </span>
-        </motion.div>
-        <motion.div
-          className="standalone-copy"
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <PageHeading page={page} />
-          <RouteButton to="/contact-us" navigate={navigate}>
-            Contact Us
-          </RouteButton>
-        </motion.div>
-      </section>
-      <section className="technology-process section-wide">
-        <Reveal>
-          <span>01</span>
-          <h3>Observe</h3>
-          <p>Start with the field problem and operating conditions.</p>
+      <Suspense fallback={<div className="technology-loading">Preparing the well journey…</div>}>
+        <TechnologyJourney onContact={() => navigate("/contact-us")} />
+      </Suspense>
+      <section className="technology-chemistry section-wide">
+        <Reveal className="technology-chemistry-copy">
+          <span className="eyebrow">Chemistry meets current information</span>
+          <h2>Digital connection.<br /><em>Physical performance.</em></h2>
+          <p>Technology is useful when it strengthens the work. Field observations and technical review inform customized fluid programs, while laboratory and field feedback help the team continue refining the response.</p>
+          <div className="technology-proof">
+            <span><strong>50+</strong> custom products</span>
+            <span><strong>LUREX</strong> anti-accretion technology</span>
+            <span><strong>Uniq-RM</strong> oil-based system</span>
+            <span><strong>21</strong> patents granted or pending</span>
+          </div>
         </Reveal>
-        <Reveal>
-          <span>02</span>
-          <h3>Engineer</h3>
-          <p>Develop focused chemistry around the wellbore.</p>
-        </Reveal>
-        <Reveal>
-          <span>03</span>
-          <h3>Improve</h3>
-          <p>Bring field feedback into the next decision.</p>
+        <Reveal className="technology-lab-visual">
+          <img src="/images/about-lab-connected.webp" alt="Laboratory specialist reviewing drilling-fluid chemistry and physical performance" />
+          <div className="technology-orbits" aria-hidden="true"><i /><i /><i /><b /></div>
+          <small>LABORATORY ↔ FIELD</small>
         </Reveal>
       </section>
-      <ContactBand navigate={navigate} />
+      <section className="technology-loop section-wide">
+        <Reveal>
+          <span className="eyebrow">One connected operating loop</span>
+          <h2>Technology that returns<br /><em>to the field.</em></h2>
+        </Reveal>
+        <div className="technology-loop-steps">
+          {["Observe in the field", "Share current information", "Review together", "Refine the fluid response"].map((step, index) => <Reveal key={step}><span>0{index + 1}</span><strong>{step}</strong>{index < 3 && <b aria-hidden="true">→</b>}</Reveal>)}
+        </div>
+      </section>
+      <section className="technology-closing">
+        <Reveal><span className="eyebrow">Connected around the wellbore</span><h2>Better visibility.<br /><em>Stronger fluid decisions.</em></h2><p>Bring your field challenge to a team that connects practical technology, technical experience, and specialized chemistry.</p><RouteButton to="/contact-us" navigate={navigate}>Discuss a technical challenge</RouteButton></Reveal>
+      </section>
     </main>
   );
 }
