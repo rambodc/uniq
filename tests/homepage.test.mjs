@@ -135,13 +135,13 @@ test("Health and Safety page presents people, operating discipline, and accurate
     "ISNetworld",
     "Valid COR certification",
     "Discuss safety and compliance",
-    "safety-quality.jpg",
+    "safety-3d.png",
     "energy-safety-canada.jpg",
     "complyworks.png",
     "isnetworld.jpg",
     "cor.jpg",
   ]) assert.match(source, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(source, /field-engineers\.jpg/);
+  assert.doesNotMatch(safety, /field-engineers\.jpg|safety-quality\.jpg/);
   assert.doesNotMatch(safety, /zero incidents|guaranteed protection|fixed training|all four certifications/i);
 });
 

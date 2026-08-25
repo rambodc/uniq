@@ -94,8 +94,8 @@ const publicPages: PublicPage[] = [
       "Policies, training, communication, and personal ownership connect safety across the office, facility, field, and client operation.",
     detail:
       "Our HSE program is reviewed and improved to strengthen risk awareness and operating practices, supported by a valid COR certification.",
-    image: "/images/field-engineers.jpg",
-    alt: "UniqEnergy field engineers wearing protective equipment at a Western Canadian drilling site",
+    image: "/images/safety-3d.png",
+    alt: "A luminous protective shield surrounding industrial equipment and fluid technology",
     cta: "Discuss safety and compliance",
   },
   {
@@ -731,8 +731,11 @@ function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
 
       <section className="safety-process section-wide">
         <Reveal className="safety-process-visual">
-          <img src="/images/safety-quality.jpg" alt="Worker in protective equipment inspecting a drilling-fluid sample in a controlled facility" />
-          <span>People + process</span>
+          <div className="safety-process-graphic" role="img" aria-label="Connected safety system linking people, process, and communication">
+            <img src="/brand/uniqenergy-mark-512.png" alt="" aria-hidden="true" />
+            <i /><i /><i />
+            <span>People</span><span>Process</span><span>Communication</span>
+          </div>
         </Reveal>
         <Reveal className="safety-process-copy">
           <img className="safety-watermark" src="/brand/uniqenergy-mark-512.png" alt="" aria-hidden="true" />
