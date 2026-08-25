@@ -408,8 +408,7 @@ export default function FluidLab({
           onClick={() => (dirty ? setExitOpen(true) : navigate("/account"))}
         >
           <ArrowLeft className="workspace-back-icon" aria-hidden="true" />
-          <i />
-          Uniq<strong>Energy</strong>
+          <img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy" />
           <span>/ FluidLab</span>
         </button>
       </header>

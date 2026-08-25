@@ -169,10 +169,10 @@ const validPath = (value: string) =>
 function Logo() {
   return (
     <span className="logo">
-      <i aria-hidden="true" />
-      <span>
-        Uniq<strong>Energy</strong>
-      </span>
+      <img
+        src="/brand/uniqenergy-logo-light-text.png"
+        alt="UniqEnergy Solutions"
+      />
     </span>
   );
 }
