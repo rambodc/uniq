@@ -6,9 +6,12 @@ import {
   useEffect,
   useRef,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
+import { httpsCallable } from "firebase/functions";
 import { auth, authReady } from "./firebaseClient";
+import { functions } from "./firebaseClient";
 import { getAccount } from "./fluidlab/projects";
 
 const FluidLab = lazy(() => import("./fluidlab/FluidLab"));
@@ -17,6 +20,7 @@ const AccountPortal = lazy(() => import("./account/AccountPortal"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
 const TechnologyJourney = lazy(() => import("./technology/TechnologyJourney"));
 const HomeWellScene = lazy(() => import("./home/HomeWellScene"));
+const ContactSignalScene = lazy(() => import("./contact/ContactSignalScene"));
 const SITE_URL = "https://uniqenergy-de71c.web.app";
 const PHONE = "tel:+15877742131";
 
@@ -99,38 +103,6 @@ const publicPages: PublicPage[] = [
     cta: "Discuss safety and compliance",
   },
   {
-    path: "/locations",
-    nav: "Locations",
-    eyebrow: "Where the work happens",
-    title: "Western Canadian",
-    accent: "reach.",
-    description:
-      "See how UniqEnergy supports drilling operations from Calgary across Western Canada.",
-    summary:
-      "Blending capacity and warehouse access help us support operations across the region.",
-    detail:
-      "Our 45,000-square-foot southeast Calgary facility can blend 50,000 litres of chemical per day, with access to traditional mud storage warehouses across Western Canada.",
-    image: "/images/locations-3d.png",
-    alt: "Western Canadian landscape connected by drilling fluid logistics routes",
-    cta: "Plan your supply",
-  },
-  {
-    path: "/careers",
-    nav: "Careers",
-    eyebrow: "Build what comes next",
-    title: "Bring your thinking",
-    accent: "to the field.",
-    description:
-      "Learn about future career opportunities with UniqEnergy's office, research, and field teams.",
-    summary:
-      "Technical curiosity, collaboration, and field awareness shape our work.",
-    detail:
-      "We are always interested in hearing from people who care about practical innovation and better drilling outcomes. Detailed opportunities will be added here as they become available.",
-    image: "/images/careers-3d.png",
-    alt: "Collaborative technical team gathered around an illuminated workspace",
-    cta: "Introduce yourself",
-  },
-  {
     path: "/contact-us",
     nav: "Contact Us",
     eyebrow: "Start a conversation",
@@ -142,8 +114,8 @@ const publicPages: PublicPage[] = [
       "Tell us about the operation, the challenge, and where you want to go next.",
     detail:
       "Connect with our Calgary team to begin a conversation about your project, wellbore, or drilling fluid program.",
-    image: "/images/contact-3d.png",
-    alt: "Two engineered forms connected by a luminous technical bridge",
+    image: "/brand/uniqenergy-mark-512.png",
+    alt: "UniqEnergy connected operations mark",
     cta: "Request a consultation",
   },
 ];
@@ -259,7 +231,7 @@ function Header({
     setOpen(false);
     navigate(target);
   };
-  const primary = publicPages.slice(0, 5);
+  const primary = publicPages;
   return (
     <header className="site-header">
       <button
@@ -279,7 +251,6 @@ function Header({
             {item.nav}
           </button>
         ))}
-        <button onClick={onFluidLab}>UniqAccount</button>
       </nav>
       <button className="header-cta" onClick={onFluidLab}>
         <span>UniqAccount</span>
@@ -331,14 +302,6 @@ function Header({
                   <b>↗</b>
                 </motion.button>
               ))}
-              <motion.button
-                onClick={() => {
-                  setOpen(false);
-                  onFluidLab();
-                }}
-              >
-                <span>09</span>UniqAccount<b>↗</b>
-              </motion.button>
             </nav>
           </motion.div>
         )}
@@ -782,120 +745,94 @@ function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
   );
 }
 
-function LocationsPage({ navigate }: { navigate: (path: string) => void }) {
-  const page = publicPages[4];
-  return (
-    <main id="main" className="standalone-page locations-page">
-      <section className="locations-hero">
-        <img src={page.image} alt={page.alt} />
-        <motion.div
-          className="standalone-copy"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <PageHeading page={page} />
-          <RouteButton to="/contact-us" navigate={navigate}>
-            Contact Us
-          </RouteButton>
-        </motion.div>
-      </section>
-      <section className="location-stats section-wide">
-        <Reveal>
-          <small>Home base</small>
-          <strong>Calgary, AB</strong>
-          <p>45,000-square-foot southeast Calgary facility.</p>
-        </Reveal>
-        <Reveal>
-          <small>Daily blend capacity</small>
-          <strong>50,000 L</strong>
-          <p>Chemical blending capacity per day.</p>
-        </Reveal>
-        <Reveal>
-          <small>Operating reach</small>
-          <strong>Western Canada</strong>
-          <p>Warehouse access supporting remote operations.</p>
-        </Reveal>
-      </section>
-      <ContactBand navigate={navigate} />
-    </main>
-  );
-}
-
-function CareersPage({ navigate }: { navigate: (path: string) => void }) {
-  const page = publicPages[5];
-  return (
-    <main id="main" className="standalone-page careers-page">
-      <section className="careers-hero">
-        <motion.div
-          className="standalone-copy"
-          initial={{ opacity: 0, x: -24 }}
-          animate={{ opacity: 1, x: 0 }}
-        >
-          <PageHeading page={page} />
-          <RouteButton to="/contact-us" navigate={navigate}>
-            Contact Us
-          </RouteButton>
-        </motion.div>
-        <div className="career-image">
-          <img src={page.image} alt={page.alt} />
-        </div>
-      </section>
-      <section className="career-values section-wide">
-        <Reveal>
-          <span>01</span>
-          <h3>Curiosity</h3>
-        </Reveal>
-        <Reveal>
-          <span>02</span>
-          <h3>Collaboration</h3>
-        </Reveal>
-        <Reveal>
-          <span>03</span>
-          <h3>Field awareness</h3>
-        </Reveal>
-        <Reveal className="career-note">
-          <p>{page.detail}</p>
-        </Reveal>
-      </section>
-    </main>
-  );
-}
-
 function ContactPage() {
-  const page = publicPages[6];
+  const formRef = useRef<HTMLFormElement>(null);
+  const [form, setForm] = useState({ inquiryType: "operations", name: "", email: "", phone: "", company: "", areaOfInterest: "", linkedinUrl: "", message: "", website: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitState, setSubmitState] = useState<"idle" | "pending" | "success" | "error">("idle");
+  const setField = (field: string, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
+    if (submitState !== "pending") setSubmitState("idle");
+  };
+  const chooseType = (inquiryType: string) => {
+    setField("inquiryType", inquiryType);
+    setErrors({});
+  };
+  const validate = () => {
+    const next: Record<string, string> = {};
+    if (form.name.trim().length < 2) next.name = "Enter your name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = "Enter a valid email address.";
+    if (form.message.trim().length < 10) next.message = "Tell us a little more about your inquiry.";
+    if (form.inquiryType === "careers" && !form.areaOfInterest.trim()) next.areaOfInterest = "Enter an area of interest.";
+    if (form.linkedinUrl) { try { const url = new URL(form.linkedinUrl.trim()); if (url.protocol !== "https:" || !/(^|\.)linkedin\.com$/i.test(url.hostname)) throw new Error(); } catch { next.linkedinUrl = "Use a full HTTPS LinkedIn URL."; } }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitState === "pending" || !validate()) return;
+    setSubmitState("pending");
+    try {
+      const send = httpsCallable(functions, "submitContactInquiry");
+      await send(form);
+      setForm({ inquiryType: form.inquiryType, name: "", email: "", phone: "", company: "", areaOfInterest: "", linkedinUrl: "", message: "", website: "" });
+      setSubmitState("success");
+    } catch {
+      setSubmitState("error");
+    }
+  };
+  const openCareers = () => {
+    chooseType("careers");
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
     <main id="main" className="standalone-page contact-page">
-      <section className="contact-page-hero">
-        <motion.div
-          className="standalone-copy"
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <PageHeading page={page} />
-        </motion.div>
-        <div className="contact-page-image">
-          <img src={page.image} alt={page.alt} />
+      <section className="contact-hero-new">
+        <div className="contact-signal-scene">
+          <Suspense fallback={<div className="contact-scene-fallback" />}><ContactSignalScene /></Suspense>
         </div>
+        <motion.div className="contact-hero-copy" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="page-label">Contact Us</div>
+          <span className="eyebrow">Start a conversation</span>
+          <h1>Bring us the challenge.<br /><em>Let’s connect the next step.</em></h1>
+          <p>Talk with our Calgary team about an operation, a fluid program, a technical question, or working with UniqEnergy.</p>
+          <button className="button-primary" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth" })}>Start an inquiry <b aria-hidden="true">↘</b></button>
+        </motion.div>
       </section>
-      <section className="contact-options section-wide">
-        <Reveal>
-          <small>Email</small>
-          <strong>info@uniqenergy.com</strong>
-          <p>For project, technical, career, and general inquiries.</p>
+
+      <section className="contact-direct section-wide">
+        <Reveal><small>Direct line</small><a href={PHONE}>(587) 774-2131</a><p>Connect with the Calgary team.</p></Reveal>
+        <Reveal><small>Email</small><a href="mailto:info@uniqenergy.com">info@uniqenergy.com</a><p>Technical, project, career, and general inquiries.</p></Reveal>
+        <Reveal><small>Calgary office</small><address>Suite 1900, 635 – 8th Avenue SW<br />Calgary, AB T2P 3M3</address></Reveal>
+      </section>
+
+      <section className="contact-form-section section-wide">
+        <Reveal className="contact-form-intro">
+          <span className="eyebrow">Tell us where to begin</span>
+          <h2>One form.<br /><em>The right conversation.</em></h2>
+          <p>Choose the type of inquiry and share enough context for our team to understand what you need.</p>
+          <div className="contact-flow" aria-hidden="true"><span>Send</span><i /><span>Review</span><i /><span>Connect</span></div>
         </Reveal>
         <Reveal>
-          <small>Phone</small>
-          <a href={PHONE}>(587) 774-2131</a>
-          <p>Connect directly with the Calgary team.</p>
+          <form ref={formRef} className="contact-inquiry-form" onSubmit={submit} noValidate>
+            <fieldset><legend>Inquiry type</legend><div className="contact-type-picker">{[["operations", "Operations"], ["general", "General"], ["careers", "Careers"]].map(([value, label]) => <label className={form.inquiryType === value ? "active" : ""} key={value}><input type="radio" name="inquiryType" value={value} checked={form.inquiryType === value} onChange={() => chooseType(value)} />{label}</label>)}</div></fieldset>
+            <label>Name<input value={form.name} onChange={(e) => setField("name", e.target.value)} maxLength={100} aria-invalid={Boolean(errors.name)} /><small>{errors.name}</small></label>
+            <label>Email<input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} maxLength={254} aria-invalid={Boolean(errors.email)} /><small>{errors.email}</small></label>
+            <label>Phone <span>Optional</span><input type="tel" value={form.phone} onChange={(e) => setField("phone", e.target.value)} maxLength={40} /></label>
+            {form.inquiryType === "operations" && <label>Company <span>Optional</span><input value={form.company} onChange={(e) => setField("company", e.target.value)} maxLength={120} /></label>}
+            {form.inquiryType === "careers" && <><label>Area of interest<input value={form.areaOfInterest} onChange={(e) => setField("areaOfInterest", e.target.value)} maxLength={120} aria-invalid={Boolean(errors.areaOfInterest)} /><small>{errors.areaOfInterest}</small></label><label>LinkedIn URL <span>Optional</span><input type="url" value={form.linkedinUrl} onChange={(e) => setField("linkedinUrl", e.target.value)} maxLength={500} placeholder="https://linkedin.com/in/..." aria-invalid={Boolean(errors.linkedinUrl)} /><small>{errors.linkedinUrl}</small></label></>}
+            <label className="contact-message">Message<textarea value={form.message} onChange={(e) => setField("message", e.target.value)} maxLength={3000} rows={6} aria-invalid={Boolean(errors.message)} /><small>{errors.message}</small></label>
+            <label className="contact-honeypot" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => setField("website", e.target.value)} /></label>
+            <button className="button-primary" disabled={submitState === "pending"}>{submitState === "pending" ? "Sending…" : "Send inquiry"}<b aria-hidden="true">↗</b></button>
+            <div className={`contact-form-status ${submitState}`} role="status" aria-live="polite">{submitState === "success" && "Thank you. Your inquiry has been received."}{submitState === "error" && "We couldn’t send your inquiry. Please try again or contact us directly."}</div>
+          </form>
         </Reveal>
-        <Reveal>
-          <small>Office</small>
-          <address>
-            Suite 1900, 635 – 8th Avenue SW
-            <br />
-            Calgary, AB T2P 3M3
-          </address>
-        </Reveal>
+      </section>
+
+      <section className="contact-careers" id="careers">
+        <div className="contact-careers-grid" aria-hidden="true" />
+        <Reveal><span className="eyebrow">Careers at UniqEnergy</span><h2>Bring practical thinking<br /><em>to real field work.</em></h2><p>We welcome expressions of interest from people who value technical curiosity, collaboration, and field awareness. Detailed opportunities will be published when available.</p><button className="button-primary" onClick={openCareers}>Introduce yourself <b aria-hidden="true">↗</b></button></Reveal>
       </section>
     </main>
   );
@@ -913,8 +850,6 @@ function PublicRoute({
     return <SystemsPage navigate={navigate} />;
   if (path === "/technology") return <TechnologyPage navigate={navigate} />;
   if (path === "/health-safety") return <SafetyPage navigate={navigate} />;
-  if (path === "/locations") return <LocationsPage navigate={navigate} />;
-  if (path === "/careers") return <CareersPage navigate={navigate} />;
   return <ContactPage />;
 }
 
@@ -950,6 +885,7 @@ function Footer({
               {item.nav}
             </RouteLink>
           ))}
+          <button onClick={() => { navigate("/contact-us"); requestAnimationFrame(() => document.getElementById("careers")?.scrollIntoView()); }}>Careers</button>
           <button onClick={onFluidLab}>UniqAccount</button>
         </div>
         <div>

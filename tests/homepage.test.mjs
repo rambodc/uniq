@@ -21,17 +21,15 @@ test("public website exposes every marketing route and preserves contact actions
     "/drilling-fluid-systems",
     "/technology",
     "/health-safety",
-    "/locations",
-    "/careers",
     "/contact-us",
   ]) {
     assert.match(source, new RegExp(route));
   }
-  assert.doesNotMatch(source, /mailto:/);
+  assert.match(source, /mailto:info@uniqenergy\.com/);
   assert.match(source, /<PublicRoute path=\{path\}/);
   assert.match(
     source,
-    /function (AboutPage|SystemsPage|TechnologyPage|SafetyPage|LocationsPage|CareersPage|ContactPage)/,
+    /function (AboutPage|SystemsPage|TechnologyPage|SafetyPage|ContactPage)/,
   );
   assert.match(source, /tel:\+15877742131/);
   assert.doesNotMatch(source, /function DetailPage/);
@@ -122,7 +120,7 @@ test("Technology page uses natural flow, three technology pillars, and qualified
 
 test("Health and Safety page presents people, operating discipline, and accurate compliance language", async () => {
   const source = await readFile(new URL("src/App.tsx", root), "utf8");
-  const safety = source.slice(source.indexOf("function SafetyPage("), source.indexOf("function LocationsPage("));
+  const safety = source.slice(source.indexOf("function SafetyPage("), source.indexOf("function ContactPage("));
   for (const message of [
     "Health &amp; Safety",
     "Safe work is how",
@@ -145,16 +143,14 @@ test("Health and Safety page presents people, operating discipline, and accurate
   assert.doesNotMatch(safety, /zero incidents|guaranteed protection|fixed training|all four certifications/i);
 });
 
-test("sitemap contains the homepage and all public marketing pages", async () => {
+test("sitemap contains the homepage and current public marketing pages", async () => {
   const sitemap = await readFile(new URL("public/sitemap.xml", root), "utf8");
-  assert.equal((sitemap.match(/<url>/g) ?? []).length, 8);
+  assert.equal((sitemap.match(/<url>/g) ?? []).length, 6);
   for (const route of [
     "about-us",
     "drilling-fluid-systems",
     "technology",
     "health-safety",
-    "locations",
-    "careers",
     "contact-us",
   ]) {
     assert.match(
@@ -162,7 +158,25 @@ test("sitemap contains the homepage and all public marketing pages", async () =>
       new RegExp(`https:\\/\\/uniqenergy-de71c\\.web\\.app\\/${route}`),
     );
   }
-  assert.doesNotMatch(sitemap, /fluidlab|account|signin/);
+  assert.doesNotMatch(sitemap, /locations|careers|fluidlab|account|signin/);
+});
+
+test("Contact page has simplified navigation, connected 3D, adaptive form, and integrated Careers", async () => {
+  const app = await readFile(new URL("src/App.tsx", root), "utf8");
+  const scene = await readFile(new URL("src/contact/ContactSignalScene.tsx", root), "utf8");
+  const contact = app.slice(app.indexOf("function ContactPage("), app.indexOf("function PublicRoute("));
+  assert.doesNotMatch(app, /path: "\/(locations|careers)"|function LocationsPage|function CareersPage/);
+  assert.doesNotMatch(app, /locations-3d\.png|careers-3d\.png/);
+  assert.match(app, /const primary = publicPages/);
+  assert.equal((app.match(/<button onClick=\{onFluidLab\}>UniqAccount<\/button>/g) ?? []).length, 1);
+  for (const text of ["Contact Us", "Operations", "General", "Careers", "Area of interest", "LinkedIn URL", "Send inquiry", "Detailed opportunities will be published when available"]) assert.match(contact, new RegExp(text));
+  assert.match(contact, /httpsCallable\(functions, "submitContactInquiry"\)/);
+  assert.match(scene, /gridHelper/);
+  assert.match(scene, /camera\.position\.lerp/);
+  assert.match(scene, /points ref=\{particles\}/);
+  assert.match(scene, /prefers-reduced-motion/);
+  assert.match(scene, /IntersectionObserver/);
+  assert.match(scene, /frameloop=\{active \? "always" : "demand"\}/);
 });
 
 test("FluidLab is an account project workspace with autosaving", async () => {
