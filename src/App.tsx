@@ -16,6 +16,7 @@ const FluidPrograms = lazy(() => import("./fluidprograms/FluidPrograms"));
 const AccountPortal = lazy(() => import("./account/AccountPortal"));
 const AuthPage = lazy(() => import("./auth/AuthPage"));
 const TechnologyJourney = lazy(() => import("./technology/TechnologyJourney"));
+const HomeWellScene = lazy(() => import("./home/HomeWellScene"));
 const SITE_URL = "https://uniqenergy-de71c.web.app";
 const PHONE = "tel:+15877742131";
 
@@ -389,18 +390,16 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
   return (
     <main id="main">
       <Hero />
-      <section className="home-intro section-wide">
+      <section className="home-well section-wide">
         <Reveal className="home-intro-copy">
-          <span className="eyebrow">{about.eyebrow}</span>
-          <h2>{about.summary}</h2>
-          <p>{about.detail}</p>
+          <span className="eyebrow">One connected operation</span>
+          <h2>One team around<br /><em>the wellbore.</em></h2>
+          <p>Responsive people. Current information. Purpose-built chemistry.</p>
           <RouteLink to={about.path} navigate={navigate} className="text-link">
             Discover our approach <b>↗</b>
           </RouteLink>
         </Reveal>
-        <Reveal className="editorial-image">
-          <img src={about.image} alt={about.alt} />
-        </Reveal>
+        <Suspense fallback={<div className="home-well-scene home-well-fallback" />}><HomeWellScene /></Suspense>
       </section>
       <section
         className="home-features section-wide"

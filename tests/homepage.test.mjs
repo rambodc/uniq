@@ -70,6 +70,23 @@ test("homepage hero is focused and the About page presents five balanced strengt
   assert.doesNotMatch(source, /24\/7 support|predictive diagnostics|automated dosing|autonomous control|guaranteed uptime|guaranteed ROI|multiple owned facilities/i);
 });
 
+test("homepage follows its hero with a concise transparent 3D well feature", async () => {
+  const app = await readFile(new URL("src/App.tsx", root), "utf8");
+  const scene = await readFile(new URL("src/home/HomeWellScene.tsx", root), "utf8");
+  const home = app.slice(app.indexOf("function Home("), app.indexOf("function ContactBand("));
+  assert.match(home, /One team around/);
+  assert.match(home, /Responsive people\. Current information\. Purpose-built chemistry\./);
+  assert.match(home, /<HomeWellScene/);
+  assert.doesNotMatch(home, /Responsive support, connected field intelligence, specialized chemistry, experienced people/);
+  assert.match(scene, /meshPhysicalMaterial/);
+  assert.match(scene, /opacity=\{\.22\}/);
+  assert.match(scene, /curve\.getPointAt\(travel\)/);
+  assert.match(scene, /points ref=\{particles\}/);
+  assert.match(scene, /gridHelper/);
+  assert.match(scene, /prefers-reduced-motion/);
+  assert.match(scene, /IntersectionObserver/);
+});
+
 test("Technology page uses natural flow, three technology pillars, and qualified AI messaging", async () => {
   const app = await readFile(new URL("src/App.tsx", root), "utf8");
   const journey = await readFile(new URL("src/technology/TechnologyJourney.tsx", root), "utf8");
