@@ -66,7 +66,11 @@ test("mini apps use independent navigation and account-owned session controls", 
   assert.match(account, /updatePassword/);
   assert.match(account, /Sign out/);
   assert.match(fluidlab, />Projects<|>Builder</);
+  assert.match(fluidlab, /<div className="workspace-brand">/);
+  assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(programs, /This conversation is not stored/);
+  assert.match(programs, /<div className="programs-brand">/);
+  assert.doesNotMatch(programs, /className="programs-brand" href=/);
 });
 
 test("browser database and storage access remain fully denied", async () => {
