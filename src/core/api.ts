@@ -9,6 +9,8 @@ async function invoke<TRequest, TResponse>(name: string, data?: TRequest): Promi
 export const getCurrentUser = async () => (await invoke<void, { user: PortalUser }>("getCurrentUser")).user;
 export const updateCurrentUser = async (firstName: string, lastName: string) =>
   (await invoke("updateCurrentUser", { firstName, lastName }) as { user: PortalUser }).user;
+export const requestPasswordReset = (email: string) =>
+  invoke<{ email: string }, { success: true }>("requestPasswordReset", { email });
 export const adminListUsers = () => invoke<void, { users: PortalUser[]; invitations: Invitation[] }>("adminListUsers");
 export const adminInviteUser = (data: { email: string; firstName: string; lastName: string; role: UserRole; enabledMiniApps: ManagedMiniAppId[] }) =>
   invoke<typeof data, { invitation: Invitation }>("adminInviteUser", data);

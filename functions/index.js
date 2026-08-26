@@ -1,5 +1,6 @@
 export { getCurrentUser } from "./apps/account/get-current-user.js";
 export { updateCurrentUser } from "./apps/account/update-current-user.js";
+export { requestPasswordReset } from "./apps/account/request-password-reset.js";
 export { submitContactInquiry } from "./apps/contact/submit-contact-inquiry.js";
 
 export { adminListUsers } from "./apps/user-access/list-users.js";

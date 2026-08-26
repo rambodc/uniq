@@ -247,17 +247,50 @@
   gap: 13px;
   margin-bottom: 22px;
 }
+.account-security > summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.account-security > summary::-webkit-details-marker { display: none; }
+.account-security > summary > svg {
+  flex: none;
+  width: 22px;
+  color: var(--portal-accent);
+}
+.account-security > summary > div { flex: 1; }
+.account-security > summary > span {
+  color: var(--portal-muted);
+  font-size: 24px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+.account-security[open] > summary > span { transform: rotate(180deg); }
+.account-security[open] > summary { margin-bottom: 22px; }
+.account-security > summary:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--portal-accent);
+  outline-offset: 6px;
+}
 .account-card > header > svg {
   flex: none;
   width: 22px;
   color: var(--portal-accent);
 }
 .account-card h2,
-.account-card header p {
+.account-card header p,
+.account-security summary p {
   margin: 0;
 }
 .account-card header p {
   margin-top: 5px;
+  font-size: 13px;
+}
+.account-security summary p {
+  margin-top: 5px;
+  color: var(--portal-muted);
   font-size: 13px;
 }
 .account-facts {

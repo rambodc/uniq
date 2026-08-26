@@ -64,6 +64,8 @@ test("mini apps use independent navigation and account-owned session controls", 
   assert.match(layout, /className="portal-brand" to="\/"/);
   assert.match(account, /reauthenticateWithCredential/);
   assert.match(account, /updatePassword/);
+  assert.match(account, /<details className="account-card account-security">/);
+  assert.doesNotMatch(account, /sendPasswordResetEmail|Forgot current password/);
   assert.match(account, /Sign out/);
   assert.match(fluidlab, />Projects<|>Builder</);
   assert.match(fluidlab, /<div className="workspace-brand">/);
@@ -71,6 +73,17 @@ test("mini apps use independent navigation and account-owned session controls", 
   assert.match(programs, /This conversation is not stored/);
   assert.match(programs, /<div className="programs-brand">/);
   assert.doesNotMatch(programs, /className="programs-brand" href=/);
+});
+
+test("forgot-password delivery uses the protected SMTP callable", async () => {
+  const authPage = await read("src/auth/EnterpriseAuth.tsx"), api = await read("src/core/api.ts"), exports = await read("functions/index.js"), handler = await read("functions/apps/account/request-password-reset.js");
+  assert.match(authPage, /requestPasswordReset\(email\.trim\(\)\)/);
+  assert.doesNotMatch(authPage, /sendPasswordResetEmail/);
+  assert.match(api, /"requestPasswordReset"/);
+  assert.match(exports, /request-password-reset\.js/);
+  assert.match(handler, /generatePasswordResetLink/);
+  assert.match(handler, /EMAIL_SECRETS/);
+  assert.match(handler, /passwordResetRequests/);
 });
 
 test("browser database and storage access remain fully denied", async () => {
