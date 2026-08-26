@@ -437,11 +437,11 @@ export default function FluidLab({
         {!projectId && <div className="fluidlab-empty-workspace"><FolderOpen/><h1>Choose a FluidLab project</h1><p>Open an existing project or create a new one from the Projects panel.</p></div>}
       </div>
       <header className="workspace-topbar compact">
+        <button className="workspace-portal-return" aria-label="Back to mini apps" title="Back to mini apps" onClick={() => moveTo("/portal")}><ArrowLeft aria-hidden="true" /></button>
         <div className="workspace-brand">
           <img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy" />
           <span>UniqEnergy / FluidLab</span>
         </div>
-        <button className="workspace-portal-return" onClick={() => moveTo("/portal")}>Back to mini apps<ArrowLeft aria-hidden="true" /></button>
       </header>
       <button ref={drawerTrigger} className="mobile-menu-button" aria-label="Open FluidLab panel" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu/><b>FluidLab</b></button>
       {drawerOpen && (

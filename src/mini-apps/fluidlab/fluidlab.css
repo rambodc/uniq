@@ -803,10 +803,10 @@ button:disabled {
 .workspace-topbar.compact {
   right: auto;
   display: flex;
-  min-width: 250px;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 2px;
+  min-width: 300px;
+  align-items: center;
+  flex-direction: row;
+  gap: 7px;
 }
 .workspace-brand {
   text-decoration: none;
@@ -815,8 +815,12 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: 8px;
-  padding: 6px 8px;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  justify-content: center;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #061d27aa;
@@ -971,7 +975,7 @@ button:disabled {
 .fluidlab-workspace.panel-collapsed .fluidlab-panel-tabs { display: none; }
 @media (max-width: 600px) {
   .workspace-topbar.compact { min-width: 0; right: 12px; }
-  .workspace-portal-return { margin-left: 8px; }
+  .workspace-brand span { display: inline; }
 }
 .workspace-back-icon {
   width: 16px;
