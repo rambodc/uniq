@@ -22,6 +22,28 @@ test("public website content and routes remain isolated and unchanged", async ()
   assert.match(source, /submitContactInquiry/);
 });
 
+test("Fluid Systems exposes a scalable, indexable product catalogue", async () => {
+  const source = await read("src/public/PublicSite.tsx"), products = await read("src/public/products.ts"), sitemap = await read("public/sitemap.xml");
+  for (const route of ["/drilling-fluid-systems/elixir", "/drilling-fluid-systems/fusion"]) {
+    assert.match(products, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(sitemap, new RegExp(route));
+  }
+  for (const product of ["Elixir", "Fusion"]) assert.match(products, new RegExp(`name: "${product}"`));
+  assert.match(source, /publicProducts\.map/);
+  assert.match(source, /findPublicProduct\(path\)/);
+  assert.match(source, /ProductPage/);
+  assert.doesNotMatch(products + source.slice(source.indexOf("function SystemsPage"), source.indexOf("function TechnologyPage")), /LUREX|Uniq-RM|Uniquem/);
+  assert.doesNotMatch(source, /\.pdf|Download brochure|Download PDS/);
+});
+
+test("product imagery is optimized and contains real alpha transparency", async () => {
+  for (const path of ["public/images/products/elixir-pallet.webp", "public/images/products/fusion-pallet.webp"]) {
+    const image = await readFile(new URL(path, root));
+    assert.ok(image.length < 400_000, `${path} should remain web optimized`);
+    assert.ok(image.includes(Buffer.from("ALPH")), `${path} should contain a WebP alpha chunk`);
+  }
+});
+
 test("public 3D scenes retain reduced-motion and visibility safeguards", async () => {
   for (const path of ["src/public/scenes/HomeWellScene.tsx", "src/public/scenes/ContactSignalScene.tsx", "src/public/scenes/TechnologyJourney.tsx"]) { const source = await read(path); assert.match(source, /prefers-reduced-motion/); assert.match(source, /IntersectionObserver/); assert.match(source, /canRenderWebGL/); }
 });

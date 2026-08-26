@@ -11,6 +11,7 @@ import {
 } from "react";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../core/firebase";
+import { findPublicProduct, publicProductPaths, publicProducts, type PublicProduct } from "./products";
 const TechnologyJourney = lazy(() => import("./scenes/TechnologyJourney"));
 const HomeWellScene = lazy(() => import("./scenes/HomeWellScene"));
 const ContactSignalScene = lazy(() => import("./scenes/ContactSignalScene"));
@@ -113,6 +114,7 @@ const publicPages: PublicPage[] = [
   },
 ];
 const publicPaths = new Set(publicPages.map((page) => page.path));
+const allPublicPaths = new Set([...publicPaths, ...publicProductPaths]);
 const facts = [
   ["50,000 L", "Daily blend capacity"],
   ["50+", "Custom products"],
@@ -122,7 +124,7 @@ const facts = [
 const validPath = (value: string) =>
   value === "/" ||
   value === "/fluidlab" ||
-  publicPaths.has(value)
+  allPublicPaths.has(value)
     ? value
     : "/";
 
@@ -231,7 +233,7 @@ function Header({
         {primary.map((item) => (
           <button
             key={item.path}
-            className={path === item.path ? "active" : ""}
+            className={path === item.path || (item.path === "/drilling-fluid-systems" && publicProductPaths.has(path)) ? "active" : ""}
             onClick={() => go(item.path)}
           >
             {item.nav}
@@ -551,27 +553,41 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
           </RouteButton>
         </motion.div>
       </section>
-      <section className="system-products section-wide">
-        <Reveal className="system-tile">
-          <small>01 / Anti-accretion</small>
-          <h2>LUREX</h2>
-          <p>
-            Designed to help prevent bitumen buildup on metal surfaces by
-            forming a protective barrier.
-          </p>
-        </Reveal>
-        <Reveal className="system-tile">
-          <small>02 / Oil-based system</small>
-          <h2>Uniq-RM</h2>
-          <p>
-            Temperature-stable and clay-free, developed around optimized
-            rheology and improved lubricity.
-          </p>
-        </Reveal>
+      <section className="systems-intro section-wide">
+        <Reveal><span className="page-label">Chemical portfolio</span><h2>Specialty chemistry,<br/><em>shaped around the well.</em></h2></Reveal>
+        <Reveal><p>UniqEnergy develops and supplies drilling-fluid chemicals for the conditions, operating priorities, and economics of each program. Our growing portfolio brings focused products together with practical laboratory thinking and responsive field support.</p><p>Explore the first products in the portfolio below. Additional chemistry will be added as it becomes available.</p></Reveal>
+      </section>
+      <section className="product-catalogue section-wide" aria-labelledby="product-catalogue-title">
+        <Reveal className="product-catalogue-heading"><span className="eyebrow">Product catalogue</span><h2 id="product-catalogue-title">Chemistry with a<br/><em>clear purpose.</em></h2></Reveal>
+        <div className="system-products">
+          {publicProducts.map((product, index) => <Reveal className="system-product-card" key={product.slug}>
+            <RouteLink to={product.path} navigate={navigate}>
+              <div className="system-product-visual"><span>{String(index + 1).padStart(2, "0")}</span><img src={product.image} alt={product.alt}/></div>
+              <div className="system-product-copy"><small>{product.category}</small><h3>{product.name}</h3><p>{product.teaser}</p><strong>Explore {product.name}<b aria-hidden="true">↗</b></strong></div>
+            </RouteLink>
+          </Reveal>)}
+        </div>
       </section>
       <ContactBand navigate={navigate} />
     </main>
   );
+}
+
+function ProductPage({ product, navigate }: { product: PublicProduct; navigate: (path: string) => void }) {
+  return <main id="main" className="standalone-page product-detail-page">
+    <section className="product-detail-hero">
+      <motion.div className="product-detail-copy" initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}>
+        <RouteLink className="product-back" to="/drilling-fluid-systems" navigate={navigate}>← Fluid Systems</RouteLink>
+        <span className="page-label">{product.category}</span><h1>{product.name}</h1><p>{product.teaser}</p><RouteButton to="/contact-us" navigate={navigate}>Discuss {product.name}</RouteButton>
+      </motion.div>
+      <motion.div className="product-detail-visual" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .7 }}><div className="product-orbit" aria-hidden="true"/><img src={product.image} alt={product.alt}/></motion.div>
+    </section>
+    <section className="product-detail-content section-wide">
+      <Reveal><span className="eyebrow">{product.eyebrow}</span><h2>Focused chemistry.<br/><em>Practical performance.</em></h2><p>{product.description}</p></Reveal>
+      <Reveal className="product-benefits"><small>Designed to help</small>{product.benefits.map((benefit) => <div key={benefit}><i aria-hidden="true"/> <span>{benefit}</span></div>)}<footer><span>Packaging</span><strong>{product.packaging}</strong></footer></Reveal>
+    </section>
+    <section className="product-contact"><Reveal><span className="eyebrow">Build it into the program</span><h2>Let’s discuss the<br/><em>application.</em></h2><p>Connect with UniqEnergy to explore product fit, fluid compatibility, and the needs of your operation.</p><RouteButton to="/contact-us" navigate={navigate}>Talk with our team</RouteButton></Reveal></section>
+  </main>;
 }
 
 function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
@@ -831,6 +847,8 @@ function PublicRoute({
   path: string;
   navigate: (path: string) => void;
 }) {
+  const product = findPublicProduct(path);
+  if (product) return <ProductPage product={product} navigate={navigate} />;
   if (path === "/about-us") return <AboutPage navigate={navigate} />;
   if (path === "/drilling-fluid-systems")
     return <SystemsPage navigate={navigate} />;
@@ -895,9 +913,9 @@ function Footer({
   );
 }
 
-function setMetadata(page?: PublicPage) {
+function setMetadata(page?: PublicPage | PublicProduct) {
   const title = page
-    ? `${page.nav} | UniqEnergy Solutions`
+    ? `${"name" in page ? page.name : page.nav} | UniqEnergy Solutions`
     : "UniqEnergy Solutions | Drilling Fluid Innovation";
   const description =
     page?.description ??
@@ -932,7 +950,7 @@ export default function App() {
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
   }, []);
   useEffect(() => {
-    if (path === "/" || publicPaths.has(path)) {
+    if (path === "/" || allPublicPaths.has(path)) {
       requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
     }
   }, [path]);
@@ -957,8 +975,8 @@ export default function App() {
   }, []);
   const lab = () => { location.assign("/signin?returnTo=/apps/fluidlab"); };
   useEffect(() => {
-    if (path === "/" || publicPaths.has(path))
-      setMetadata(publicPages.find((page) => page.path === path));
+    if (path === "/" || allPublicPaths.has(path))
+      setMetadata(publicPages.find((page) => page.path === path) || findPublicProduct(path));
   }, [path]);
   useEffect(() => {
     const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
@@ -987,7 +1005,7 @@ export default function App() {
         navigate={navigate}
         onFluidLab={lab}
       />
-      {publicPaths.has(path) ? (
+      {allPublicPaths.has(path) ? (
         <PublicRoute path={path} navigate={navigate} />
       ) : (
         <Home navigate={navigate} />
