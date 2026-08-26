@@ -18,6 +18,8 @@
     "openai": "^6.49.0"
   },
   "devDependencies": {
-    "eslint": "^9.39.4"
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.4",
+    "globals": "^16.5.0"
   }
 }
