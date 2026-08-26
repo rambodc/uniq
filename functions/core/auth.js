@@ -1,0 +1,9 @@
+import { HttpsError } from "firebase-functions/v2/https";
+import { db } from "./firebase.js";
+import { MANAGED_MINI_APPS } from "./config.js";
+
+export function normalizeMiniApps(value) { if (!Array.isArray(value)) return []; return [...new Set(value.filter((item) => MANAGED_MINI_APPS.includes(item)))]; }
+export function publicUser(uid, data) { return { schemaVersion: 1, uid, email: data.email || "", firstName: data.firstName || "", lastName: data.lastName || "", role: data.role === "admin" ? "admin" : "user", status: data.status === "disabled" ? "disabled" : "active", enabledMiniApps: normalizeMiniApps(data.enabledMiniApps) }; }
+export async function requireUser(request) { const uid = request.auth?.uid, tokenEmail = request.auth?.token?.email; if (!uid || !tokenEmail) throw new HttpsError("unauthenticated", "Sign in to continue."); const ref = db.collection("users").doc(uid), snap = await ref.get(); if (!snap.exists || snap.data()?.schemaVersion !== 1) throw new HttpsError("permission-denied", "This enterprise account is not configured."); const data = snap.data(); if (data.status !== "active") throw new HttpsError("permission-denied", "This account is disabled."); if (String(data.email || "").toLowerCase() !== String(tokenEmail).toLowerCase()) throw new HttpsError("permission-denied", "Account identity mismatch."); return { uid, ref, data, user: publicUser(uid, data) }; }
+export async function requireAdmin(request) { const current = await requireUser(request); if (current.data.role !== "admin") throw new HttpsError("permission-denied", "Administrator access is required."); return current; }
+export async function requireMiniApp(request, appId) { const current = await requireUser(request); if (current.data.role !== "admin" && !normalizeMiniApps(current.data.enabledMiniApps).includes(appId)) throw new HttpsError("permission-denied", "You do not have access to this mini app."); return current; }

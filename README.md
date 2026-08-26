@@ -1,54 +1,99 @@
-# UniqEnergy Website and FluidLab
+# UniqEnergy Website and Enterprise Portal
 
-UniqEnergy's Vite/React website and the FluidLab conceptual MD-only well workspace.
+UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 
 ## Architecture
 
-- React, TypeScript, Vite, Three.js/React Three Fiber
-- Firebase Hosting, Email/Password Authentication, Firestore, Storage, and Cloud Functions
-- App Check with reCAPTCHA Enterprise in monitor-only mode
+- React 19, TypeScript, Vite, React Router, Three.js
+- Firebase Hosting, Email/Password Authentication, callable Functions, Firestore, Storage, and App Check
+- Public marketing site under `src/public`
+- Enterprise authentication and invitation acceptance under `src/auth`
+- Portal launcher, layout, guards, and mini-app registry under `src/portal`
+- Product surfaces under `src/mini-apps/<app-id>`
+- Callable backend handlers under `functions/apps/<app-id>`, with one deployed handler per file
+- Shared backend infrastructure under `functions/core` and integrations under `functions/services`
 
-UniqEnergy Account is the parent platform. Authentication and a version-one account profile are required before users can create cloud projects. FluidLab builds sequential conceptual wells, while Fluid Programs provides a saved drilling-fluids educational chat backed by a secret-protected OpenAI Function. Projects autosave through ownership-checked callable Functions; there is no guest editor or manual save flow. Client access to Firestore and Storage remains denied by rules.
+`functions/index.js` is deployment-only and explicitly re-exports every handler. Browser Firestore and Storage access is denied; all application operations pass through authenticated, authorized callable Functions.
 
-## Local development
+## Mini apps and access
 
-Use Node.js 22 and Java 21 for the Firebase rules emulators.
+- **FluidLab** — owner-private conceptual well projects
+- **Fluid Programs** — owner-private drilling-fluids conversations
+- **User Access** — administrator-only invitation and access management
+- **Account** — always available to authenticated users
+
+Administrators automatically receive every mini app. Ordinary users receive explicit `fluidlab` and/or `fluid-programs` grants. There is no public signup route.
+
+## Version-one data
+
+```text
+users/{uid}
+users/{uid}/miniApps/fluidlab/projects/{projectId}
+users/{uid}/miniApps/fluid-programs/projects/{projectId}
+users/{uid}/miniApps/fluid-programs/usage/{yyyy-mm-dd}
+invitations/{invitationId}
+contactInquiries/{inquiryId}
+```
+
+All records created by the enterprise system use `schemaVersion: 1`. There is no migration or legacy compatibility layer.
+
+## Local validation
+
+Use Node.js 22 and Java 21 for Firebase rule emulators.
 
 ```bash
 npm ci
-npm run dev
 npm run lint
 npm test
 npm run build
+npm ci --prefix functions
+npm run lint --prefix functions
+npm test --prefix functions
 PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" npm run test:rules
 ```
 
-Functions are validated separately:
+Frontend environment values are the existing `VITE_FIREBASE_*` values and `VITE_APPCHECK_SITE_KEY`. Function secrets required before deployment are:
 
-```bash
-npm ci --prefix functions
-npm test --prefix functions
-npm run lint --prefix functions
+```text
+OPENAI_API_KEY
+SMTP_USER
+SMTP_PASSWORD
+EMAIL_FROM_ADDRESS
 ```
 
-Create a local `.env.local` from the Firebase web-app values and `VITE_APPCHECK_SITE_KEY`. Environment files are ignored.
+Optional function environment values are `SMTP_HOST`, `SMTP_PORT`, and `PUBLIC_APP_URL`. Defaults target Gmail SMTP, port 465, and the production Firebase Hosting URL.
 
-Firebase Authentication must have Email/Password enabled. Anonymous authentication is not used. Production callable Functions enforce App Check; use a registered App Check debug token for local calls against deployed Functions.
+## Controlled enterprise reset
 
-## Authentication and routes
+The reset utility is never run by deployment. It first reports every Auth user, top-level Firestore collection count, and Storage object without deleting anything:
 
-- `/` — public homepage
-- `/fluidlab` — authentication-aware entry to the account platform
-- `/account` — protected applications and projects dashboard
-- `/account/profile` — protected profile and logout
-- `/account/projects/:projectId/fluidlab` — protected FluidLab editor
-- `/account/projects/:projectId/fluid-programs` — protected Fluid Programs conversation
-- `/signin` — Email/Password sign in
-- `/signup` — public registration and missing-profile completion
-- `/forgot-password` — Firebase password reset
+```bash
+npm run reset:enterprise --prefix functions
+```
+
+Permanent deletion requires both an exact environment acknowledgement and explicit confirmation flag:
+
+```bash
+ALLOW_ENTERPRISE_RESET=YES_DELETE_ALL_UNIQENERGY_DATA npm run reset:enterprise --prefix functions -- --confirm-permanent-reset
+```
+
+After the verified reset, create the first user in Firebase Authentication through Firebase Console. Then create `users/{uid}` with:
+
+```json
+{
+  "schemaVersion": 1,
+  "uid": "AUTH_UID",
+  "email": "admin@example.com",
+  "firstName": "Admin",
+  "lastName": "User",
+  "role": "admin",
+  "status": "active",
+  "enabledMiniApps": ["fluidlab", "fluid-programs"]
+}
+```
+
+Use Firestore timestamps for `createdAt` and `updatedAt`. All subsequent accounts must be created through the User Access invitation workflow.
 
 ## Deployment
 
-Pull requests run separate Hosting, Functions, and Firebase Rules validation workflows. Pushes to the protected `production` branch deploy those surfaces through the GitHub `Prod` environment using Google Workload Identity Federation; no service-account JSON keys are stored.
-
-The Firebase project is `uniqenergy-de71c`. Manual release checks should use a Hosting preview channel before production.
+Deploy only through the existing GitHub Actions workflows. Pull requests create a Firebase Hosting preview and validate Hosting, Functions, and rules independently. Production deployments occur from the protected `production` branch using Workload Identity Federation. Never deploy or reset production automatically from a local development action.

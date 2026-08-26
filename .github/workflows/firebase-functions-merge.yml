@@ -4,12 +4,6 @@ on:
     branches: [production]
     paths: ["functions/**", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
   workflow_dispatch:
-    inputs:
-      purge_legacy_account_data:
-        description: "Permanently purge the complete legacy fluidlabUsers tree"
-        required: false
-        default: false
-        type: boolean
 concurrency: { group: functions-production, cancel-in-progress: false }
 jobs:
   deploy:
@@ -30,12 +24,7 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
       - run: npm ci --prefix functions
       - run: find functions -path 'functions/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
-      - run: npm test --prefix functions
+      - run: npm run lint --prefix functions
+      - run: env -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE -u GOOGLE_GHA_CREDS_PATH npm test --prefix functions
       - run: npm install --global firebase-tools@14.15.2
-      - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --message "CI functions deploy"
-      - name: Report legacy data before deletion
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_legacy_account_data }}
-        run: node functions/purge-legacy-account-data.js
-      - name: Purge and verify legacy account data
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_legacy_account_data }}
-        run: node functions/purge-legacy-account-data.js --confirm
+      - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"

@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
-    "test": "vitest run src/fluidlab/engineering.test.ts && node --test tests/homepage.test.mjs",
+    "test": "vitest run src/mini-apps/fluidlab/engineering.test.ts && node --test tests/homepage.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node --test tests/rules.test.mjs\"",
     "deploy": "npm run build && firebase deploy --only hosting"
   },
@@ -22,6 +22,7 @@
     "motion": "^12.23.24",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "react-router-dom": "^7.18.2",
     "three": "^0.185.1"
   },
   "devDependencies": {

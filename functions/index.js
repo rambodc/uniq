@@ -1,88 +1,25 @@
-import { initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import OpenAI from "openai";
-initializeApp();
-const db = getFirestore(), base = { region: "us-central1", maxInstances: 2, cors: true, enforceAppCheck: process.env.FUNCTIONS_EMULATOR !== "true" };
-function identity(request) { const uid = request.auth?.uid, email = request.auth?.token?.email; if (!uid || !email) throw new HttpsError("unauthenticated", "Sign in to your UniqEnergy Account to continue."); return { uid, email: String(email).trim().toLowerCase() }; }
-function cleanName(value, label, max = 100) { const name = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : ""; if (!name || name.length > max) throw new HttpsError("invalid-argument", `Enter a valid ${label}.`); return name; }
-const accounts = () => db.collection("accounts"), timestamp = (value) => value?.toDate ? value.toDate().toISOString() : null;
-const publicAccount = (data) => ({ schemaVersion: 1, firstName: data.firstName, lastName: data.lastName, email: data.email, status: data.status });
-async function authorized(request) { const user = identity(request), snap = await accounts().doc(user.uid).get(); if (!snap.exists) throw new HttpsError("failed-precondition", "Complete your UniqEnergy Account profile."); if (snap.data()?.schemaVersion !== 1) throw new HttpsError("failed-precondition", "This account profile is unsupported."); if (snap.data()?.status !== "active") throw new HttpsError("permission-denied", "This account is disabled."); return { ...user, account: snap.data() }; }
-export const registerAccount = onCall(base, async (request) => { const user = identity(request), firstName = cleanName(request.data?.firstName, "first name", 60), lastName = cleanName(request.data?.lastName, "last name", 60), ref = accounts().doc(user.uid); await db.runTransaction(async (transaction) => { const existing = await transaction.get(ref), prior = existing.data(); transaction.set(ref, { schemaVersion: 1, firstName, lastName, email: user.email, status: prior?.status === "disabled" ? "disabled" : "active", createdAt: prior?.createdAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), lastLoginAt: FieldValue.serverTimestamp() }); }); return { account: publicAccount((await ref.get()).data()) }; });
-export const getAccount = onCall(base, async (request) => { const user = await authorized(request); await accounts().doc(user.uid).update({ lastLoginAt: FieldValue.serverTimestamp() }); return { account: publicAccount(user.account) }; });
-export const updateAccountProfile = onCall(base, async (request) => { const user = await authorized(request), firstName = cleanName(request.data?.firstName, "first name", 60), lastName = cleanName(request.data?.lastName, "last name", 60), ref = accounts().doc(user.uid); await ref.update({ firstName, lastName, updatedAt: FieldValue.serverTimestamp() }); return { account: publicAccount((await ref.get()).data()) }; });
-function optionalText(value, label, max) { if (value === undefined || value === null || value === "") return null; if (typeof value !== "string") throw new HttpsError("invalid-argument", `Enter a valid ${label}.`); const text = value.trim().replace(/\s+/g, " "); if (!text || text.length > max) throw new HttpsError("invalid-argument", `Enter a valid ${label}.`); return text; }
-export function validContactInquiry(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new HttpsError("invalid-argument", "The inquiry is invalid.");
-  const allowed = new Set(["inquiryType", "name", "email", "phone", "company", "areaOfInterest", "linkedinUrl", "message", "website"]);
-  if (Object.keys(value).some((key) => !allowed.has(key))) throw new HttpsError("invalid-argument", "The inquiry contains unsupported information.");
-  if (value.website) throw new HttpsError("invalid-argument", "The inquiry could not be submitted.");
-  const inquiryType = value.inquiryType;
-  if (!["operations", "general", "careers"].includes(inquiryType)) throw new HttpsError("invalid-argument", "Choose an inquiry type.");
-  const name = cleanName(value.name, "name", 100), email = typeof value.email === "string" ? value.email.trim().toLowerCase() : "";
-  if (name.length < 2) throw new HttpsError("invalid-argument", "Enter a valid name.");
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError("invalid-argument", "Enter a valid email address.");
-  const phone = optionalText(value.phone, "phone number", 40), message = cleanName(value.message, "message", 3000);
-  if (message.length < 10) throw new HttpsError("invalid-argument", "Tell us a little more about your inquiry.");
-  const company = inquiryType === "operations" ? optionalText(value.company, "company", 120) : null;
-  const areaOfInterest = inquiryType === "careers" ? cleanName(value.areaOfInterest, "area of interest", 120) : null;
-  let linkedinUrl = inquiryType === "careers" ? optionalText(value.linkedinUrl, "LinkedIn URL", 500) : null;
-  if (linkedinUrl) { try { const parsed = new URL(linkedinUrl); if (parsed.protocol !== "https:" || !/(^|\.)linkedin\.com$/i.test(parsed.hostname)) throw new Error(); linkedinUrl = parsed.toString(); } catch { throw new HttpsError("invalid-argument", "Enter a valid LinkedIn URL."); } }
-  return { inquiryType, name, email, ...(phone ? { phone } : {}), ...(company ? { company } : {}), ...(areaOfInterest ? { areaOfInterest } : {}), ...(linkedinUrl ? { linkedinUrl } : {}), message };
-}
-export const submitContactInquiry = onCall(base, async (request) => { const inquiry = validContactInquiry(request.data), ref = db.collection("contactInquiries").doc(); await ref.set({ schemaVersion: 1, ...inquiry, status: "new", source: "public-contact", createdAt: FieldValue.serverTimestamp() }); return { success: true, inquiryId: ref.id }; });
-const projectCollection = (uid) => accounts().doc(uid).collection("projects");
-function validFluidLabData(value) {
-  if (!value || value.version !== 1 || typeof value.name !== "string" || value.name.length > 100 || ![null, "metric", "imperial"].includes(value.unitSystem) || !Array.isArray(value.sections) || value.sections.length > 50 || !value.trajectory || Object.hasOwn(value, "display") || Object.hasOwn(value, "surveyStations") || Object.hasOwn(value, "holeSections")) throw new HttpsError("invalid-argument", "The FluidLab v1 project data is invalid.");
-  if (value.unitSystem === null && value.sections.length) throw new HttpsError("invalid-argument", "Choose units before adding sections.");
-  const ids = new Set(); let priorMd = 0;
-  for (const section of value.sections) { if (!section || typeof section.id !== "string" || ids.has(section.id) || typeof section.name !== "string" || section.name.length > 80 || !Number.isFinite(section.endMdM) || section.endMdM <= priorMd || !Number.isFinite(section.diameterMm) || section.diameterMm <= 0 || typeof section.color !== "string" || !/^#[0-9a-f]{6}$/i.test(section.color) || typeof section.visible !== "boolean") throw new HttpsError("invalid-argument", "A FluidLab section is malformed."); ids.add(section.id); priorMd = section.endMdM; }
-  const trajectory = value.trajectory;
-  if (typeof trajectory.enabled !== "boolean") throw new HttpsError("invalid-argument", "The trajectory is malformed.");
-  if (trajectory.enabled && (!value.sections.length || !Number.isFinite(trajectory.kopMdM) || trajectory.kopMdM < 0 || !Number.isFinite(trajectory.endCurveMdM) || trajectory.endCurveMdM <= trajectory.kopMdM || trajectory.endCurveMdM > priorMd)) throw new HttpsError("invalid-argument", "KOP and End of Curve are invalid.");
-  if (!trajectory.enabled && (trajectory.kopMdM !== null || trajectory.endCurveMdM !== null)) throw new HttpsError("invalid-argument", "A vertical well cannot retain curve values.");
-  if (Buffer.byteLength(JSON.stringify(value)) > 128 * 1024) throw new HttpsError("invalid-argument", "The FluidLab project is too large."); return JSON.parse(JSON.stringify(value));
-}
-function validFluidProgramsData(value) {
-  if (!value || value.version !== 1 || !Array.isArray(value.messages) || value.messages.length > 500) throw new HttpsError("invalid-argument", "The Fluid Programs v1 project data is invalid.");
-  for (const message of value.messages) if (!message || typeof message.id !== "string" || !["user", "assistant"].includes(message.role) || typeof message.text !== "string" || !message.text.trim() || message.text.length > (message.role === "user" ? 4000 : 12000) || typeof message.createdAt !== "string" || !Number.isFinite(Date.parse(message.createdAt))) throw new HttpsError("invalid-argument", "A Fluid Programs message is malformed.");
-  if (Buffer.byteLength(JSON.stringify(value)) > 800 * 1024) throw new HttpsError("resource-exhausted", "This conversation is full. Start a new Fluid Programs project to continue.");
-  return JSON.parse(JSON.stringify(value));
-}
-function validProjectData(type, value) { return type === "fluidlab" ? validFluidLabData(value) : type === "fluid-programs" ? validFluidProgramsData(value) : (() => { throw new HttpsError("invalid-argument", "Unsupported project type."); })(); }
-function publicProject(snapshot, includeData = true) { const data = snapshot.data(); return { id: snapshot.id, type: data.type, schemaVersion: data.schemaVersion, name: data.name, ...(includeData ? { data: data.currentData } : {}), revision: data.revision, createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) }; }
-async function ownedProject(user, id) { if (typeof id !== "string" || !id) throw new HttpsError("invalid-argument", "Choose a project."); const ref = projectCollection(user.uid).doc(id), snap = await ref.get(); if (!snap.exists || snap.data()?.owner !== user.uid) throw new HttpsError("not-found", "Project not found."); return { ref, snap }; }
-function supportedProject(data) { if (!["fluidlab", "fluid-programs"].includes(data.type) || data.schemaVersion !== 1) throw new HttpsError("failed-precondition", "This project type or schema is unsupported."); }
-export const listProjects = onCall(base, async (request) => { const user = await authorized(request), snapshots = await projectCollection(user.uid).orderBy("updatedAt", "desc").limit(200).get(); return { projects: snapshots.docs.map((doc) => publicProject(doc, false)) }; });
-export const createProject = onCall(base, async (request) => { const user = await authorized(request), type = request.data?.type, data = validProjectData(type, request.data?.data), name = cleanName(request.data?.name, "project name"), ref = projectCollection(user.uid).doc(), now = FieldValue.serverTimestamp(); await ref.set({ owner: user.uid, type, schemaVersion: 1, name, currentData: type === "fluidlab" ? { ...data, name } : data, revision: 1, lastMutationId: null, createdAt: now, updatedAt: now }); return { project: publicProject(await ref.get()) }; });
-export const getProject = onCall(base, async (request) => { const user = await authorized(request), { snap } = await ownedProject(user, request.data?.projectId), data = snap.data(); supportedProject(data); if (data.type !== "fluid-programs") return { project: publicProject(snap) }; const day = new Date().toISOString().slice(0, 10), usage = await accounts().doc(user.uid).collection("aiUsage").doc(day).get(); return { project: publicProject(snap), remaining: Math.max(0, 50 - (usage.data()?.count || 0)) }; });
-export const autosaveProject = onCall(base, async (request) => { const user = await authorized(request), name = cleanName(request.data?.name, "project name"), expected = Number(request.data?.baseRevision), mutationId = cleanName(request.data?.mutationId, "mutation ID"), { ref } = await ownedProject(user, request.data?.projectId); await db.runTransaction(async (transaction) => { const snap = await transaction.get(ref), stored = snap.data(); supportedProject(stored); const data = validProjectData(stored.type, request.data?.data); if (stored.lastMutationId === mutationId) return; if (!Number.isInteger(expected) || stored.revision !== expected) throw new HttpsError("aborted", "This project changed in another session. Reload it before continuing."); if (stored.type === "fluid-programs" && JSON.stringify(data.messages) !== JSON.stringify(stored.currentData.messages)) throw new HttpsError("permission-denied", "Chat history can only be changed by the Fluid Programs agent."); transaction.update(ref, { name, currentData: stored.type === "fluidlab" ? { ...data, name } : data, revision: expected + 1, lastMutationId: mutationId, updatedAt: FieldValue.serverTimestamp() }); }); return { project: publicProject(await ref.get()) }; });
-export const sendFluidProgramsMessage = onCall({ ...base, secrets: ["OPENAI_API_KEY"], timeoutSeconds: 120 }, async (request) => {
-  const user = await authorized(request), text = cleanName(request.data?.text, "message", 4000), expected = Number(request.data?.baseRevision), mutationId = cleanName(request.data?.mutationId, "mutation ID"), { ref } = await ownedProject(user, request.data?.projectId), day = new Date().toISOString().slice(0, 10), usageRef = accounts().doc(user.uid).collection("aiUsage").doc(day);
-  let priorMessages = [], alreadyComplete = false;
-  await db.runTransaction(async (transaction) => {
-    const [snap, usageSnap] = await Promise.all([transaction.get(ref), transaction.get(usageRef)]), stored = snap.data(), count = usageSnap.data()?.count || 0; supportedProject(stored);
-    if (stored.type !== "fluid-programs") throw new HttpsError("failed-precondition", "Choose a Fluid Programs project.");
-    if (stored.lastMutationId === mutationId) { alreadyComplete = true; return; }
-    if (stored.inFlightMutationId) throw new HttpsError("resource-exhausted", "Another message is still being answered.");
-    if (!Number.isInteger(expected) || stored.revision !== expected) throw new HttpsError("aborted", "This conversation changed in another session. Reload it before continuing.");
-    if (count >= 50) throw new HttpsError("resource-exhausted", "Your daily Fluid Programs limit has been reached.");
-    priorMessages = validFluidProgramsData(stored.currentData).messages;
-    transaction.set(usageRef, { count: count + 1, date: day, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    transaction.update(ref, { inFlightMutationId: mutationId, inFlightAt: FieldValue.serverTimestamp() });
-  });
-  if (alreadyComplete) { const snap = await ref.get(), usage = await usageRef.get(); return { project: publicProject(snap), remaining: Math.max(0, 50 - (usage.data()?.count || 0)) }; }
-  try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), response = await openai.responses.create({ model: "gpt-5-mini", store: false, max_output_tokens: 1200, instructions: "You are Fluid Programs, a concise drilling-fluids educational assistant. Explain water-based and oil-based drilling-fluid concepts, properties, testing, troubleshooting, and tradeoffs. Do not claim to know missing well conditions. For treatment rates, formulations, safety-critical operations, or field decisions, explicitly require review by a qualified drilling-fluids engineer using the actual well program, geology, regulations, SDS documents, and current field data.", input: [...priorMessages.map((message) => ({ role: message.role, content: message.text })), { role: "user", content: text }] }), answer = response.output_text.trim();
-    if (!answer) throw new Error("The model returned no answer.");
-    const now = new Date().toISOString(), data = validFluidProgramsData({ version: 1, messages: [...priorMessages, { id: `${mutationId}-user`, role: "user", text, createdAt: now }, { id: `${mutationId}-assistant`, role: "assistant", text: answer, createdAt: now }] });
-    await db.runTransaction(async (transaction) => { const snap = await transaction.get(ref), stored = snap.data(); if (stored.inFlightMutationId !== mutationId || stored.revision !== expected) throw new HttpsError("aborted", "This conversation changed while the answer was generated."); transaction.update(ref, { currentData: data, revision: expected + 1, lastMutationId: mutationId, inFlightMutationId: FieldValue.delete(), inFlightAt: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }); });
-    const [saved, usage] = await Promise.all([ref.get(), usageRef.get()]); return { project: publicProject(saved), remaining: Math.max(0, 50 - (usage.data()?.count || 0)) };
-  } catch (error) {
-    await db.runTransaction(async (transaction) => { const [snap, usage] = await Promise.all([transaction.get(ref), transaction.get(usageRef)]); if (snap.data()?.inFlightMutationId === mutationId) transaction.update(ref, { inFlightMutationId: FieldValue.delete(), inFlightAt: FieldValue.delete() }); transaction.set(usageRef, { count: Math.max(0, (usage.data()?.count || 1) - 1), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); });
-    if (error instanceof HttpsError) throw error;
-    throw new HttpsError("unavailable", "The Fluid Programs agent could not answer. Try again.");
-  }
-});
-export const deleteProject = onCall(base, async (request) => { const user = await authorized(request), { ref } = await ownedProject(user, request.data?.projectId); await db.recursiveDelete(ref); return {}; });
+export { getCurrentUser } from "./apps/account/get-current-user.js";
+export { updateCurrentUser } from "./apps/account/update-current-user.js";
+export { submitContactInquiry } from "./apps/contact/submit-contact-inquiry.js";
+
+export { adminListUsers } from "./apps/user-access/list-users.js";
+export { adminInviteUser } from "./apps/user-access/invite-user.js";
+export { adminUpdateUserAccess } from "./apps/user-access/update-user-access.js";
+export { adminUpdateInvite } from "./apps/user-access/update-invite.js";
+export { adminResendInvite } from "./apps/user-access/resend-invite.js";
+export { adminCancelInvite } from "./apps/user-access/cancel-invite.js";
+export { previewInvite } from "./apps/user-access/preview-invite.js";
+export { acceptInvite } from "./apps/user-access/accept-invite.js";
+
+export { listFluidLabProjects } from "./apps/fluidlab/list-projects.js";
+export { createFluidLabProject } from "./apps/fluidlab/create-project.js";
+export { getFluidLabProject } from "./apps/fluidlab/get-project.js";
+export { saveFluidLabProject } from "./apps/fluidlab/save-project.js";
+export { deleteFluidLabProject } from "./apps/fluidlab/delete-project.js";
+
+export { listFluidProgramsProjects } from "./apps/fluid-programs/list-projects.js";
+export { createFluidProgramsProject } from "./apps/fluid-programs/create-project.js";
+export { getFluidProgramsProject } from "./apps/fluid-programs/get-project.js";
+export { saveFluidProgramsProject } from "./apps/fluid-programs/save-project.js";
+export { deleteFluidProgramsProject } from "./apps/fluid-programs/delete-project.js";
+export { sendFluidProgramsMessage } from "./apps/fluid-programs/send-message.js";
