@@ -112,3 +112,12 @@ ALLOW_FLUID_PROGRAMS_CLEANUP=YES_DELETE_OBSOLETE_CONVERSATIONS npm run cleanup:f
 ## Deployment
 
 Deploy only through the existing GitHub Actions workflows. Pull requests create a Firebase Hosting preview and validate Hosting, Functions, and rules independently. Production deployments occur from the protected `production` branch using Workload Identity Federation. Never deploy or reset production automatically from a local development action.
+
+Production release procedure:
+
+1. Run the relevant local validation commands without deploying.
+2. Commit only the intended changes and push them to `production` through the repository's normal Git workflow.
+3. Let `.github/workflows/firebase-hosting-merge.yml`, `firebase-functions-merge.yml`, or `firebase-rules-merge.yml` perform the applicable deployment.
+4. Monitor the GitHub Actions run through completion and report its result.
+
+Do not run `npm run deploy`, `firebase deploy`, or any other local command that changes production. The npm script exists for legacy compatibility only and is not an authorized release path.

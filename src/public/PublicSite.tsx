@@ -92,6 +92,21 @@ const publicPages: PublicPage[] = [
     alt: "A luminous protective shield surrounding industrial equipment and fluid technology",
   },
   {
+    path: "/locations",
+    nav: "Locations",
+    eyebrow: "Western Canadian reach",
+    title: "Support positioned",
+    accent: "closer to the work.",
+    description:
+      "Find UniqEnergy service locations across Alberta, British Columbia, and Saskatchewan, with direct phone numbers and Google Maps directions.",
+    summary:
+      "A connected network of service points positioned across Western Canada.",
+    detail:
+      "Choose a location to view it on the map, call directly, or open turn-by-turn directions.",
+    image: "/images/locations-western-canada.webp",
+    alt: "Western Canadian prairie and highway network illuminated by connected teal location points",
+  },
+  {
     path: "/contact-us",
     nav: "Contact Us",
     eyebrow: "Start a conversation",
@@ -800,6 +815,87 @@ function ContactPage() {
   );
 }
 
+type PublicLocation = {
+  id: string;
+  city: string;
+  address: string[];
+  phones: { display: string; dial: string }[];
+};
+
+const locations: PublicLocation[] = [
+  { id: "blackfalds", city: "Blackfalds", address: ["4300 South Street", "Blackfalds, AB T0M 0J0"], phones: [{ display: "403-885-5151", dial: "+14038855151" }] },
+  { id: "elk-point", city: "Elk Point", address: ["4505 57 Avenue", "Elk Point, AB T0A 1A0"], phones: [{ display: "780-724-2040", dial: "+17807242040" }, { display: "780-210-0158", dial: "+17802100158" }] },
+  { id: "fort-st-john", city: "Fort St. John", address: ["10223 116 Street", "Fort St. John, BC V1J 4M6"], phones: [{ display: "250-785-4222", dial: "+12507854222" }] },
+  { id: "grande-prairie-38", city: "Grande Prairie", address: ["9716 38 Avenue", "Grande Prairie, AB T8V 4Z1"], phones: [{ display: "780-814-6045", dial: "+17808146045" }] },
+  { id: "nisku", city: "Nisku", address: ["507 14 Avenue", "Nisku, AB T9E 7M8"], phones: [{ display: "780-955-5553", dial: "+17809555553" }] },
+  { id: "blackfoot", city: "Blackfoot", address: ["27 Production Avenue", "Blackfoot, AB"], phones: [{ display: "780-808-3845", dial: "+17808083845" }] },
+  { id: "rosetown", city: "Rosetown", address: ["110 Saskatchewan Drive", "Rosetown, SK S0L 2V0"], phones: [{ display: "306-882-1234", dial: "+13068821234" }] },
+  { id: "brooks", city: "Brooks", address: ["143040 Township Road 191", "SE-9-19-14-W4, Box 686", "Brooks, AB T1R 1B6"], phones: [{ display: "403-362-4071", dial: "+14033624071" }] },
+  { id: "grande-prairie-county", city: "Grande Prairie", address: ["#102-57, 721071 Range Road 53", "County of Grande Prairie No. 1, AB T8X 0N4"], phones: [{ display: "250-616-8592", dial: "+12506168592" }] },
+  { id: "weyburn", city: "Weyburn", address: ["29 Queen Street West", "Weyburn, SK S4H 2L3"], phones: [{ display: "306-861-0860", dial: "+13068610860" }] },
+  { id: "calgary", city: "Calgary", address: ["7115 48 Street SE", "Calgary, AB T2C 5A4"], phones: [{ display: "403-262-2004", dial: "+14032622004" }] },
+];
+
+const locationQuery = (location: PublicLocation) => location.address.join(", ");
+const mapEmbedUrl = (location: PublicLocation) =>
+  `https://maps.google.com/maps?q=${encodeURIComponent(locationQuery(location))}&z=14&output=embed`;
+const mapDirectionsUrl = (location: PublicLocation) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationQuery(location))}`;
+
+function LocationsPage() {
+  const [selectedId, setSelectedId] = useState(locations[0].id);
+  const selected = locations.find((location) => location.id === selectedId) ?? locations[0];
+  return (
+    <main id="main" className="standalone-page locations-page">
+      <section className="locations-hero">
+        <img src="/images/locations-western-canada.webp" alt="" fetchPriority="high" />
+        <div className="locations-hero-shade" />
+        <motion.div className="locations-hero-copy" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="page-label">Locations</div>
+          <span className="eyebrow">Western Canadian reach</span>
+          <h1>Closer to the field.<br /><em>Ready for what’s next.</em></h1>
+          <p>Choose a location to view it on the map, connect by phone, or open directions in Google Maps.</p>
+          <button className="button-primary" onClick={() => document.getElementById("location-directory")?.scrollIntoView({ behavior: "smooth" })}>Find a location <b aria-hidden="true">↘</b></button>
+        </motion.div>
+        <div className="locations-hero-proof" aria-hidden="true"><span>11 service points</span><i /><span>3 provinces</span><i /><span>One connected network</span></div>
+      </section>
+
+      <section className="locations-intro section-wide">
+        <Reveal>
+          <span className="eyebrow">Where to find us</span>
+          <h2>Regional access.<br /><em>Direct connections.</em></h2>
+        </Reveal>
+        <Reveal><p>Our network spans key operating centres across Alberta, British Columbia, and Saskatchewan. Select any address for a closer map view, then call or get directions.</p></Reveal>
+      </section>
+
+      <section className="locations-directory section-wide" id="location-directory">
+        <div className="locations-map-shell">
+          <div className="locations-map-heading"><div><span>Selected location</span><strong>{selected.city}</strong></div><a href={mapDirectionsUrl(selected)} target="_blank" rel="noreferrer">Open in Google Maps <b aria-hidden="true">↗</b></a></div>
+          <iframe key={selected.id} src={mapEmbedUrl(selected)} title={`Map showing ${selected.city} location`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+          <address>{selected.address.map((line) => <span key={line}>{line}</span>)}</address>
+        </div>
+        <div className="location-list" aria-label="Location directory">
+          {locations.map((location, index) => {
+            const active = location.id === selected.id;
+            return (
+              <Reveal className={`location-card${active ? " active" : ""}`} key={location.id}>
+                <div className="location-card-top"><span>{String(index + 1).padStart(2, "0")}</span><i aria-hidden="true" /></div>
+                <h3>{location.city}</h3>
+                <address>{location.address.map((line) => <span key={line}>{line}</span>)}</address>
+                <div className="location-phones">{location.phones.map((phone) => <a key={phone.dial} href={`tel:${phone.dial}`}>{phone.display}</a>)}</div>
+                <div className="location-actions">
+                  <button type="button" aria-pressed={active} onClick={() => setSelectedId(location.id)}>{active ? "Showing on map" : "View on map"}</button>
+                  <a href={mapDirectionsUrl(location)} target="_blank" rel="noreferrer" aria-label={`Get directions to ${location.city} in Google Maps`}>Get directions <b aria-hidden="true">↗</b></a>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function PublicRoute({
   path,
   navigate,
@@ -814,6 +910,7 @@ function PublicRoute({
     return <SystemsPage navigate={navigate} />;
   if (path === "/technology") return <TechnologyPage />;
   if (path === "/health-safety") return <SafetyPage />;
+  if (path === "/locations") return <LocationsPage />;
   return <ContactPage />;
 }
 

@@ -14,12 +14,24 @@ test("production shell retains canonical public metadata", async () => {
 
 test("public website content and routes remain isolated and unchanged", async () => {
   const source = await read("src/public/PublicSite.tsx");
-  for (const route of ["/about-us", "/drilling-fluid-systems", "/technology", "/health-safety", "/contact-us"]) assert.match(source, new RegExp(route));
+  for (const route of ["/about-us", "/drilling-fluid-systems", "/technology", "/health-safety", "/locations", "/contact-us"]) assert.match(source, new RegExp(route));
   for (const message of ["Built to move with", "Support without the runaround.", "Connected information. Faster decisions.", "Chemistry shaped by the well.", "Experience where it matters.", "Built in Calgary. Ready across Western Canada.", "Five strengths.", "One team around the wellbore."]) assert.match(source, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(source, /mailto:info@uniqenergy\.com/);
   assert.match(source, /tel:\+15877742131/);
   assert.match(source, /function setMetadata/);
   assert.match(source, /submitContactInquiry/);
+});
+
+test("locations page exposes an accessible address directory and keyless Google map", async () => {
+  const source = await read("src/public/PublicSite.tsx"), sitemap = await read("public/sitemap.xml");
+  const locationsPage = source.slice(source.indexOf("function LocationsPage"), source.indexOf("function PublicRoute"));
+  for (const city of ["Blackfalds", "Elk Point", "Fort St. John", "Grande Prairie", "Nisku", "Blackfoot", "Rosetown", "Brooks", "Weyburn", "Calgary"]) assert.match(source, new RegExp(city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const phone of ["403-885-5151", "780-724-2040", "780-210-0158", "403-262-2004"]) assert.match(source, new RegExp(phone));
+  assert.match(source, /maps\.google\.com\/maps\?q=/);
+  assert.match(source, /google\.com\/maps\/search\/\?api=1/);
+  assert.match(source, /aria-pressed=\{active\}/);
+  assert.match(sitemap, /\/locations/);
+  assert.doesNotMatch(locationsPage, /Formula Powell|Wozniak|Di-Corp|Tbar|PR Premium|Smith Trucking|Uniquem|Terry|Dave|Ryan/);
 });
 
 test("Fluid Systems exposes a scalable, indexable product catalogue", async () => {
