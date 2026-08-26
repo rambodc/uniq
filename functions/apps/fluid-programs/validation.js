@@ -1,2 +1,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
-export function validFluidProgramsData(value) { if (!value || value.version !== 1 || !Array.isArray(value.messages) || value.messages.length > 500) throw new HttpsError("invalid-argument", "The Fluid Programs version-one project is invalid."); for (const message of value.messages) if (!message || typeof message.id !== "string" || !["user", "assistant"].includes(message.role) || typeof message.text !== "string" || !message.text.trim() || message.text.length > (message.role === "user" ? 4000 : 12000) || typeof message.createdAt !== "string" || !Number.isFinite(Date.parse(message.createdAt))) throw new HttpsError("invalid-argument", "A Fluid Programs message is malformed."); if (Buffer.byteLength(JSON.stringify(value)) > 800 * 1024) throw new HttpsError("resource-exhausted", "This conversation is full. Start a new project to continue."); return JSON.parse(JSON.stringify(value)); }
+export function validSessionMessages(value) {
+  if (!Array.isArray(value) || value.length > 100) throw new HttpsError("invalid-argument", "The Fluid Programs session is invalid.");
+  for (const message of value) if (!message || !["user", "assistant"].includes(message.role) || typeof message.text !== "string" || !message.text.trim() || message.text.length > (message.role === "user" ? 4000 : 12000)) throw new HttpsError("invalid-argument", "A Fluid Programs message is malformed.");
+  if (Buffer.byteLength(JSON.stringify(value)) > 200 * 1024) throw new HttpsError("resource-exhausted", "This session is full. Refresh to start again.");
+  return value.map(({ role, text }) => ({ role, text: text.trim() }));
+}

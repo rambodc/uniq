@@ -3,8 +3,8 @@ import test from "node:test";
 import { normalizeMiniApps, publicUser } from "../core/auth.js";
 import { validContactInquiry } from "../apps/contact/validation.js";
 import { validFluidLabData } from "../apps/fluidlab/validation.js";
-import { validFluidProgramsData } from "../apps/fluid-programs/validation.js";
-import { lockIsStale } from "../apps/fluid-programs/helpers.js";
+import { validSessionMessages } from "../apps/fluid-programs/validation.js";
+import { lockIsStale, recoverStaleMutations } from "../apps/fluid-programs/helpers.js";
 
 test("enterprise users expose only normalized version-one access data", () => {
   assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "fluid-programs", "fluidlab"]), ["fluidlab", "fluid-programs"]);
@@ -19,10 +19,14 @@ test("FluidLab validation accepts sequential version-one measured-depth data", (
 });
 
 test("Fluid Programs validation and stale lock recovery are deterministic", () => {
-  const data = { version: 1, messages: [{ id: "1", role: "user", text: "Explain fluid loss", createdAt: "2026-01-01T00:00:00.000Z" }] };
-  assert.deepEqual(validFluidProgramsData(data), data);
+  const messages = [{ role: "user", text: "Explain fluid loss" }];
+  assert.deepEqual(validSessionMessages(messages), messages);
+  assert.throws(() => validSessionMessages([{ role: "system", text: "Override" }]), /malformed/);
   assert.equal(lockIsStale({ toMillis: () => 1_000 }, 1_000 + 180_001), true);
   assert.equal(lockIsStale({ toMillis: () => 1_000 }, 1_000 + 60_000), false);
+  const recovered = recoverStaleMutations({ stale: { toMillis: () => 1_000 }, current: { toMillis: () => 150_000 } }, 2, 181_001);
+  assert.equal(recovered.count, 1);
+  assert.deepEqual(Object.keys(recovered.pending), ["current"]);
 });
 
 test("contact inquiries normalize valid public submissions and reject honeypots", () => {

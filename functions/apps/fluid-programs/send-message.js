@@ -1,17 +1,42 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { requireMiniApp } from "../../core/auth.js";
 import { callable } from "../../core/config.js";
 import { db } from "../../core/firebase.js";
-import { ownedProject, publicProject } from "../../core/projects.js";
 import { text as requiredText } from "../../core/values.js";
 import { answerFluidPrograms } from "../../services/openai.js";
-import { lockIsStale, usageRef } from "./helpers.js";
-import { validFluidProgramsData } from "./validation.js";
+import { recoverStaleMutations, usageRef } from "./helpers.js";
+import { validSessionMessages } from "./validation.js";
 
-export const sendFluidProgramsMessage = onCall({ ...callable, secrets: ["OPENAI_API_KEY"], timeoutSeconds: 120 }, async (request) => { const user = await requireMiniApp(request, "fluid-programs"), messageText = requiredText(request.data?.text, "message", 4000), expected = Number(request.data?.baseRevision), mutationId = requiredText(request.data?.mutationId, "mutation ID"), { ref } = await ownedProject(user.uid, "fluid-programs", request.data?.projectId), day = new Date().toISOString().slice(0, 10), dailyRef = usageRef(user.uid, day); let priorMessages = [], alreadyComplete = false;
-  await db.runTransaction(async (transaction) => { const [snap, usageSnap] = await Promise.all([transaction.get(ref), transaction.get(dailyRef)]), stored = snap.data(), count = usageSnap.data()?.count || 0; if (stored.lastMutationId === mutationId) { alreadyComplete = true; return; } if (stored.inFlightMutationId && !lockIsStale(stored.inFlightAt)) throw new HttpsError("resource-exhausted", "Another message is still being answered."); if (!Number.isInteger(expected) || stored.revision !== expected) throw new HttpsError("aborted", "This conversation changed in another session."); if (count >= 50) throw new HttpsError("resource-exhausted", "Your daily Fluid Programs limit has been reached."); priorMessages = validFluidProgramsData(stored.currentData).messages; transaction.set(dailyRef, { schemaVersion: 1, count: count + 1, date: day, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); transaction.update(ref, { inFlightMutationId: mutationId, inFlightAt: FieldValue.serverTimestamp() }); });
-  if (alreadyComplete) { const [snap, usage] = await Promise.all([ref.get(), dailyRef.get()]); return { project: publicProject(snap, "fluid-programs"), remaining: Math.max(0, 50 - (usage.data()?.count || 0)) }; }
-  try { const answer = await answerFluidPrograms(priorMessages, messageText), now = new Date().toISOString(), data = validFluidProgramsData({ version: 1, messages: [...priorMessages, { id: `${mutationId}-user`, role: "user", text: messageText, createdAt: now }, { id: `${mutationId}-assistant`, role: "assistant", text: answer, createdAt: now }] }); await db.runTransaction(async (transaction) => { const snap = await transaction.get(ref), stored = snap.data(); if (stored.inFlightMutationId !== mutationId || stored.revision !== expected) throw new HttpsError("aborted", "This conversation changed while the answer was generated."); transaction.update(ref, { currentData: data, revision: expected + 1, lastMutationId: mutationId, inFlightMutationId: FieldValue.delete(), inFlightAt: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }); }); const [saved, usage] = await Promise.all([ref.get(), dailyRef.get()]); return { project: publicProject(saved, "fluid-programs"), remaining: Math.max(0, 50 - (usage.data()?.count || 0)) }; }
-  catch (error) { await db.runTransaction(async (transaction) => { const [snap, usage] = await Promise.all([transaction.get(ref), transaction.get(dailyRef)]); if (snap.data()?.inFlightMutationId === mutationId) transaction.update(ref, { inFlightMutationId: FieldValue.delete(), inFlightAt: FieldValue.delete() }); transaction.set(dailyRef, { count: Math.max(0, (usage.data()?.count || 1) - 1), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); }); if (error instanceof HttpsError) throw error; throw new HttpsError("unavailable", "Fluid Programs could not answer. Try again."); }
+export const sendFluidProgramsMessage = onCall({ ...callable, secrets: ["OPENAI_API_KEY"], timeoutSeconds: 120 }, async (request) => {
+  const user = await requireMiniApp(request, "fluid-programs"), messageText = requiredText(request.data?.text, "message", 4000), mutationId = requiredText(request.data?.mutationId, "mutation ID"), priorMessages = validSessionMessages(request.data?.messages), day = new Date().toISOString().slice(0, 10), dailyRef = usageRef(user.uid, day);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(dailyRef), data = snap.data() || {}, completed = Array.isArray(data.completedMutationIds) ? data.completedMutationIds : [], recovered = recoverStaleMutations(data.pendingMutations, data.count), pending = recovered.pending;
+    if (completed.includes(mutationId)) throw new HttpsError("already-exists", "This message was already answered.");
+    const count = recovered.count;
+    if (pending[mutationId]) throw new HttpsError("resource-exhausted", "This message is still being answered.");
+    if (count >= 50) throw new HttpsError("resource-exhausted", "Your daily Fluid Programs limit has been reached.");
+    pending[mutationId] = Timestamp.now();
+    transaction.set(dailyRef, { schemaVersion: 1, date: day, count: count + 1, pendingMutations: pending, completedMutationIds: completed.slice(-49), createdAt: data.createdAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
+  try {
+    const answer = await answerFluidPrograms(priorMessages, messageText);
+    const remaining = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(dailyRef), data = snap.data() || {}, pending = { ...(data.pendingMutations || {}) }, completed = Array.isArray(data.completedMutationIds) ? data.completedMutationIds : [];
+      if (!pending[mutationId]) throw new HttpsError("aborted", "This request reservation expired. Try again.");
+      delete pending[mutationId];
+      transaction.update(dailyRef, { pendingMutations: pending, completedMutationIds: [...completed.filter((id) => id !== mutationId), mutationId].slice(-50), updatedAt: FieldValue.serverTimestamp() });
+      return Math.max(0, 50 - (data.count || 0));
+    });
+    return { answer, remaining };
+  } catch (error) {
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(dailyRef), data = snap.data() || {}, pending = { ...(data.pendingMutations || {}) };
+      if (!pending[mutationId]) return;
+      delete pending[mutationId];
+      transaction.update(dailyRef, { count: Math.max(0, (data.count || 1) - 1), pendingMutations: pending, updatedAt: FieldValue.serverTimestamp() });
+    });
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("unavailable", "Fluid Programs could not answer. Try again.");
+  }
 });

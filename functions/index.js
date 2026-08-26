@@ -17,9 +17,4 @@ export { getFluidLabProject } from "./apps/fluidlab/get-project.js";
 export { saveFluidLabProject } from "./apps/fluidlab/save-project.js";
 export { deleteFluidLabProject } from "./apps/fluidlab/delete-project.js";
 
-export { listFluidProgramsProjects } from "./apps/fluid-programs/list-projects.js";
-export { createFluidProgramsProject } from "./apps/fluid-programs/create-project.js";
-export { getFluidProgramsProject } from "./apps/fluid-programs/get-project.js";
-export { saveFluidProgramsProject } from "./apps/fluid-programs/save-project.js";
-export { deleteFluidProgramsProject } from "./apps/fluid-programs/delete-project.js";
 export { sendFluidProgramsMessage } from "./apps/fluid-programs/send-message.js";

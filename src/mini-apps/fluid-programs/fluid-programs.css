@@ -14,7 +14,7 @@
   background: #041923e8;
 }
 .programs-shell > header button {
-  justify-self: start;
+  justify-self: center;
   padding: 9px 11px;
   display: flex;
   align-items: center;
@@ -22,6 +22,20 @@
   border: 0;
   background: transparent;
   color: #95b0b8;
+}
+.programs-brand {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #effcff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 750;
+}
+.programs-brand img {
+  width: 30px;
+  height: 30px;
 }
 .programs-shell > header button svg {
   width: 16px;
@@ -59,6 +73,15 @@
 }
 .programs-workspace aside {
   padding: 18px 0;
+}
+.programs-workspace aside > svg {
+  width: 34px;
+  height: 34px;
+  color: #26dfbd;
+}
+.programs-workspace aside h1 {
+  margin: 14px 0 8px;
+  font-size: 24px;
 }
 .programs-workspace aside > span {
   color: #28dfbd;
@@ -255,11 +278,8 @@
     grid-template-columns: auto 1fr auto;
   }
   .programs-shell > header button span,
-  .programs-shell > header > div span {
+  .programs-brand span {
     display: none;
-  }
-  .programs-shell > header > div {
-    justify-self: center;
   }
   .programs-workspace {
     height: calc(100dvh - 68px);
@@ -268,6 +288,10 @@
   }
   .programs-workspace aside {
     padding: 5px 4px 10px;
+  }
+  .programs-workspace aside > svg,
+  .programs-workspace aside h1 {
+    display: none;
   }
   .programs-notice {
     display: none;

@@ -42,6 +42,19 @@
   color: var(--portal-muted);
   font-size: 14px;
 }
+.portal-return {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--portal-text);
+  text-decoration: none;
+  border: 1px solid var(--portal-line);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+.portal-return:hover {
+  border-color: rgba(53, 223, 189, 0.5);
+}
 .portal-header button {
   display: grid;
   place-items: center;
@@ -54,25 +67,6 @@
 }
 .portal-header svg {
   width: 18px;
-}
-.portal-nav {
-  display: flex;
-  gap: 8px;
-  padding: 12px clamp(20px, 5vw, 72px);
-  border-bottom: 1px solid var(--portal-line);
-  overflow: auto;
-}
-.portal-nav a {
-  color: var(--portal-muted);
-  text-decoration: none;
-  padding: 8px 12px;
-  border-radius: 8px;
-  white-space: nowrap;
-}
-.portal-nav a.active,
-.portal-nav a:hover {
-  background: rgba(53, 223, 189, 0.1);
-  color: var(--portal-text);
 }
 .launcher {
   max-width: 1180px;
@@ -215,6 +209,137 @@
 .portal-success {
   color: var(--portal-accent);
 }
+.portal-muted,
+.miniapp-heading p,
+.account-card header p {
+  color: var(--portal-muted);
+}
+.miniapp-heading p {
+  margin: 8px 0 0;
+}
+.form-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.portal-button.secondary {
+  border: 1px solid var(--portal-line);
+  background: transparent;
+  color: var(--portal-text);
+}
+.portal-button.danger {
+  background: #8e342f;
+  color: #fff;
+}
+.account-page {
+  max-width: 760px;
+}
+.account-card {
+  margin-bottom: 18px;
+  padding: 24px;
+  border: 1px solid var(--portal-line);
+  border-radius: 18px;
+  background: var(--portal-card);
+}
+.account-card > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  margin-bottom: 22px;
+}
+.account-card > header > svg {
+  flex: none;
+  width: 22px;
+  color: var(--portal-accent);
+}
+.account-card h2,
+.account-card header p {
+  margin: 0;
+}
+.account-card header p {
+  margin-top: 5px;
+  font-size: 13px;
+}
+.account-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.account-facts > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 9px;
+  padding: 14px;
+  border: 1px solid var(--portal-line);
+  border-radius: 11px;
+  background: #071721;
+}
+.account-facts svg {
+  grid-row: 1 / 4;
+  width: 17px;
+  color: var(--portal-accent);
+}
+.account-facts span,
+.account-facts small { color: var(--portal-muted); font-size: 11px; }
+.account-facts strong { overflow-wrap: anywhere; }
+.account-actions,
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.account-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.account-session > header { margin: 0; }
+.user-access-page {
+  max-width: 1120px;
+}
+.invite-form {
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 28px;
+}
+.access-editor {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) 110px 110px repeat(2, auto) auto;
+}
+.portal-modal-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #010b12cc;
+  backdrop-filter: blur(8px);
+}
+.portal-modal {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 26px;
+  border: 1px solid var(--portal-line);
+  border-radius: 18px;
+  background: var(--portal-card);
+  box-shadow: 0 30px 90px #0009;
+}
+.portal-modal > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+.portal-modal h2 { margin: 7px 0 14px; }
+.portal-modal > header button {
+  border: 0;
+  background: transparent;
+  color: var(--portal-muted);
+}
+.portal-modal > header svg { width: 20px; }
 .access-row,
 .project-row {
   width: 100%;
@@ -291,4 +416,13 @@
     align-items: start;
     flex-direction: column;
   }
+  .portal-return { padding: 8px; }
+  .portal-return svg { width: 17px; }
+  .portal-return { font-size: 0; }
+  .form-pair,
+  .account-facts { grid-template-columns: 1fr; }
+  .account-card { padding: 19px; }
+  .account-session { align-items: stretch; flex-direction: column; }
+  .access-editor { display: flex; align-items: stretch; }
+  .access-editor select { width: 100%; }
 }

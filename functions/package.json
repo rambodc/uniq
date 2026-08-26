@@ -9,7 +9,8 @@
   "scripts": {
     "lint": "eslint .",
     "test": "node --test test/*.test.js",
-    "reset:enterprise": "node platform/reset-enterprise-data.js"
+    "reset:enterprise": "node platform/reset-enterprise-data.js",
+    "cleanup:fluid-programs": "node platform/cleanup-fluid-programs-projects.js"
   },
   "dependencies": {
     "firebase-admin": "^14.3.0",

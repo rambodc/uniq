@@ -803,7 +803,173 @@ button:disabled {
 .workspace-topbar.compact {
   right: auto;
   display: flex;
-  min-width: 250px;
+  min-width: 430px;
+  justify-content: space-between;
+}
+.workspace-brand {
+  text-decoration: none;
+}
+.workspace-portal-return {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #061d27aa;
+  color: #a9c3cb;
+  font-size: 10px;
+  cursor: pointer;
+}
+.workspace-portal-return svg {
+  width: 14px;
+}
+.fluidlab-panel-tabs {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 7px;
+  border-bottom: 1px solid var(--line);
+  background: #031620c9;
+}
+.fluidlab-panel-tabs button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #72939e;
+  font: 700 10px inherit;
+  cursor: pointer;
+}
+.fluidlab-panel-tabs button.active {
+  border-color: #2bdabf55;
+  background: #1b766f42;
+  color: #eafffb;
+}
+.fluidlab-panel-tabs svg {
+  width: 15px;
+}
+.fluidlab-projects {
+  padding: 13px;
+  overflow: auto;
+}
+.fluidlab-projects form {
+  display: grid;
+  gap: 9px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.fluidlab-projects form label {
+  display: grid;
+  gap: 6px;
+}
+.fluidlab-projects form label span {
+  color: #7e9ca6;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.fluidlab-projects form input {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #02131c;
+  color: #fff;
+}
+.fluidlab-projects form > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px;
+  border: 0;
+  border-radius: 9px;
+  background: #28dfbd;
+  color: #03231d;
+  font-weight: 800;
+}
+.fluidlab-projects form > button svg {
+  width: 15px;
+}
+.fluidlab-project-list article {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #051c26c7;
+}
+.fluidlab-project-list article.active {
+  border-color: #28dfbd66;
+}
+.fluidlab-project-list article > button:first-child {
+  min-width: 0;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #effcff;
+  text-align: left;
+}
+.fluidlab-project-list article b,
+.fluidlab-project-list article small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fluidlab-project-list article small {
+  color: #72909a;
+  font-size: 9px;
+}
+.fluidlab-project-list article > button:last-child {
+  margin-right: 8px;
+  padding: 7px;
+  border: 0;
+  background: transparent;
+  color: #f28d84;
+}
+.fluidlab-project-list article > button:last-child svg {
+  width: 15px;
+}
+.fluidlab-project-empty,
+.fluidlab-empty-workspace {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: #72939e;
+}
+.fluidlab-project-empty {
+  gap: 7px;
+  padding: 46px 12px;
+}
+.fluidlab-project-empty svg {
+  width: 28px;
+}
+.fluidlab-project-empty span,
+.fluidlab-project-error { font-size: 10px; }
+.fluidlab-project-error { color: #ff9d91; }
+.fluidlab-empty-workspace {
+  position: absolute;
+  inset: 0;
+  align-content: center;
+  pointer-events: none;
+}
+.fluidlab-empty-workspace svg { width: 44px; height: 44px; color: #28dfbd; }
+.fluidlab-empty-workspace h1 { margin: 14px 0 5px; color: #ecfffc; font-size: 22px; }
+.fluidlab-empty-workspace p { max-width: 360px; margin: 0; font-size: 11px; }
+.fluidlab-workspace.panel-collapsed .fluidlab-panel-tabs { display: none; }
+@media (max-width: 600px) {
+  .workspace-topbar.compact { min-width: 0; right: 12px; }
+  .workspace-brand span { display: none; }
+  .workspace-portal-return { margin-left: auto; }
 }
 .workspace-back-icon {
   width: 16px;

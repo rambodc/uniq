@@ -50,10 +50,23 @@ test("FluidLab retains engineering behavior and autosave conflict states", async
 });
 
 test("enterprise clients call only version-one callable interfaces", async () => {
-  const api = await read("src/core/api.ts"), projects = await read("src/mini-apps/fluidlab/projects.ts");
+  const api = await read("src/core/api.ts"), projects = await read("src/mini-apps/fluidlab/projects.ts"), programs = await read("src/mini-apps/fluid-programs/api.ts"), exports = await read("functions/index.js");
   for (const endpoint of ["getCurrentUser", "adminListUsers", "adminInviteUser", "previewInvite", "acceptInvite"]) assert.match(api, new RegExp(endpoint));
-  for (const endpoint of ["listFluidLabProjects", "saveFluidLabProject", "listFluidProgramsProjects", "sendFluidProgramsMessage"]) assert.match(projects, new RegExp(endpoint));
+  for (const endpoint of ["listFluidLabProjects", "saveFluidLabProject"]) assert.match(projects, new RegExp(endpoint));
+  assert.match(programs, /sendFluidProgramsMessage/);
+  assert.doesNotMatch(exports + projects + programs, /listFluidProgramsProjects|createFluidProgramsProject|getFluidProgramsProject|saveFluidProgramsProject|deleteFluidProgramsProject/);
   assert.doesNotMatch(api + projects, /registerAccount\"|createProject\"|autosaveProject\"/);
+});
+
+test("mini apps use independent navigation and account-owned session controls", async () => {
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), programs = await read("src/mini-apps/fluid-programs/FluidPrograms.tsx");
+  assert.doesNotMatch(layout, /portal-nav|signOut/);
+  assert.match(layout, /className="portal-brand" to="\/"/);
+  assert.match(account, /reauthenticateWithCredential/);
+  assert.match(account, /updatePassword/);
+  assert.match(account, /Sign out/);
+  assert.match(fluidlab, />Projects<|>Builder</);
+  assert.match(programs, /This conversation is not stored/);
 });
 
 test("browser database and storage access remain fully denied", async () => {

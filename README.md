@@ -18,7 +18,7 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 ## Mini apps and access
 
 - **FluidLab** — owner-private conceptual well projects
-- **Fluid Programs** — owner-private drilling-fluids conversations
+- **Fluid Programs** — session-only drilling-fluids assistant; conversation text is never stored
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
@@ -29,13 +29,14 @@ Administrators automatically receive every mini app. Ordinary users receive expl
 ```text
 users/{uid}
 users/{uid}/miniApps/fluidlab/projects/{projectId}
-users/{uid}/miniApps/fluid-programs/projects/{projectId}
 users/{uid}/miniApps/fluid-programs/usage/{yyyy-mm-dd}
 invitations/{invitationId}
 contactInquiries/{inquiryId}
 ```
 
 All records created by the enterprise system use `schemaVersion: 1`. There is no migration or legacy compatibility layer.
+
+Fluid Programs messages exist only in browser memory. Its usage document stores the daily count and short-lived request reservation/idempotency metadata required for quota enforcement and stale-request recovery, never conversation content.
 
 ## Local validation
 
@@ -93,6 +94,20 @@ After the verified reset, create the first user in Firebase Authentication throu
 ```
 
 Use Firestore timestamps for `createdAt` and `updatedAt`. All subsequent accounts must be created through the User Access invitation workflow.
+
+## Controlled Fluid Programs history cleanup
+
+The targeted cleanup utility enumerates only obsolete persisted Fluid Programs project documents and preserves daily usage records. Running it without confirmation is read-only:
+
+```bash
+npm run cleanup:fluid-programs --prefix functions
+```
+
+Permanent deletion requires a separate explicit acknowledgement and confirmation flag. It is never part of deployment:
+
+```bash
+ALLOW_FLUID_PROGRAMS_CLEANUP=YES_DELETE_OBSOLETE_CONVERSATIONS npm run cleanup:fluid-programs --prefix functions -- --confirm-permanent-cleanup
+```
 
 ## Deployment
 

@@ -20,6 +20,7 @@ import {
   PanelLeftOpen,
   Pencil,
   Plus,
+  FolderOpen,
   Trash2,
   GalleryVerticalEnd,
   X,
@@ -44,7 +45,7 @@ import {
   type WellProject,
   type WellTrajectory,
 } from "./engineering";
-import { autosaveProject, getProject } from "./projects";
+import { autosaveProject, createFluidLabProject, deleteProject, getProject, listProjects, type Project } from "./projects";
 import "./fluidlab.css";
 const Scene = lazy(() => import("./WellboreScene")),
   toLength = (m: number, u: UnitSystem) =>
@@ -138,10 +139,12 @@ export default function FluidLab({
     [visible, setVisible] = useState(!document.hidden),
     [notice, setNotice] = useState(""),
     [exitOpen, setExitOpen] = useState(false),
+    [pendingPath, setPendingPath] = useState("/portal"),
     [deleteIndex, setDeleteIndex] = useState<number | null>(null),
     [editIndex, setEditIndex] = useState<number | null>(null),
     [editDraft, setEditDraft] = useState<SectionDraft>(() => emptyDraft()),
     [selectedId, setSelectedId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]), [projectsLoading, setProjectsLoading] = useState(true), [projectError, setProjectError] = useState(""), [newProjectName, setNewProjectName] = useState(""), [creatingProject, setCreatingProject] = useState(false), [panelTab, setPanelTab] = useState<"projects" | "builder">(projectId ? "builder" : "projects");
   const reduced = Boolean(useReducedMotion()),
     generated = useMemo(() => generateProject(design), [design]),
     units = design.unitSystem ?? "metric",
@@ -165,6 +168,13 @@ export default function FluidLab({
       trajectoryDirty ||
       editIndex !== null;
   useEffect(() => { designRef.current = design; }, [design]);
+  const refreshProjects = useCallback(async () => {
+    setProjectError("");
+    try { setProjects(await listProjects()); }
+    catch { setProjectError("Projects could not be loaded."); }
+    finally { setProjectsLoading(false); }
+  }, []);
+  useEffect(() => { void refreshProjects(); }, [refreshProjects]);
   useEffect(() => {
     const change = () => setVisible(!document.hidden);
     document.addEventListener("visibilitychange", change);
@@ -199,6 +209,12 @@ export default function FluidLab({
   }, [drawerOpen]);
   useEffect(() => {
     let active = true;
+    if (!projectId) {
+      const blank = createBlank();
+      setDesign(blank); designRef.current = blank; setTrajectoryDraft(blank.trajectory); setDraft(emptyDraft()); setLoaded(false); setPanelTab("projects"); setSaveState("loading");
+      return () => { active = false; };
+    }
+    setPanelTab("builder");
     void authReady.then(() => {
       if (!active) return;
       if (!auth.currentUser) {
@@ -234,6 +250,19 @@ export default function FluidLab({
       active = false;
     };
   }, [projectId, navigate]);
+  const createProject = async () => {
+    const name = newProjectName.trim();
+    if (!name || creatingProject) return;
+    setCreatingProject(true); setProjectError("");
+    try { const project = await createFluidLabProject(name); setProjects((items) => [project, ...items]); setNewProjectName(""); navigate(`/apps/fluidlab/projects/${project.id}`); setPanelTab("builder"); }
+    catch { setProjectError("The project could not be created."); }
+    finally { setCreatingProject(false); }
+  };
+  const removeProject = async (project: Project) => {
+    if (!window.confirm(`Permanently delete “${project.name}”?`)) return;
+    try { await deleteProject(project.id); setProjects((items) => items.filter((item) => item.id !== project.id)); if (project.id === projectId) navigate("/apps/fluidlab"); }
+    catch { setProjectError("The project could not be deleted."); }
+  };
   const updateDesign = (recipe: (next: WellProject) => void) => {
     setDesign((current) => {
       const next = structuredClone(current);
@@ -376,6 +405,10 @@ export default function FluidLab({
     setDrawerOpen(false);
     requestAnimationFrame(() => drawerTrigger.current?.focus());
   };
+  const moveTo = (path: string) => {
+    if (dirty) { setPendingPath(path); setExitOpen(true); }
+    else navigate(path);
+  };
   return (
     <main
       className={`fluidlab-workspace ${collapsed ? "panel-collapsed" : ""}`}
@@ -401,18 +434,16 @@ export default function FluidLab({
             onSelect={setSelectedId}
           />
         </Suspense>
+        {!projectId && <div className="fluidlab-empty-workspace"><FolderOpen/><h1>Choose a FluidLab project</h1><p>Open an existing project or create a new one from the Projects panel.</p></div>}
       </div>
       <header className="workspace-topbar compact">
-        <button
-          className="workspace-brand"
-          onClick={() => (dirty ? setExitOpen(true) : navigate("/account"))}
-        >
-          <ArrowLeft className="workspace-back-icon" aria-hidden="true" />
+        <a className="workspace-brand" href="/">
           <img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy" />
-          <span>/ FluidLab</span>
-        </button>
+          <span>UniqEnergy / FluidLab</span>
+        </a>
+        <button className="workspace-portal-return" onClick={() => moveTo("/portal")}><ArrowLeft aria-hidden="true" />Back to mini apps</button>
       </header>
-      <button ref={drawerTrigger} className="mobile-menu-button" aria-label="Open well builder" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu/><b>Builder</b></button>
+      <button ref={drawerTrigger} className="mobile-menu-button" aria-label="Open FluidLab panel" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu/><b>FluidLab</b></button>
       {drawerOpen && (
         <button
           className="drawer-backdrop"
@@ -428,6 +459,8 @@ export default function FluidLab({
             onClick={() => setCollapsed(false)}
           />
         )}
+        <div className="fluidlab-panel-tabs" role="tablist" aria-label="FluidLab workspace"><button className={panelTab === "projects" ? "active" : ""} role="tab" aria-selected={panelTab === "projects"} onClick={() => setPanelTab("projects")}><FolderOpen/>Projects</button><button className={panelTab === "builder" ? "active" : ""} role="tab" aria-selected={panelTab === "builder"} disabled={!projectId} onClick={() => setPanelTab("builder")}><Box/>Builder</button></div>
+        {panelTab === "projects" ? <div className="panel-body fluidlab-projects"><form onSubmit={(event) => { event.preventDefault(); void createProject(); }}><label><span>New project</span><input value={newProjectName} maxLength={100} placeholder="Project name" onChange={(event) => setNewProjectName(event.target.value)}/></label><button disabled={!newProjectName.trim() || creatingProject}><Plus/>{creatingProject ? "Creating…" : "Create project"}</button></form>{projectError && <p className="fluidlab-project-error">{projectError}</p>}<div className="fluidlab-project-list">{projectsLoading ? <p>Loading projects…</p> : projects.length ? projects.map((project) => <article className={project.id === projectId ? "active" : ""} key={project.id}><button onClick={() => { moveTo(`/apps/fluidlab/projects/${project.id}`); if (!dirty) setPanelTab("builder"); }}><b>{project.name}</b><small>Updated {new Date(project.updatedAt).toLocaleDateString()}</small></button><button aria-label={`Delete ${project.name}`} onClick={() => void removeProject(project)}><Trash2/></button></article>) : <div className="fluidlab-project-empty"><FolderOpen/><b>No projects yet</b><span>Create your first FluidLab project above.</span></div>}</div></div> : <>
         <div className="panel-heading">
           <div>
             <span>Sequential well builder</span>
@@ -720,6 +753,7 @@ export default function FluidLab({
           </p>
           </>}
         </div>
+        </>}
       </aside>
       <div className="camera-toolbar">
         <button
@@ -778,7 +812,7 @@ export default function FluidLab({
               onClick={() => {
                 onDirtyChange(false);
                 if (exitRequest) onConfirmBrowserExit();
-                else navigate("/account");
+                else navigate(pendingPath);
               }}
             >
               Leave without saving
