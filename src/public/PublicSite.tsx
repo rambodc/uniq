@@ -843,8 +843,8 @@ const mapDirectionsUrl = (location: PublicLocation) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationQuery(location))}`;
 
 function LocationsPage() {
-  const [selectedId, setSelectedId] = useState(locations[0].id);
-  const selected = locations.find((location) => location.id === selectedId) ?? locations[0];
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const reduce = useReducedMotion();
   return (
     <main id="main" className="standalone-page locations-page">
       <section className="locations-hero">
@@ -869,24 +869,29 @@ function LocationsPage() {
       </section>
 
       <section className="locations-directory section-wide" id="location-directory">
-        <div className="locations-map-shell">
-          <div className="locations-map-heading"><div><span>Selected location</span><strong>{selected.city}</strong></div><a href={mapDirectionsUrl(selected)} target="_blank" rel="noreferrer">Open in Google Maps <b aria-hidden="true">↗</b></a></div>
-          <iframe key={selected.id} src={mapEmbedUrl(selected)} title={`Map showing ${selected.city} location`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
-          <address>{selected.address.map((line) => <span key={line}>{line}</span>)}</address>
-        </div>
         <div className="location-list" aria-label="Location directory">
           {locations.map((location, index) => {
-            const active = location.id === selected.id;
+            const active = location.id === selectedId;
+            const panelId = `location-map-${location.id}`;
             return (
               <Reveal className={`location-card${active ? " active" : ""}`} key={location.id}>
-                <div className="location-card-top"><span>{String(index + 1).padStart(2, "0")}</span><i aria-hidden="true" /></div>
-                <h3>{location.city}</h3>
-                <address>{location.address.map((line) => <span key={line}>{line}</span>)}</address>
-                <div className="location-phones">{location.phones.map((phone) => <a key={phone.dial} href={`tel:${phone.dial}`}>{phone.display}</a>)}</div>
-                <div className="location-actions">
-                  <button type="button" aria-pressed={active} onClick={() => setSelectedId(location.id)}>{active ? "Showing on map" : "View on map"}</button>
-                  <a href={mapDirectionsUrl(location)} target="_blank" rel="noreferrer" aria-label={`Get directions to ${location.city} in Google Maps`}>Get directions <b aria-hidden="true">↗</b></a>
+                <button className="location-card-trigger" type="button" aria-expanded={active} aria-controls={panelId} onClick={() => setSelectedId(active ? null : location.id)}>
+                  <span className="location-card-number">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="location-card-summary"><strong>{location.city}</strong><span>{location.address.join(" · ")}</span></span>
+                  <span className="location-card-toggle"><span>{active ? "Hide map" : "View map"}</span><b aria-hidden="true">{active ? "−" : "+"}</b></span>
+                </button>
+                <div className="location-card-contact">
+                  <div className="location-phones">{location.phones.map((phone) => <a key={phone.dial} href={`tel:${phone.dial}`}>{phone.display}</a>)}</div>
+                  <a className="location-directions" href={mapDirectionsUrl(location)} target="_blank" rel="noreferrer" aria-label={`Get directions to ${location.city} in Google Maps`}>Get directions <b aria-hidden="true">↗</b></a>
                 </div>
+                <AnimatePresence initial={false}>
+                  {active && <motion.div id={panelId} className="location-map-panel" initial={reduce ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }} transition={{ duration: reduce ? 0 : .42, ease: [0.22, 1, 0.36, 1] }}>
+                    <div className="location-map-frame">
+                      <iframe src={mapEmbedUrl(location)} title={`Map showing ${location.city} location`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+                      <div className="location-map-footer"><address>{location.address.map((line) => <span key={line}>{line}</span>)}</address><a href={mapDirectionsUrl(location)} target="_blank" rel="noreferrer">Open in Google Maps <b aria-hidden="true">↗</b></a></div>
+                    </div>
+                  </motion.div>}
+                </AnimatePresence>
               </Reveal>
             );
           })}

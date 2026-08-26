@@ -29,7 +29,10 @@ test("locations page exposes an accessible address directory and keyless Google 
   for (const phone of ["403-885-5151", "780-724-2040", "780-210-0158", "403-262-2004"]) assert.match(source, new RegExp(phone));
   assert.match(source, /maps\.google\.com\/maps\?q=/);
   assert.match(source, /google\.com\/maps\/search\/\?api=1/);
-  assert.match(source, /aria-pressed=\{active\}/);
+  assert.match(source, /aria-expanded=\{active\}/);
+  assert.match(source, /aria-controls=\{panelId\}/);
+  assert.match(source, /setSelectedId\(active \? null : location\.id\)/);
+  assert.match(source, /<AnimatePresence initial=\{false\}>/);
   assert.match(sitemap, /\/locations/);
   assert.doesNotMatch(locationsPage, /Formula Powell|Wozniak|Di-Corp|Tbar|PR Premium|Smith Trucking|Uniquem|Terry|Dave|Ryan/);
 });
