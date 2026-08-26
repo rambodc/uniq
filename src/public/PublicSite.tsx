@@ -29,7 +29,6 @@ type PublicPage = {
   detail: string;
   image: string;
   alt: string;
-  cta: string;
 };
 const publicPages: PublicPage[] = [
   {
@@ -46,7 +45,6 @@ const publicPages: PublicPage[] = [
       "Five distinct capabilities come together as one accountable operating partner.",
     image: "/images/field-engineers.jpg",
     alt: "Experienced field engineers reviewing operating information together at a Western Canadian drilling rig",
-    cta: "Discuss your operation",
   },
   {
     path: "/drilling-fluid-systems",
@@ -62,7 +60,6 @@ const publicPages: PublicPage[] = [
       "Our portfolio includes LUREX anti-accretion technology and the temperature-stable, clay-free Uniq-RM oil-based system, supported by customized program development.",
     image: "/images/systems-3d.png",
     alt: "Engineered drilling fluid flowing through a precision wellbore structure",
-    cta: "Discuss a fluid program",
   },
   {
     path: "/technology",
@@ -78,7 +75,6 @@ const publicPages: PublicPage[] = [
       "LUREX is designed to capture oil and bitumen, separating it from water-based drilling fluid and helping prevent shaker screen blinding. UniqEnergy holds 21 patents granted and pending.",
     image: "/images/technology-3d.png",
     alt: "Advanced laboratory vessels analyzing a luminous drilling fluid sample",
-    cta: "Explore a technical challenge",
   },
   {
     path: "/health-safety",
@@ -94,7 +90,6 @@ const publicPages: PublicPage[] = [
       "Our HSE program is reviewed and improved to strengthen risk awareness and operating practices, supported by a valid COR certification.",
     image: "/images/safety-3d.png",
     alt: "A luminous protective shield surrounding industrial equipment and fluid technology",
-    cta: "Discuss safety and compliance",
   },
   {
     path: "/contact-us",
@@ -110,7 +105,6 @@ const publicPages: PublicPage[] = [
       "Connect with our Calgary team to begin a conversation about your project, wellbore, or drilling fluid program.",
     image: "/brand/uniqenergy-mark-512.png",
     alt: "UniqEnergy connected operations mark",
-    cta: "Request a consultation",
   },
 ];
 const publicPaths = new Set(publicPages.map((page) => page.path));
@@ -400,29 +394,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
           ))}
         </div>
       </section>
-      <ContactBand navigate={navigate} />
     </main>
-  );
-}
-function ContactBand({ navigate }: { navigate: (path: string) => void }) {
-  return (
-    <section className="contact">
-      <div className="contact-orbit" aria-hidden="true" />
-      <Reveal>
-        <span className="eyebrow">Built around your wellbore</span>
-        <h2>
-          Let’s engineer a<br />
-          <em>better outcome.</em>
-        </h2>
-        <p>
-          Tell us about the operation, the challenge, and where you want to go
-          next.
-        </p>
-        <RouteButton to="/contact-us" navigate={navigate}>
-          Contact Us
-        </RouteButton>
-      </Reveal>
-    </section>
   );
 }
 
@@ -440,7 +412,7 @@ function PageHeading({ page }: { page: PublicPage }) {
   );
 }
 
-function AboutPage({ navigate }: { navigate: (path: string) => void }) {
+function AboutPage() {
   const page = publicPages[0];
   const pillars = [
     {
@@ -508,9 +480,6 @@ function AboutPage({ navigate }: { navigate: (path: string) => void }) {
         >
           <span className="page-label">About Us</span>
           <PageHeading page={page} />
-          <RouteButton to="/contact-us" navigate={navigate}>
-            Discuss your operation
-          </RouteButton>
         </motion.div>
       </section>
       <section className="about-five-intro section-wide">
@@ -529,7 +498,7 @@ function AboutPage({ navigate }: { navigate: (path: string) => void }) {
           </section>
         ))}
       </div>
-      <section className="about-promise"><div className="about-promise-grid" aria-hidden="true" /><Reveal><span className="eyebrow">One accountable partner</span><h2>Five strengths.<br /><em>One team around the wellbore.</em></h2><p>Responsive support, connected information, specialized chemistry, experienced people, and regional reach—aligned around the work.</p><RouteButton to="/contact-us" navigate={navigate}>Discuss your operation</RouteButton></Reveal></section>
+      <section className="about-promise"><div className="about-promise-grid" aria-hidden="true" /><Reveal><span className="eyebrow">One accountable partner</span><h2>Five strengths.<br /><em>One team around the wellbore.</em></h2><p>Responsive support, connected information, specialized chemistry, experienced people, and regional reach—aligned around the work.</p></Reveal></section>
     </main>
   );
 }
@@ -548,9 +517,6 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
           animate={{ opacity: 1, x: 0 }}
         >
           <PageHeading page={page} />
-          <RouteButton to="/contact-us" navigate={navigate}>
-            Contact Us
-          </RouteButton>
         </motion.div>
       </section>
       <section className="systems-intro section-wide">
@@ -568,7 +534,6 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
           </Reveal>)}
         </div>
       </section>
-      <ContactBand navigate={navigate} />
     </main>
   );
 }
@@ -586,15 +551,14 @@ function ProductPage({ product, navigate }: { product: PublicProduct; navigate: 
       <Reveal><span className="eyebrow">{product.eyebrow}</span><h2>Focused chemistry.<br/><em>Practical performance.</em></h2><p>{product.description}</p></Reveal>
       <Reveal className="product-benefits"><small>Designed to help</small>{product.benefits.map((benefit) => <div key={benefit}><i aria-hidden="true"/> <span>{benefit}</span></div>)}<footer><span>Packaging</span><strong>{product.packaging}</strong></footer></Reveal>
     </section>
-    <section className="product-contact"><Reveal><span className="eyebrow">Build it into the program</span><h2>Let’s discuss the<br/><em>application.</em></h2><p>Connect with UniqEnergy to explore product fit, fluid compatibility, and the needs of your operation.</p><RouteButton to="/contact-us" navigate={navigate}>Talk with our team</RouteButton></Reveal></section>
   </main>;
 }
 
-function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
+function TechnologyPage() {
   return (
     <main id="main" className="standalone-page technology-page">
       <Suspense fallback={<div className="technology-loading">Preparing the well journey…</div>}>
-        <TechnologyJourney onContact={() => navigate("/contact-us")} />
+        <TechnologyJourney />
       </Suspense>
       <section className="technology-loop section-wide">
         <Reveal>
@@ -606,13 +570,13 @@ function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
         </div>
       </section>
       <section className="technology-closing">
-        <Reveal><span className="eyebrow">Connected around the wellbore</span><h2>Better visibility.<br /><em>Stronger fluid decisions.</em></h2><p>Bring your field challenge to a team that connects practical technology, technical experience, and specialized chemistry.</p><RouteButton to="/contact-us" navigate={navigate}>Discuss a technical challenge</RouteButton></Reveal>
+        <Reveal><span className="eyebrow">Connected around the wellbore</span><h2>Better visibility.<br /><em>Stronger fluid decisions.</em></h2><p>Bring your field challenge to a team that connects practical technology, technical experience, and specialized chemistry.</p></Reveal>
       </section>
     </main>
   );
 }
 
-function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
+function SafetyPage() {
   const page = publicPages[3];
   const principles = [
     {
@@ -667,9 +631,6 @@ function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
           <span className="eyebrow">{page.eyebrow}</span>
           <h1>{page.title}<br /><em>{page.accent}</em></h1>
           <p>{page.summary}</p>
-          <RouteButton to="/contact-us" navigate={navigate}>
-            {page.cta}
-          </RouteButton>
         </motion.div>
       </section>
 
@@ -740,7 +701,6 @@ function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
           <span className="eyebrow">Disciplined by design</span>
           <h2>Safety belongs<br /><em>in every decision.</em></h2>
           <p>Prepared people, clear communication, and continuous improvement help keep safety connected to the way work is planned and carried out.</p>
-          <RouteButton to="/contact-us" navigate={navigate}>{page.cta}</RouteButton>
         </Reveal>
       </section>
     </main>
@@ -849,11 +809,11 @@ function PublicRoute({
 }) {
   const product = findPublicProduct(path);
   if (product) return <ProductPage product={product} navigate={navigate} />;
-  if (path === "/about-us") return <AboutPage navigate={navigate} />;
+  if (path === "/about-us") return <AboutPage />;
   if (path === "/drilling-fluid-systems")
     return <SystemsPage navigate={navigate} />;
-  if (path === "/technology") return <TechnologyPage navigate={navigate} />;
-  if (path === "/health-safety") return <SafetyPage navigate={navigate} />;
+  if (path === "/technology") return <TechnologyPage />;
+  if (path === "/health-safety") return <SafetyPage />;
   return <ContactPage />;
 }
 

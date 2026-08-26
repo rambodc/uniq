@@ -36,6 +36,15 @@ test("Fluid Systems exposes a scalable, indexable product catalogue", async () =
   assert.doesNotMatch(source, /\.pdf|Download brochure|Download PDS/);
 });
 
+test("public pages avoid repeated contact calls to action", async () => {
+  const source = await read("src/public/PublicSite.tsx");
+  const productPage = source.slice(source.indexOf("function ProductPage"), source.indexOf("function TechnologyPage"));
+  assert.equal((productPage.match(/<RouteButton to="\/contact-us"/g) ?? []).length, 1);
+  assert.equal((source.match(/<RouteButton to="\/contact-us"/g) ?? []).length, 1);
+  assert.match(productPage, /Discuss \{product\.name\}/);
+  assert.doesNotMatch(source, /ContactBand|Talk with our team|Discuss your operation/);
+});
+
 test("product imagery is optimized and contains real alpha transparency", async () => {
   for (const path of ["public/images/products/elixir-pallet.webp", "public/images/products/fusion-pallet.webp"]) {
     const image = await readFile(new URL(path, root));

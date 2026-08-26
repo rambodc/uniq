@@ -22,7 +22,7 @@ export const publicProducts: readonly PublicProduct[] = [
     teaser:
       "A concentrated, biodegradable lubricant engineered to improve the lubricity of water-based drilling fluids.",
     description:
-      "Elixir forms a highly lubricious boundary layer at contact surfaces, helping drilling teams manage friction through demanding intervals without overcomplicating the fluid program.",
+      "Elixir forms a highly lubricious boundary layer at contact surfaces, helping drilling teams manage friction through demanding intervals without overcomplicating the fluid program. Its concentrated formulation is designed to support smoother drilling, reduce metal-to-metal contact, and complement practical water-based fluid programs.",
     benefits: [
       "Helps reduce rotational torque and drag",
       "Supports a lower coefficient of friction",
@@ -31,7 +31,7 @@ export const publicProducts: readonly PublicProduct[] = [
     ],
     packaging: "Available in 200 L drums",
     image: "/images/products/elixir-pallet.webp",
-    alt: "Pallet of four navy UniqEnergy Elixir drilling-fluid lubricant drums",
+    alt: "Pallet of blue plastic UniqEnergy Elixir drilling-fluid lubricant drums",
   },
   {
     slug: "fusion",
@@ -42,7 +42,7 @@ export const publicProducts: readonly PublicProduct[] = [
     teaser:
       "A highly dispersible polymer blend developed to support rheology and filtrate control across water-based fluids.",
     description:
-      "Fusion is designed for rapid, complete hydration with less mixing time and product loss, bringing viscosity, suspension, hole cleaning, and filtration performance into one practical package.",
+      "Fusion is designed for rapid, complete hydration with less mixing time and product loss, bringing viscosity, suspension, hole cleaning, and filtration performance into one practical package. The broad-performance blend helps simplify product selection while supporting consistent fluid properties across changing water and operating conditions.",
     benefits: [
       "Supports low- and high-end rheology",
       "Provides filtrate-control performance",
@@ -51,7 +51,7 @@ export const publicProducts: readonly PublicProduct[] = [
     ],
     packaging: "Available in 22.7 kg bags",
     image: "/images/products/fusion-pallet.webp",
-    alt: "Pallet of navy and white UniqEnergy Fusion drilling-fluid polymer bags",
+    alt: "Pallet of yellow and white UniqEnergy Fusion drilling-fluid polymer bags",
   },
 ];
 
