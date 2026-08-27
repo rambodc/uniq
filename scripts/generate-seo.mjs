@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-const origin = "https://www.uniqenergy.com";
+const origin = "https://uniqenergy.com";
 const routes = JSON.parse(await readFile("src/public/seo-routes.json", "utf8"));
 const shell = await readFile("dist/index.html", "utf8");
 const escape = (value) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

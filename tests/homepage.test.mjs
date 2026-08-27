@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("production shell retains canonical public metadata", async () => {
   const html = await read("dist/index.html");
-  assert.match(html, /<link rel="canonical" href="https:\/\/www\.uniqenergy\.com\/"/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/uniqenergy\.com\/"/);
   assert.match(html, /property="og:title"/);
   assert.match(html, /application\/ld\+json/);
   assert.match(html, /id="root"/);
@@ -31,7 +31,7 @@ test("all public routes have unique prerendered SEO documents", async () => {
     const file = route.path === "/" ? "dist/index.html" : `dist${route.path}/index.html`;
     const html = await read(file);
     assert.match(html, new RegExp(`<title>${route.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll("&", "&amp;")}`));
-    assert.match(html, new RegExp(`https://www\\.uniqenergy\\.com${route.path === "/" ? "/" : route.path}`));
+    assert.match(html, new RegExp(`https://uniqenergy\\.com${route.path === "/" ? "/" : route.path}`));
     assert.match(html, /<h1>/);
     assert.match(html, /meta name="robots" content="index, follow/);
     assert.match(html, /data-seo-jsonld/);

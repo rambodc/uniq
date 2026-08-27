@@ -6,4 +6,4 @@ Disallow: /account
 Disallow: /signin
 Disallow: /forgot-password
 Disallow: /invite/
-Sitemap: https://www.uniqenergy.com/sitemap.xml
+Sitemap: https://uniqenergy.com/sitemap.xml

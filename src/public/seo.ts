@@ -2,7 +2,7 @@ import routeData from "./seo-routes.json";
 
 export const SITE = {
   name: "UniqEnergy Solutions",
-  origin: "https://www.uniqenergy.com",
+  origin: "https://uniqenergy.com",
   locale: "en_CA",
   language: "en-CA",
   email: "info@uniqenergy.com",
