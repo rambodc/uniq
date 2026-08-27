@@ -1,3 +1,9 @@
 User-agent: *
 Allow: /
-Sitemap: https://uniqenergy-de71c.web.app/sitemap.xml
+Disallow: /portal
+Disallow: /apps/
+Disallow: /account
+Disallow: /signin
+Disallow: /forgot-password
+Disallow: /invite/
+Sitemap: https://www.uniqenergy.com/sitemap.xml

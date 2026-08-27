@@ -10,6 +10,10 @@ export type PublicProduct = {
   packaging: string;
   image: string;
   alt: string;
+  /** Search intent and cross-linking are centralized in the public SEO registry. */
+  applications?: readonly string[];
+  relatedProducts?: readonly string[];
+  faqs?: readonly { question: string; answer: string }[];
 };
 
 export const publicProducts: readonly PublicProduct[] = [

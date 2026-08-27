@@ -12,10 +12,10 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../core/firebase";
 import { findPublicProduct, publicProductPaths, publicProducts, type PublicProduct } from "./products";
+import { applySeo, faqsFor, seoByPath, type SeoFaq } from "./seo";
 const TechnologyJourney = lazy(() => import("./scenes/TechnologyJourney"));
 const HomeWellScene = lazy(() => import("./scenes/HomeWellScene"));
 const ContactSignalScene = lazy(() => import("./scenes/ContactSignalScene"));
-const SITE_URL = "https://uniqenergy-de71c.web.app";
 const PHONE = "tel:+15877742131";
 
 type PublicPage = {
@@ -208,6 +208,17 @@ function RouteButton({
   );
 }
 
+function Breadcrumbs({ path, navigate }: { path: string; navigate: (path: string) => void }) {
+  const route = seoByPath.get(path);
+  if (!route?.breadcrumbs.length) return null;
+  return <nav className="page-breadcrumbs" aria-label="Breadcrumb"><RouteLink to="/" navigate={navigate}>Home</RouteLink>{route.breadcrumbs.map(([name, to], index) => <span key={to}><b aria-hidden="true">/</b>{index === route.breadcrumbs.length - 1 ? <span aria-current="page">{name}</span> : <RouteLink to={to} navigate={navigate}>{name}</RouteLink>}</span>)}</nav>;
+}
+
+function Faqs({ items }: { items?: SeoFaq[] }) {
+  if (!items?.length) return null;
+  return <section className="seo-faqs section-wide" aria-labelledby="frequently-asked-questions"><span className="eyebrow">Technical questions</span><h2 id="frequently-asked-questions">Frequently asked questions</h2><div>{items.map((item) => <details key={item.question}><summary>{item.question}</summary><p>{item.answer}</p></details>)}</div></section>;
+}
+
 function Header({
   path,
   navigate,
@@ -325,6 +336,7 @@ function Hero() {
           <br />
           Advance the wellbore.
         </h1>
+        <p>Customized drilling fluid systems, specialty additives, technical expertise, and responsive field support for demanding North American wellbores.</p>
       </motion.div>
       <div className="hero-proof">
         <small>Verified capability</small>
@@ -360,7 +372,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
               navigate={navigate}
               className="feature-visual"
             >
-              <img src={item.image} alt={item.alt} />
+              <img src={item.image} alt={item.alt} loading="lazy" decoding="async" />
               <span>0{index + 1}</span>
             </RouteLink>
             <div>
@@ -395,7 +407,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
             >
               <RouteLink to={item.path} navigate={navigate}>
                 <div className="overview-image">
-                  <img src={item.image} alt={item.alt} />
+                  <img src={item.image} alt={item.alt} loading="lazy" decoding="async" />
                   <span>0{index + 3}</span>
                 </div>
                 <div className="overview-copy">
@@ -409,6 +421,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
           ))}
         </div>
       </section>
+      <Faqs items={seoByPath.get("/")?.faqs} />
     </main>
   );
 }
@@ -427,7 +440,7 @@ function PageHeading({ page }: { page: PublicPage }) {
   );
 }
 
-function AboutPage() {
+function AboutPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[0];
   const pillars = [
     {
@@ -479,6 +492,7 @@ function AboutPage() {
   ];
   return (
     <main id="main" className="standalone-page about-page">
+      <Breadcrumbs path="/about-us" navigate={navigate} />
       <section className="about-hero">
         <div className="about-hero-media">
           <motion.img initial={{ opacity: 0, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.9 }} src={page.image} alt={page.alt} />
@@ -504,7 +518,7 @@ function AboutPage() {
       <div className="about-pillar-list">
         {pillars.map((pillar, index) => (
           <section className={`about-pillar section-wide ${index % 2 ? "about-pillar-reverse" : ""}`} key={pillar.number}>
-            <Reveal className="about-pillar-visual"><img src={pillar.image} alt={pillar.alt} /><span>{pillar.number}</span></Reveal>
+            <Reveal className="about-pillar-visual"><img src={pillar.image} alt={pillar.alt} loading="lazy" decoding="async" /><span>{pillar.number}</span></Reveal>
             <Reveal className="about-pillar-copy">
               <span className="eyebrow">{pillar.eyebrow}</span><h2>{pillar.title}</h2><p>{pillar.copy}</p>
               {pillar.workflow && <div className="about-mini-workflow" aria-label="Field to office to client workflow"><b>Field</b><i /><b>Office</b><i /><b>Client</b></div>}
@@ -522,9 +536,10 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[1];
   return (
     <main id="main" className="standalone-page systems-page">
+      <Breadcrumbs path="/drilling-fluid-systems" navigate={navigate} />
       <section className="systems-hero">
         <div className="systems-backdrop">
-          <img src={page.image} alt={page.alt} />
+          <img src={page.image} alt={page.alt} fetchPriority="high" decoding="async" />
         </div>
         <motion.div
           className="standalone-copy"
@@ -536,14 +551,15 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
       </section>
       <section className="systems-intro section-wide">
         <Reveal><span className="page-label">Chemical portfolio</span><h2>Specialty chemistry,<br/><em>shaped around the well.</em></h2></Reveal>
-        <Reveal><p>UniqEnergy develops and supplies drilling-fluid chemicals for the conditions, operating priorities, and economics of each program. Our growing portfolio brings focused products together with practical laboratory thinking and responsive field support.</p><p>Explore the first products in the portfolio below. Additional chemistry will be added as it becomes available.</p></Reveal>
+        <Reveal><p>UniqEnergy develops and supplies water-based and oil-based drilling-fluid chemistry for the formation conditions, well geometry, operating priorities, and economics of each program. The portfolio supports rheology, filtration, lubricity, lost-circulation control, microbial control, suspension, and hole cleaning.</p><p>Product selection is supported by practical laboratory thinking and responsive field expertise. A qualified drilling-fluids engineer should review current well data before any product or treatment is used in the field.</p></Reveal>
       </section>
+      <Faqs items={seoByPath.get("/drilling-fluid-systems")?.faqs} />
       <section className="product-catalogue section-wide" aria-labelledby="product-catalogue-title">
         <Reveal className="product-catalogue-heading"><span className="eyebrow">Product catalogue</span><h2 id="product-catalogue-title">Chemistry with a<br/><em>clear purpose.</em></h2></Reveal>
         <div className="system-products">
           {publicProducts.map((product, index) => <Reveal className="system-product-card" key={product.slug}>
             <RouteLink to={product.path} navigate={navigate}>
-              <div className="system-product-visual"><span>{String(index + 1).padStart(2, "0")}</span><img src={product.image} alt={product.alt}/></div>
+              <div className="system-product-visual"><span>{String(index + 1).padStart(2, "0")}</span><img src={product.image} alt={product.alt} loading="lazy" decoding="async"/></div>
               <div className="system-product-copy"><small>{product.category}</small><h3>{product.name}</h3><p>{product.teaser}</p><strong>Explore {product.name}<b aria-hidden="true">↗</b></strong></div>
             </RouteLink>
           </Reveal>)}
@@ -554,24 +570,31 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
 }
 
 function ProductPage({ product, navigate }: { product: PublicProduct; navigate: (path: string) => void }) {
+  const route = seoByPath.get(product.path);
+  const productIndex = publicProducts.findIndex((item) => item.slug === product.slug);
+  const related = [publicProducts[(productIndex + 1) % publicProducts.length], publicProducts[(productIndex + 2) % publicProducts.length]];
   return <main id="main" className="standalone-page product-detail-page">
+    <Breadcrumbs path={product.path} navigate={navigate} />
     <section className="product-detail-hero">
       <motion.div className="product-detail-copy" initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }}>
         <RouteLink className="product-back" to="/drilling-fluid-systems" navigate={navigate}>← Fluid Systems</RouteLink>
         <span className="page-label">{product.category}</span><h1>{product.name}</h1><p>{product.teaser}</p><RouteButton to="/contact-us" navigate={navigate}>Discuss {product.name}</RouteButton>
       </motion.div>
-      <motion.div className="product-detail-visual" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .7 }}><div className="product-orbit" aria-hidden="true"/><img src={product.image} alt={product.alt}/></motion.div>
+      <motion.div className="product-detail-visual" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .7 }}><div className="product-orbit" aria-hidden="true"/><img src={product.image} alt={product.alt} fetchPriority="high" decoding="async"/></motion.div>
     </section>
     <section className="product-detail-content section-wide">
       <Reveal><span className="eyebrow">{product.eyebrow}</span><h2>Focused chemistry.<br/><em>Practical performance.</em></h2><p>{product.description}</p></Reveal>
       <Reveal className="product-benefits"><small>Designed to help</small>{product.benefits.map((benefit) => <div key={benefit}><i aria-hidden="true"/> <span>{benefit}</span></div>)}<footer><span>Packaging</span><strong>{product.packaging}</strong></footer></Reveal>
     </section>
+    <section className="product-related section-wide" aria-labelledby="related-products"><span className="eyebrow">Related chemistry</span><h2 id="related-products">Explore related drilling-fluid products</h2><div>{related.map((item) => <RouteLink key={item.slug} to={item.path} navigate={navigate}><small>{item.category}</small><strong>{item.name}</strong><span>{item.teaser}</span></RouteLink>)}</div></section>
+    <Faqs items={faqsFor(route)} />
   </main>;
 }
 
-function TechnologyPage() {
+function TechnologyPage({ navigate }: { navigate: (path: string) => void }) {
   return (
     <main id="main" className="standalone-page technology-page">
+      <Breadcrumbs path="/technology" navigate={navigate} />
       <Suspense fallback={<div className="technology-loading">Preparing the well journey…</div>}>
         <TechnologyJourney />
       </Suspense>
@@ -591,7 +614,7 @@ function TechnologyPage() {
   );
 }
 
-function SafetyPage() {
+function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[3];
   const principles = [
     {
@@ -634,6 +657,7 @@ function SafetyPage() {
   ];
   return (
     <main id="main" className="standalone-page safety-page">
+      <Breadcrumbs path="/health-safety" navigate={navigate} />
       <section className="safety-hero-new">
         <img className="safety-hero-image" src={page.image} alt={page.alt} />
         <div className="safety-hero-grid" aria-hidden="true" />
@@ -722,7 +746,7 @@ function SafetyPage() {
   );
 }
 
-function ContactPage() {
+function ContactPage({ navigate }: { navigate: (path: string) => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [form, setForm] = useState({ inquiryType: "operations", name: "", email: "", phone: "", company: "", areaOfInterest: "", linkedinUrl: "", message: "", website: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -765,6 +789,7 @@ function ContactPage() {
   };
   return (
     <main id="main" className="standalone-page contact-page">
+      <Breadcrumbs path="/contact-us" navigate={navigate} />
       <section className="contact-hero-new">
         <div className="contact-signal-scene">
           <Suspense fallback={<div className="contact-scene-fallback" />}><ContactSignalScene /></Suspense>
@@ -842,11 +867,12 @@ const mapEmbedUrl = (location: PublicLocation) =>
 const mapDirectionsUrl = (location: PublicLocation) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationQuery(location))}`;
 
-function LocationsPage() {
+function LocationsPage({ navigate }: { navigate: (path: string) => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const reduce = useReducedMotion();
   return (
     <main id="main" className="standalone-page locations-page">
+      <Breadcrumbs path="/locations" navigate={navigate} />
       <section className="locations-hero">
         <img src="/images/locations-western-canada.webp" alt="" fetchPriority="high" />
         <div className="locations-hero-shade" />
@@ -910,13 +936,13 @@ function PublicRoute({
 }) {
   const product = findPublicProduct(path);
   if (product) return <ProductPage product={product} navigate={navigate} />;
-  if (path === "/about-us") return <AboutPage />;
+  if (path === "/about-us") return <AboutPage navigate={navigate} />;
   if (path === "/drilling-fluid-systems")
     return <SystemsPage navigate={navigate} />;
-  if (path === "/technology") return <TechnologyPage />;
-  if (path === "/health-safety") return <SafetyPage />;
-  if (path === "/locations") return <LocationsPage />;
-  return <ContactPage />;
+  if (path === "/technology") return <TechnologyPage navigate={navigate} />;
+  if (path === "/health-safety") return <SafetyPage navigate={navigate} />;
+  if (path === "/locations") return <LocationsPage navigate={navigate} />;
+  return <ContactPage navigate={navigate} />;
 }
 
 function Footer({
@@ -975,28 +1001,6 @@ function Footer({
   );
 }
 
-function setMetadata(page?: PublicPage | PublicProduct) {
-  const title = page
-    ? `${"name" in page ? page.name : page.nav} | UniqEnergy Solutions`
-    : "UniqEnergy Solutions | Drilling Fluid Innovation";
-  const description =
-    page?.description ??
-    "Customized, cost-effective drilling fluid systems engineered for the technical and financial needs of every wellbore.";
-  const url = `${SITE_URL}${page?.path ?? "/"}`;
-  document.title = title;
-  const set = (selector: string, value: string) =>
-    document.querySelector(selector)?.setAttribute("content", value);
-  set('meta[name="description"]', description);
-  set('meta[property="og:title"]', title);
-  set('meta[property="og:description"]', description);
-  set('meta[property="og:url"]', url);
-  set(
-    'meta[property="og:image"]',
-    `${SITE_URL}${page?.image ?? "/images/fluid-horizon.jpg"}`,
-  );
-  document.querySelector('link[rel="canonical"]')?.setAttribute("href", url);
-}
-
 export default function App() {
   const [path, setPath] = useState(() => {
     const normalized = validPath(location.pathname);
@@ -1037,8 +1041,8 @@ export default function App() {
   }, []);
   const lab = () => { location.assign("/signin?returnTo=/apps/fluidlab"); };
   useEffect(() => {
-    if (path === "/" || allPublicPaths.has(path))
-      setMetadata(publicPages.find((page) => page.path === path) || findPublicProduct(path));
+    const route = seoByPath.get(path);
+    if (route) applySeo(route);
   }, [path]);
   useEffect(() => {
     const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');

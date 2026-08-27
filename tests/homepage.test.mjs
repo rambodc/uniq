@@ -7,8 +7,9 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("production shell retains canonical public metadata", async () => {
   const html = await read("dist/index.html");
-  assert.match(html, /<link rel="canonical" href="https:\/\/uniqenergy-de71c\.web\.app\/"/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/www\.uniqenergy\.com\/"/);
   assert.match(html, /property="og:title"/);
+  assert.match(html, /application\/ld\+json/);
   assert.match(html, /id="root"/);
 });
 
@@ -18,8 +19,32 @@ test("public website content and routes remain isolated and unchanged", async ()
   for (const message of ["Built to move with", "Support without the runaround.", "Connected information. Faster decisions.", "Chemistry shaped by the well.", "Experience where it matters.", "Built in Calgary. Ready across Western Canada.", "Five strengths.", "One team around the wellbore."]) assert.match(source, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(source, /mailto:info@uniqenergy\.com/);
   assert.match(source, /tel:\+15877742131/);
-  assert.match(source, /function setMetadata/);
+  assert.match(source, /applySeo/);
   assert.match(source, /submitContactInquiry/);
+});
+
+test("all public routes have unique prerendered SEO documents", async () => {
+  const routes = JSON.parse(await read("src/public/seo-routes.json"));
+  assert.equal(routes.length, 20);
+  const titles = new Set(), descriptions = new Set();
+  for (const route of routes) {
+    const file = route.path === "/" ? "dist/index.html" : `dist${route.path}/index.html`;
+    const html = await read(file);
+    assert.match(html, new RegExp(`<title>${route.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll("&", "&amp;")}`));
+    assert.match(html, new RegExp(`https://www\\.uniqenergy\\.com${route.path === "/" ? "/" : route.path}`));
+    assert.match(html, /<h1>/);
+    assert.match(html, /meta name="robots" content="index, follow/);
+    assert.match(html, /data-seo-jsonld/);
+    titles.add(route.title); descriptions.add(route.description);
+  }
+  assert.equal(titles.size, routes.length);
+  assert.equal(descriptions.size, routes.length);
+  const sitemap = await read("dist/sitemap.xml");
+  assert.equal((sitemap.match(/<url>/g) || []).length, routes.length);
+  assert.doesNotMatch(sitemap, /\/portal|\/apps\/|\/signin/);
+  const notFound = await read("dist/404.html");
+  assert.match(notFound, /noindex, nofollow/);
+  assert.doesNotMatch(notFound, /<script type="module"/);
 });
 
 test("locations page exposes an accessible address directory and keyless Google map", async () => {
