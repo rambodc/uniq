@@ -213,6 +213,46 @@ export const publicProducts: readonly PublicProduct[] = [
     image: "/images/products/zan-hd-pallet.webp",
     alt: "Pallet of blue and white UniqEnergy ZAN HD xanthan biopolymer bags",
   },
+  {
+    slug: "solublok",
+    path: "/drilling-fluid-systems/solublok",
+    name: "SoluBlok",
+    category: "Oil-absorbing seepage-loss material",
+    eyebrow: "Temporary seal. Controlled dissolution.",
+    teaser:
+      "A slow-dissolving particulate engineered to absorb oil, expand, and temporarily control seepage in oil-based drilling fluids.",
+    description:
+      "SoluBlok absorbs oil and expands to help temporarily bridge seepage pathways in oil-based drilling-fluid systems. Its engineered particle-size distribution and shear-stable form support dependable placement and compatibility with other drilling-fluid products, while progressive dissolution under typical downhole conditions helps minimize the potential for persistent formation residue.",
+    benefits: [
+      "Helps control seepage in oil-based fluids",
+      "Expands through oil absorption",
+      "Engineered for shear stability",
+      "Designed for progressive downhole dissolution",
+    ],
+    packaging: "Available in 11.3 kg bags",
+    image: "/images/products/solublok-pallet.webp",
+    alt: "Pallet of grey and white UniqEnergy SoluBlok seepage-loss material bags",
+  },
+  {
+    slug: "epsealon",
+    path: "/drilling-fluid-systems/epsealon",
+    name: "EpSealon",
+    category: "Removable fluid-loss material",
+    eyebrow: "Seal while drilling. Wash away after.",
+    teaser:
+      "An engineered fluid-loss material developed to form an expansive low-permeability filter cake that can be removed after drilling.",
+    description:
+      "EpSealon is designed for formations where fissures, fractures, or highly porous rock can allow substantial drilling-fluid losses. The material builds an expansive, nearly impermeable filter cake across the formation surface, then can be washed from the formation after drilling to help limit persistent blockage and protect productive intervals.",
+    benefits: [
+      "Helps control losses across porous formations",
+      "Forms an expansive low-permeability seal",
+      "Creates a breakable filter cake",
+      "Designed for post-drilling washability",
+    ],
+    packaging: "Available in 11.3 kg bags",
+    image: "/images/products/epsealon-pallet.webp",
+    alt: "Pallet of purple and white UniqEnergy EpSealon fluid-loss material bags",
+  },
 ];
 
 export const publicProductPaths = new Set(publicProducts.map((product) => product.path));
