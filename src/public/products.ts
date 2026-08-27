@@ -93,9 +93,9 @@ export const publicProducts: readonly PublicProduct[] = [
       "Supports treatment of biofilm-affected systems",
       "Active across a wide temperature range",
     ],
-    packaging: "Available in 1000 L totes",
-    image: "/images/products/unicide-g15-tote.webp",
-    alt: "Blue UniqEnergy UniCide-G15 oilfield-chemical tote in a galvanized cage",
+    packaging: "Available in 19 L pails",
+    image: "/images/products/unicide-g15-pallet.webp",
+    alt: "Pallet of white UniqEnergy UniCide-G15 oilfield-chemical pails",
   },
   {
     slug: "unipac-hvd",
