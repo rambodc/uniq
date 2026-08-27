@@ -93,6 +93,46 @@ export const publicProducts: readonly PublicProduct[] = [
     image: "/images/products/unicide-g15-tote.webp",
     alt: "Blue UniqEnergy UniCide-G15 oilfield-chemical tote in a galvanized cage",
   },
+  {
+    slug: "unipac-hvd",
+    path: "/drilling-fluid-systems/unipac-hvd",
+    name: "UniPAC HVD",
+    category: "High-viscosity polyanionic cellulose",
+    eyebrow: "Fast hydration. High-end performance.",
+    teaser:
+      "A rapidly hydrating high-viscosity PAC engineered for rheology and filtrate control across water-based drilling fluids.",
+    description:
+      "UniPAC HVD is designed to hydrate quickly and efficiently, helping water-based drilling fluids develop high-end rheology and filtrate control with less mixing time and product loss. Its performance supports suspension and hole cleaning while promoting cuttings and borehole inhibition, reduced solids buildup, and practical fluid maintenance across demanding operating conditions.",
+    benefits: [
+      "Develops high-end rheology quickly",
+      "Supports suspension and hole cleaning",
+      "Provides filtrate-control performance",
+      "Compatible with water-based drilling fluids",
+    ],
+    packaging: "Available in 22.7 kg bags",
+    image: "/images/products/unipac-hvd-pallet.webp",
+    alt: "Pallet of green and white UniqEnergy UniPAC HVD drilling-fluid additive bags",
+  },
+  {
+    slug: "unipac-lvd",
+    path: "/drilling-fluid-systems/unipac-lvd",
+    name: "UniPAC LVD",
+    category: "Low-viscosity polyanionic cellulose",
+    eyebrow: "Filtration control. Minimal viscosity.",
+    teaser:
+      "A rapidly hydrating low-viscosity PAC developed for filtrate control where additional viscosity is undesirable.",
+    description:
+      "UniPAC LVD provides efficient filtrate control in water-based drilling fluids without contributing unnecessary viscosity. Rapid, complete hydration helps limit mixing time and losses to solids-control equipment, while supporting a thin, firm filter cake, cuttings encapsulation, borehole inhibition, lower solids buildup, and consistent fluid performance.",
+    benefits: [
+      "Controls filtrate with minimal added viscosity",
+      "Supports a thin, firm filter cake",
+      "Promotes cuttings and borehole inhibition",
+      "Compatible with water-based drilling fluids",
+    ],
+    packaging: "Available in 22.7 kg bags",
+    image: "/images/products/unipac-lvd-pallet.webp",
+    alt: "Pallet of orange and white UniqEnergy UniPAC LVD drilling-fluid additive bags",
+  },
 ];
 
 export const publicProductPaths = new Set(publicProducts.map((product) => product.path));
