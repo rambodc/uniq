@@ -133,6 +133,46 @@ export const publicProducts: readonly PublicProduct[] = [
     image: "/images/products/unipac-lvd-pallet.webp",
     alt: "Pallet of orange and white UniqEnergy UniPAC LVD drilling-fluid additive bags",
   },
+  {
+    slug: "unistop",
+    path: "/drilling-fluid-systems/unistop",
+    name: "UniSTOP",
+    category: "Water-swellable lost-circulation material",
+    eyebrow: "Expand. Seal. Control losses.",
+    teaser:
+      "A water-swellable synthetic polymer engineered to help control severe seepage and lost circulation in high-loss wells.",
+    description:
+      "UniSTOP absorbs water and expands to help establish a low-permeability filter cake across porous rock, fissures, and fractures where conventional fluid-loss materials may be insufficient. Its engineered particle-size distribution and manageable absorption profile support practical placement, shear stability, and compatibility with other drilling-fluid products.",
+    benefits: [
+      "Helps control severe seepage losses",
+      "Forms an expansive low-permeability barrier",
+      "Engineered for shear stability",
+      "Compatible with other drilling-fluid products",
+    ],
+    packaging: "Available in 25 kg bags",
+    image: "/images/products/unistop-pallet.webp",
+    alt: "Pallet of red and white UniqEnergy UniSTOP lost-circulation material bags",
+  },
+  {
+    slug: "uniq-rm",
+    path: "/drilling-fluid-systems/uniq-rm",
+    name: "Uniq-RM",
+    category: "Clay-free invert-emulsion system",
+    eyebrow: "Clay-free rheology. Responsive control.",
+    teaser:
+      "An oil-soluble multi-polymer invert system developed to deliver responsive rheology, suspension, and filtration performance without relying on clay.",
+    description:
+      "Uniq-RM uses oil-soluble polymers to build broad-spectrum rheology, emulsion stability, and filtrate control in oil-based fluids. Rapid fragile-gel development supports suspension and hole cleaning when circulation stops, while immediate break-back helps manage circulating and surge pressures when pumping resumes. The low-solids system also supports lubricity and a thin, slick filter cake.",
+    benefits: [
+      "Rapid fragile-gel development and break-back",
+      "Supports suspension and reliable hole cleaning",
+      "Helps manage circulating and surge pressures",
+      "Promotes lubricity and filter-cake quality",
+    ],
+    packaging: "Available in 19 L pails",
+    image: "/images/products/uniq-rm-pallet.webp",
+    alt: "Pallet of white UniqEnergy Uniq-RM oilfield-chemical pails with green-trimmed labels",
+  },
 ];
 
 export const publicProductPaths = new Set(publicProducts.map((product) => product.path));
