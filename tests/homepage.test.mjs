@@ -39,11 +39,12 @@ test("locations page exposes an accessible address directory and keyless Google 
 
 test("Fluid Systems exposes a scalable, indexable product catalogue", async () => {
   const source = await read("src/public/PublicSite.tsx"), products = await read("src/public/products.ts"), sitemap = await read("public/sitemap.xml");
-  for (const route of ["/drilling-fluid-systems/elixir", "/drilling-fluid-systems/fusion"]) {
+  for (const route of ["/drilling-fluid-systems/elixir", "/drilling-fluid-systems/fusion", "/drilling-fluid-systems/inertia", "/drilling-fluid-systems/unicide-g15"]) {
     assert.match(products, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(sitemap, new RegExp(route));
   }
-  for (const product of ["Elixir", "Fusion"]) assert.match(products, new RegExp(`name: "${product}"`));
+  for (const product of ["Elixir", "Fusion", "Inertia", "UniCide-G15"]) assert.match(products, new RegExp(`name: "${product}"`));
+  for (const packaging of ["Available in 19 L pails", "Available in 1000 L totes"]) assert.match(products, new RegExp(packaging));
   assert.match(source, /publicProducts\.map/);
   assert.match(source, /findPublicProduct\(path\)/);
   assert.match(source, /ProductPage/);
@@ -61,7 +62,7 @@ test("public pages avoid repeated contact calls to action", async () => {
 });
 
 test("product imagery is optimized and contains real alpha transparency", async () => {
-  for (const path of ["public/images/products/elixir-pallet.webp", "public/images/products/fusion-pallet.webp"]) {
+  for (const path of ["public/images/products/elixir-pallet.webp", "public/images/products/fusion-pallet.webp", "public/images/products/inertia-pallet.webp", "public/images/products/unicide-g15-tote.webp"]) {
     const image = await readFile(new URL(path, root));
     assert.ok(image.length < 400_000, `${path} should remain web optimized`);
     assert.ok(image.includes(Buffer.from("ALPH")), `${path} should contain a WebP alpha chunk`);

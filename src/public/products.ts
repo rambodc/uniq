@@ -53,6 +53,46 @@ export const publicProducts: readonly PublicProduct[] = [
     image: "/images/products/fusion-pallet.webp",
     alt: "Pallet of yellow and white UniqEnergy Fusion drilling-fluid polymer bags",
   },
+  {
+    slug: "inertia",
+    path: "/drilling-fluid-systems/inertia",
+    name: "Inertia",
+    category: "Interfacial-tension reducer",
+    eyebrow: "Lower pressure. Better flow.",
+    teaser:
+      "A versatile treatment engineered to reduce interfacial tension and capillary pressure between water and oil phases.",
+    description:
+      "Inertia is designed to reduce the forces that can restrict fluid movement through capillaries and constricted pore throats. The amphiphilic formulation supports preserved oil/water wettability while helping improve flow under reservoir pressure, and can be incorporated into drilling fluids, fracturing packages, water-based stimulation systems, and many commercial acid packages.",
+    benefits: [
+      "Helps reduce capillary pressure",
+      "Supports preserved oil/water wettability",
+      "Miscible with acid and water systems",
+      "Compatible with many acid and water additives",
+    ],
+    packaging: "Available in 19 L pails",
+    image: "/images/products/inertia-pallet.webp",
+    alt: "Pallet of white UniqEnergy Inertia oilfield-chemical pails",
+  },
+  {
+    slug: "unicide-g15",
+    path: "/drilling-fluid-systems/unicide-g15",
+    name: "UniCide-G15",
+    category: "Broad-spectrum oilfield biocide",
+    eyebrow: "Persistent microbial control",
+    teaser:
+      "A concentrated, glutaraldehyde-based biocide developed for broad-spectrum microbial control in oilfield systems.",
+    description:
+      "UniCide-G15 provides fast, persistent control across oilfield bacterial populations, including damaging sulfate-reducing bacteria, while supporting treatment strategies for systems affected by biofilm. Its broad activity extends across a wide temperature range, and its molecular structure does not contain formaldehyde.",
+    benefits: [
+      "Broad-spectrum oilfield bacterial control",
+      "Effective against sulfate-reducing bacteria",
+      "Supports treatment of biofilm-affected systems",
+      "Active across a wide temperature range",
+    ],
+    packaging: "Available in 1000 L totes",
+    image: "/images/products/unicide-g15-tote.webp",
+    alt: "Blue UniqEnergy UniCide-G15 oilfield-chemical tote in a galvanized cage",
+  },
 ];
 
 export const publicProductPaths = new Set(publicProducts.map((product) => product.path));
