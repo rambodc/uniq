@@ -39,11 +39,11 @@ test("locations page exposes an accessible address directory and keyless Google 
 
 test("Fluid Systems exposes a scalable, indexable product catalogue", async () => {
   const source = await read("src/public/PublicSite.tsx"), products = await read("src/public/products.ts"), sitemap = await read("public/sitemap.xml");
-  for (const route of ["/drilling-fluid-systems/elixir", "/drilling-fluid-systems/fusion", "/drilling-fluid-systems/inertia", "/drilling-fluid-systems/unicide-g15", "/drilling-fluid-systems/unipac-hvd", "/drilling-fluid-systems/unipac-lvd", "/drilling-fluid-systems/unistop", "/drilling-fluid-systems/uniq-rm", "/drilling-fluid-systems/unistar", "/drilling-fluid-systems/zan-hd", "/drilling-fluid-systems/solublok", "/drilling-fluid-systems/epsealon"]) {
+  for (const route of ["/drilling-fluid-systems/elixir", "/drilling-fluid-systems/fusion", "/drilling-fluid-systems/inertia", "/drilling-fluid-systems/unicide-g15", "/drilling-fluid-systems/unipac-hvd", "/drilling-fluid-systems/unipac-lvd", "/drilling-fluid-systems/unistop", "/drilling-fluid-systems/uniq-rm", "/drilling-fluid-systems/unistar", "/drilling-fluid-systems/zan-hd", "/drilling-fluid-systems/solublok", "/drilling-fluid-systems/epsealon", "/drilling-fluid-systems/kaolok"]) {
     assert.match(products, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(sitemap, new RegExp(route));
   }
-  for (const product of ["Elixir", "Fusion", "Inertia", "UniCide-G15", "UniPAC HVD", "UniPAC LVD", "UniSTOP", "Uniq-RM", "UniSTAR", "ZAN HD", "SoluBlok", "EpSealon"]) assert.match(products, new RegExp(`name: "${product}"`));
+  for (const product of ["Elixir", "Fusion", "Inertia", "UniCide-G15", "UniPAC HVD", "UniPAC LVD", "UniSTOP", "Uniq-RM", "UniSTAR", "ZAN HD", "SoluBlok", "EpSealon", "KaoloK"]) assert.match(products, new RegExp(`name: "${product}"`));
   for (const packaging of ["Available in 19 L pails", "Available in 1000 L totes", "Available in 22.7 kg bags", "Available in 22.68 kg bags", "Available in 25 kg bags", "Available in 11.3 kg bags"]) assert.match(products, new RegExp(packaging));
   assert.match(source, /publicProducts\.map/);
   assert.match(source, /findPublicProduct\(path\)/);
@@ -62,7 +62,7 @@ test("public pages avoid repeated contact calls to action", async () => {
 });
 
 test("product imagery is optimized and contains real alpha transparency", async () => {
-  for (const path of ["public/images/products/elixir-pallet.webp", "public/images/products/fusion-pallet.webp", "public/images/products/inertia-pallet.webp", "public/images/products/unicide-g15-tote.webp", "public/images/products/unipac-hvd-pallet.webp", "public/images/products/unipac-lvd-pallet.webp", "public/images/products/unistop-pallet.webp", "public/images/products/uniq-rm-pallet.webp", "public/images/products/unistar-pallet.webp", "public/images/products/zan-hd-pallet.webp", "public/images/products/solublok-pallet.webp", "public/images/products/epsealon-pallet.webp"]) {
+  for (const path of ["public/images/products/elixir-pallet.webp", "public/images/products/fusion-pallet.webp", "public/images/products/inertia-pallet.webp", "public/images/products/unicide-g15-tote.webp", "public/images/products/unipac-hvd-pallet.webp", "public/images/products/unipac-lvd-pallet.webp", "public/images/products/unistop-pallet.webp", "public/images/products/uniq-rm-pallet.webp", "public/images/products/unistar-pallet.webp", "public/images/products/zan-hd-pallet.webp", "public/images/products/solublok-pallet.webp", "public/images/products/epsealon-pallet.webp", "public/images/products/kaolok-tote.webp"]) {
     const image = await readFile(new URL(path, root));
     assert.ok(image.length < 400_000, `${path} should remain web optimized`);
     assert.ok(image.includes(Buffer.from("ALPH")), `${path} should contain a WebP alpha chunk`);

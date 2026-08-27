@@ -253,6 +253,26 @@ export const publicProducts: readonly PublicProduct[] = [
     image: "/images/products/epsealon-pallet.webp",
     alt: "Pallet of purple and white UniqEnergy EpSealon fluid-loss material bags",
   },
+  {
+    slug: "kaolok",
+    path: "/drilling-fluid-systems/kaolok",
+    name: "KaoloK",
+    category: "Kaolinite fines-control treatment",
+    eyebrow: "Hold fines in place. Protect permeability.",
+    teaser:
+      "A formation treatment developed to reduce kaolinite fines migration and the pore-throat plugging associated with permeability damage.",
+    description:
+      "KaoloK increases the force required for mobile kaolinite fines to move through the pore network. By helping stabilize these high-surface-area particles near the wellbore, the treatment is designed to reduce fines migration, limit pore-throat plugging, and protect formation permeability during fluid flow.",
+    benefits: [
+      "Helps reduce kaolinite fines migration",
+      "Supports protection against pore-throat plugging",
+      "Targets near-wellbore formation damage",
+      "Helps preserve formation permeability",
+    ],
+    packaging: "Available in 1000 L totes",
+    image: "/images/products/kaolok-tote.webp",
+    alt: "Green UniqEnergy KaoloK formation-treatment tote in a galvanized cage",
+  },
 ];
 
 export const publicProductPaths = new Set(publicProducts.map((product) => product.path));
