@@ -173,6 +173,46 @@ export const publicProducts: readonly PublicProduct[] = [
     image: "/images/products/uniq-rm-pallet.webp",
     alt: "Pallet of white UniqEnergy Uniq-RM oilfield-chemical pails with green-trimmed labels",
   },
+  {
+    slug: "unistar",
+    path: "/drilling-fluid-systems/unistar",
+    name: "UniSTAR",
+    category: "Modified-starch filtration-control additive",
+    eyebrow: "Filtration control. Minimal viscosity.",
+    teaser:
+      "A modified-starch additive developed to reduce filtrate across freshwater through saturated-salt water-based fluid systems.",
+    description:
+      "UniSTAR provides filtration control without a detrimental increase in fluid viscosity across a broad range of water-based environments. The additive also supports cuttings and exposed-formation encapsulation, helping reduce particle dispersion and reactive clay or shale swelling while promoting borehole stability in drilling-fluid and reservoir drill-in applications.",
+    benefits: [
+      "Reduces filtrate in water-based fluid systems",
+      "Controls filtration without excess viscosity",
+      "Supports cuttings and formation encapsulation",
+      "Helps improve borehole stability",
+    ],
+    packaging: "Available in 22.68 kg bags",
+    image: "/images/products/unistar-pallet.webp",
+    alt: "Pallet of yellow and white UniqEnergy UniSTAR filtration-control additive bags",
+  },
+  {
+    slug: "zan-hd",
+    path: "/drilling-fluid-systems/zan-hd",
+    name: "ZAN HD",
+    category: "Highly dispersible xanthan biopolymer",
+    eyebrow: "Fast dispersion. Low-end rheology.",
+    teaser:
+      "A highly dispersible xanthan biopolymer engineered to develop low-end rheology efficiently across water-based fluids.",
+    description:
+      "ZAN HD disperses rapidly to build low-end rheology while helping minimize mixing issues and product loss. Its low-shear performance supports suspension, hole cleaning, and cuttings transport, while helping reduce annular friction losses and pump-pressure requirements, limit solids buildup, and promote borehole stability across water-based drilling fluids.",
+    benefits: [
+      "Develops low-end rheology quickly",
+      "Supports suspension and hole cleaning",
+      "Helps reduce annular friction losses",
+      "Compatible with water-based drilling fluids",
+    ],
+    packaging: "Available in 25 kg bags",
+    image: "/images/products/zan-hd-pallet.webp",
+    alt: "Pallet of blue and white UniqEnergy ZAN HD xanthan biopolymer bags",
+  },
 ];
 
 export const publicProductPaths = new Set(publicProducts.map((product) => product.path));
