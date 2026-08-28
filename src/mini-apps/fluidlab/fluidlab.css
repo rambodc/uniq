@@ -1235,6 +1235,41 @@ button:disabled {
   background: #04192325;
   color: #35e8c3;
 }
+.camera-depth {
+  width: 92px;
+  height: 58px;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-content: center;
+  column-gap: 4px;
+  border: 1px solid #25e2bd40;
+  border-radius: 14px;
+  background: #031923e6;
+}
+.camera-depth > span {
+  grid-column: 1 / -1;
+  color: #7897a3;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.camera-depth input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e4fffa;
+  font-size: 14px;
+  font-weight: 750;
+}
+.camera-depth small {
+  align-self: center;
+  color: #43d8bb;
+  font-size: 8px;
+}
 .scene-label-layer {
   position: absolute;
   z-index: 10;
@@ -1325,6 +1360,13 @@ button:disabled {
   }
   .camera-toolbar button span {
     display: block;
+  }
+  .camera-toolbar {
+    width: max-content;
+    max-width: calc(100% - 16px);
+  }
+  .camera-depth {
+    flex: 0 0 82px;
   }
   .unit-setup > div {
     grid-template-columns: 1fr;

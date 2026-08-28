@@ -9,29 +9,36 @@ import {
   type WellProject,
   type WellSection,
 } from "./engineering";
+import { cameraPointAtMd, cameraTangentAtMd, type CameraMode } from "./camera";
 
 const point = (item: { horizontalM: number; verticalM: number }) =>
   new THREE.Vector3(item.horizontalM, -item.verticalM, 0);
 
-function Camera({
+function CameraController({
+  design,
   points,
-  view,
-  fitSignal,
+  mode,
+  currentMd,
+  reducedMotion,
+  onManualInteraction,
 }: {
+  design: WellProject;
   points: THREE.Vector3[];
-  view: "perspective" | "profile";
-  fitSignal: number;
+  mode: CameraMode;
+  currentMd: number;
+  reducedMotion: boolean;
+  onManualInteraction: () => void;
 }) {
   const { camera, controls } = useThree();
-  const pointsRef = useRef(points);
-  const fitted = useRef(false);
-  useEffect(() => {
-    pointsRef.current = points;
-  }, [points]);
+  const modeRef = useRef<CameraMode | null>(null);
+  const requestedMd = useRef(Number.NaN);
+  const requestedPoints = useRef<THREE.Vector3[] | null>(null);
+  const goalTarget = useRef(new THREE.Vector3());
+  const goalPosition = useRef(new THREE.Vector3());
+  const settling = useRef(false);
   const fit = useCallback(() => {
-    const current = pointsRef.current;
-    if (!current.length) return;
-    const box = new THREE.Box3().setFromPoints(current);
+    if (!points.length) return;
+    const box = new THREE.Box3().setFromPoints(points);
     const center = box.getCenter(new THREE.Vector3());
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const radius = Math.max(sphere.radius, 50);
@@ -40,10 +47,7 @@ function Camera({
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * perspective.aspect);
     const limitingFov = Math.min(verticalFov, horizontalFov);
     const distance = (radius / Math.sin(limitingFov / 2)) * 1.18;
-    const direction =
-      view === "profile"
-        ? new THREE.Vector3(0, 0, 1)
-        : new THREE.Vector3(1, 0.45, 1);
+    const direction = new THREE.Vector3(1, 0.45, 1);
     camera.position.copy(
       center.clone().add(direction.normalize().multiplyScalar(distance)),
     );
@@ -58,14 +62,44 @@ function Camera({
       orbit.target.copy(center);
       orbit.update();
     }
-    fitted.current = true;
-  }, [camera, controls, view]);
+  }, [camera, controls, points]);
+  useFrame((_, delta) => {
+    if (!points.length) return;
+    if (mode === "overview") {
+      if (modeRef.current !== mode) fit();
+      modeRef.current = mode;
+      return;
+    }
+    const changed = modeRef.current !== mode || requestedPoints.current !== points || Math.abs(requestedMd.current - currentMd) > 1e-6;
+    const extent = Math.max(new THREE.Box3().setFromPoints(points).getSize(new THREE.Vector3()).length(), 100);
+    if (changed) {
+      const item = cameraPointAtMd(design, currentMd), tangent = cameraTangentAtMd(design, currentMd);
+      goalTarget.current.set(item.x, item.y, item.z);
+      const distance = THREE.MathUtils.clamp(extent / 11, 65, 360);
+      const side = new THREE.Vector3(-tangent.y, tangent.x, 0).normalize();
+      goalPosition.current.copy(goalTarget.current).add(side.multiplyScalar(distance * 0.3)).add(new THREE.Vector3(0, 0, distance));
+      settling.current = true;
+      requestedMd.current = currentMd;
+      requestedPoints.current = points;
+    }
+    if (settling.current && controls && "target" in controls) {
+      const orbit = controls as unknown as { target: THREE.Vector3; update: () => void };
+      const alpha = reducedMotion || modeRef.current === null ? 1 : 1 - Math.exp(-delta * 4.5);
+      camera.position.lerp(goalPosition.current, alpha);
+      orbit.target.lerp(goalTarget.current, alpha);
+      orbit.update();
+      if (camera.position.distanceToSquared(goalPosition.current) < 0.01 && orbit.target.distanceToSquared(goalTarget.current) < 0.01) settling.current = false;
+    }
+    camera.near = 0.1; camera.far = Math.max(10000, extent * 12); camera.updateProjectionMatrix();
+    modeRef.current = mode;
+  });
   useEffect(() => {
-    if (points.length && !fitted.current) fit();
-  }, [points.length, fit]);
-  useEffect(() => {
-    if (fitted.current) fit();
-  }, [view, fitSignal]);
+    if (!controls || !("addEventListener" in controls)) return;
+    const orbit = controls as unknown as { addEventListener: (name: string, fn: () => void) => void; removeEventListener: (name: string, fn: () => void) => void };
+    const start = () => { settling.current = false; onManualInteraction(); };
+    orbit.addEventListener("start", start);
+    return () => orbit.removeEventListener("start", start);
+  }, [controls, onManualInteraction]);
   return null;
 }
 
@@ -171,19 +205,21 @@ export default function WellboreScene({
   selectedSectionId,
   reducedMotion,
   active,
-  view,
-  fitSignal,
+  cameraMode,
+  currentMd,
   onContextLost,
   onSelect,
+  onManualCameraInteraction,
 }: {
   design: WellProject;
   selectedSectionId: string | null;
   reducedMotion: boolean;
   active: boolean;
-  view: "perspective" | "profile";
-  fitSignal: number;
+  cameraMode: CameraMode;
+  currentMd: number;
   onContextLost: () => void;
   onSelect: (id: string) => void;
+  onManualCameraInteraction: () => void;
 }) {
   const model = useMemo(() => generateProject(design), [design]);
   const points = useMemo(() => model.points.map(point), [model.points]);
@@ -230,8 +266,8 @@ export default function WellboreScene({
             />
           ),
       )}
-      <OrbitControls makeDefault enableDamping={!reducedMotion} />
-      <Camera points={points} view={view} fitSignal={fitSignal} />
+      <OrbitControls makeDefault enableDamping={!reducedMotion} minDistance={25} maxDistance={900} minPolarAngle={0.15} maxPolarAngle={Math.PI - 0.15} enablePan={false} />
+      <CameraController design={design} points={points} mode={cameraMode} currentMd={currentMd} reducedMotion={reducedMotion} onManualInteraction={onManualCameraInteraction} />
       {model.sections.length > 0 && <LabelTracker design={design} model={model} selectedId={selectedSectionId} onUpdate={setLabels} />}
     </Canvas><div className="scene-label-layer" aria-hidden="true">{labels.map((label) => <span key={label.id} className={label.selected ? "selected" : ""} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div></>
   );

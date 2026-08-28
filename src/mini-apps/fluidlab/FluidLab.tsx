@@ -13,6 +13,8 @@ import { useReducedMotion } from "motion/react";
 import {
   Check,
   ArrowLeft,
+  ArrowUp,
+  ArrowDown,
   Box,
   Maximize2,
   Menu,
@@ -22,7 +24,8 @@ import {
   Plus,
   FolderOpen,
   Trash2,
-  GalleryVerticalEnd,
+  Pause,
+  Play,
   X,
 } from "lucide-react";
 import { auth, authReady } from "../../core/firebase";
@@ -45,6 +48,7 @@ import {
   type WellProject,
   type WellTrajectory,
 } from "./engineering";
+import { clampMd, displayDepthToMetres, metresToDisplayDepth, sectionMidpointMd, totalMd, type CameraMode } from "./camera";
 import { autosaveProject, createFluidLabProject, deleteProject, getProject, listProjects, type Project } from "./projects";
 import "./fluidlab.css";
 const Scene = lazy(() => import("./WellboreScene")),
@@ -134,8 +138,11 @@ export default function FluidLab({
     [savedAt, setSavedAt] = useState<Date | null>(null),
     [collapsed, setCollapsed] = useState(false),
     [drawerOpen, setDrawerOpen] = useState(false),
-    [view, setView] = useState<"perspective" | "profile">("perspective"),
-    [fitSignal, setFitSignal] = useState(0),
+    [cameraMode, setCameraMode] = useState<CameraMode>("follow"),
+    [currentMd, setCurrentMd] = useState(0),
+    [depthInput, setDepthInput] = useState("0"),
+    [autoFollow, setAutoFollow] = useState(false),
+    [moveDirection, setMoveDirection] = useState<-1 | 0 | 1>(0),
     [visible, setVisible] = useState(!document.hidden),
     [notice, setNotice] = useState(""),
     [exitOpen, setExitOpen] = useState(false),
@@ -155,6 +162,7 @@ export default function FluidLab({
     revisionRef = useRef(0),
     designRef = useRef(design),
     drawerTrigger = useRef<HTMLButtonElement>(null),
+    shiftHeld = useRef(false),
     trajectoryDirty =
       JSON.stringify(trajectoryDraft) !== JSON.stringify(design.trajectory),
     draftTouched =
@@ -180,6 +188,46 @@ export default function FluidLab({
     document.addEventListener("visibilitychange", change);
     return () => document.removeEventListener("visibilitychange", change);
   }, []);
+  useEffect(() => { if (!visible) { setAutoFollow(false); setMoveDirection(0); } }, [visible]);
+  useEffect(() => {
+    setCurrentMd(0); setDepthInput("0"); setCameraMode("follow"); setAutoFollow(false); setMoveDirection(0);
+  }, [projectId]);
+  useEffect(() => {
+    if (!autoFollow && moveDirection === 0) return;
+    let frame = 0, previous = performance.now();
+    const tick = (now: number) => {
+      const elapsed = Math.min((now - previous) / 1000, 0.1), maximum = totalMd(design);
+      previous = now;
+      const rate = maximum * (autoFollow ? 0.02 : 0.08) * (shiftHeld.current ? 4 : 1);
+      setCurrentMd((value) => {
+        const next = clampMd(design, value + rate * elapsed * (autoFollow ? 1 : moveDirection));
+        if (autoFollow && next >= maximum) setAutoFollow(false);
+        return next;
+      });
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoFollow, design, moveDirection]);
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      shiftHeld.current = event.shiftKey;
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      if ((event.target as HTMLElement | null)?.closest("input, textarea, select, button, [contenteditable='true'], [role='dialog'], .workspace-panel")) return;
+      event.preventDefault(); setAutoFollow(false); setCameraMode("follow"); setMoveDirection(event.key === "ArrowUp" ? -1 : 1);
+    };
+    const up = (event: KeyboardEvent) => {
+      shiftHeld.current = event.shiftKey;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") setMoveDirection(0);
+    };
+    const stop = () => { shiftHeld.current = false; setMoveDirection(0); };
+    addEventListener("keydown", down); addEventListener("keyup", up); addEventListener("blur", stop);
+    return () => { removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("blur", stop); };
+  }, []);
+  useEffect(() => {
+    if (document.activeElement?.classList.contains("camera-depth-input")) return;
+    setDepthInput(metresToDisplayDepth(currentMd, units === "imperial").toFixed(1));
+  }, [currentMd, units]);
   useEffect(() => {
     onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
@@ -409,6 +457,21 @@ export default function FluidLab({
     if (dirty) { setPendingPath(path); setExitOpen(true); }
     else navigate(path);
   };
+  const focusSection = (sectionId: string) => {
+    setSelectedId(sectionId);
+    const midpoint = sectionMidpointMd(design, sectionId);
+    if (midpoint != null) setCurrentMd(midpoint);
+    setCameraMode("follow"); setAutoFollow(false); setMoveDirection(0);
+  };
+  const commitDepth = () => {
+    const parsed = Number(depthInput);
+    if (!depthInput.trim() || !Number.isFinite(parsed)) { setDepthInput(metresToDisplayDepth(currentMd, units === "imperial").toFixed(1)); return; }
+    const next = clampMd(design, displayDepthToMetres(parsed, units === "imperial"));
+    setCurrentMd(next); setDepthInput(metresToDisplayDepth(next, units === "imperial").toFixed(1));
+    setCameraMode("follow"); setAutoFollow(false); setMoveDirection(0);
+  };
+  const beginMove = (direction: -1 | 1) => { setCameraMode("follow"); setAutoFollow(false); setMoveDirection(direction); };
+  const endMove = () => setMoveDirection(0);
   return (
     <main
       className={`fluidlab-workspace ${collapsed ? "panel-collapsed" : ""}`}
@@ -424,14 +487,15 @@ export default function FluidLab({
             selectedSectionId={selectedId}
             reducedMotion={reduced}
             active={visible}
-            view={view}
-            fitSignal={fitSignal}
+            cameraMode={cameraMode}
+            currentMd={currentMd}
             onContextLost={() =>
               setNotice(
                 "The 3D context was interrupted. Reload if the scene does not recover.",
               )
             }
-            onSelect={setSelectedId}
+            onSelect={focusSection}
+            onManualCameraInteraction={() => setAutoFollow(false)}
           />
         </Suspense>
         {!projectId && <div className="fluidlab-empty-workspace"><FolderOpen/><h1>Choose a FluidLab project</h1><p>Open an existing project or create a new one from the Projects panel.</p></div>}
@@ -575,7 +639,7 @@ export default function FluidLab({
                     <span style={{ background: section.color, color: "#03131d" }}>{index + 1}</span>
                     <button
                       className="locked-section-select"
-                      onClick={() => setSelectedId(section.id)}
+                      onClick={() => focusSection(section.id)}
                     >
                       <b>{section.name || `Section ${index + 1}`}</b>
                       <small>Confirmed and locked</small>
@@ -756,24 +820,11 @@ export default function FluidLab({
         </>}
       </aside>
       <div className="camera-toolbar">
-        <button
-          className={view === "perspective" ? "active" : ""}
-          onClick={() => setView("perspective")}
-        >
-          <Box /><span>Perspective</span>
-        </button>
-        <button
-          className={view === "profile" ? "active" : ""}
-          onClick={() => setView("profile")}
-        >
-          <GalleryVerticalEnd /><span>Profile</span>
-        </button>
-        <button
-          title="Fit current well"
-          onClick={() => setFitSignal((value) => value + 1)}
-        >
-          <Maximize2 /><span>Fit view</span>
-        </button>
+        <button aria-label="Move toward surface" title="Hold to move toward surface (Arrow Up)" onPointerDown={() => beginMove(-1)} onPointerUp={endMove} onPointerCancel={endMove} onPointerLeave={endMove}><ArrowUp/><span>Shallower</span></button>
+        <label className="camera-depth"><span>MD</span><input className="camera-depth-input" inputMode="decimal" value={depthInput} onChange={(event) => setDepthInput(event.target.value)} onBlur={commitDepth} onKeyDown={(event) => { if (event.key === "Enter") { commitDepth(); event.currentTarget.blur(); } }}/><small>{lunit(units)}</small></label>
+        <button aria-label="Move toward total depth" title="Hold to move toward total depth (Arrow Down)" onPointerDown={() => beginMove(1)} onPointerUp={endMove} onPointerCancel={endMove} onPointerLeave={endMove}><ArrowDown/><span>Deeper</span></button>
+        <button className={autoFollow ? "active" : ""} onClick={() => { setMoveDirection(0); setCameraMode("follow"); setAutoFollow((value) => !value); }}>{autoFollow ? <Pause/> : <Play/>}<span>{autoFollow ? "Pause" : "Auto"}</span></button>
+        <button className={cameraMode === "overview" ? "active" : ""} title="Fit the complete well" onClick={() => { setMoveDirection(0); setAutoFollow(false); setCameraMode("overview"); }}><Maximize2/><span>Overview</span></button>
       </div>
       {notice && (
         <button className="workspace-notice" onClick={() => setNotice("")}>

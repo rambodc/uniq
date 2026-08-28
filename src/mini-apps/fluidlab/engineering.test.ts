@@ -11,6 +11,7 @@ import {
   truncateFrom,
   validateProject,
 } from "./engineering";
+import { cameraPointAtMd, cameraTangentAtMd, clampMd, displayDepthToMetres, metresToDisplayDepth, sectionMidpointMd } from "./camera";
 const project = () => {
   const p = createProject("metric");
   confirmSection(p, {
@@ -121,4 +122,22 @@ describe("sequential KOP/EOC model", () => {
     expect(validateProject({ ...project(), version: 3 } as never)).toEqual([
       "Unsupported FluidLab project schema.",
     ]));
+  it("clamps camera depth and converts display units", () => {
+    const p = project();
+    expect(clampMd(p, -10)).toBe(0);
+    expect(clampMd(p, 5000)).toBe(2200);
+    expect(displayDepthToMetres(metresToDisplayDepth(1234, true), true)).toBeCloseTo(1234);
+  });
+  it("focuses section midpoints and calculates stable camera geometry", () => {
+    const p = project();
+    expect(sectionMidpointMd(p, p.sections[1].id)).toBe(1600);
+    expect(cameraPointAtMd(p, 100).y).toBe(-100);
+    expect(cameraTangentAtMd(p, 100)).toEqual({ x: 0, y: -1, z: 0 });
+  });
+  it("handles an empty camera path", () => {
+    const p = createProject("metric");
+    expect(clampMd(p, 10)).toBe(0);
+    expect(sectionMidpointMd(p, "missing")).toBeNull();
+    expect(cameraTangentAtMd(p, 0)).toEqual({ x: 0, y: -1, z: 0 });
+  });
 });
