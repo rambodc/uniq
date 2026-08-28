@@ -31,7 +31,6 @@ import {
   Play,
   X,
 } from "lucide-react";
-import { auth, authReady } from "../../core/firebase";
 import {
   confirmSection,
   applySectionEdit,
@@ -267,14 +266,7 @@ export default function FluidLab({
       return () => { active = false; };
     }
     setPanelTab("builder");
-    void authReady.then(() => {
-      if (!active) return;
-      if (!auth.currentUser) {
-        navigate(`/signin?returnTo=${encodeURIComponent(location.pathname)}`);
-        return;
-      }
-      return getProject(projectId);
-    })
+    void getProject(projectId)
       .then((result) => {
         if (!result) return;
         const { project } = result;

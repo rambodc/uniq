@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { httpsCallable } from "firebase/functions";
+import { useNavigate } from "react-router-dom";
 import { functions } from "../core/firebase";
 import { findPublicProduct, publicProductPaths, publicProducts, type PublicProduct } from "./products";
 import { applySeo, faqsFor, seoByPath, type SeoFaq } from "./seo";
@@ -132,7 +133,6 @@ const facts = [
 ] as const;
 const validPath = (value: string) =>
   value === "/" ||
-  value === "/fluidlab" ||
   allPublicPaths.has(value)
     ? value
     : "/";
@@ -1002,6 +1002,7 @@ function Footer({
 }
 
 export default function App() {
+  const portalNavigate = useNavigate();
   const [path, setPath] = useState(() => {
     const normalized = validPath(location.pathname);
     if (normalized !== location.pathname)
@@ -1039,7 +1040,7 @@ export default function App() {
     setPath(normalized);
     window.scrollTo(0, 0);
   }, []);
-  const lab = () => { location.assign("/signin?returnTo=/apps/fluidlab"); };
+  const lab = useCallback(() => portalNavigate("/portal"), [portalNavigate]);
   useEffect(() => {
     const route = seoByPath.get(path);
     if (route) applySeo(route);
@@ -1051,16 +1052,6 @@ export default function App() {
       ? "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
       : "width=device-width, initial-scale=1.0";
   }, [path]);
-  useEffect(() => {
-    if (path !== "/fluidlab") return;
-    location.replace("/signin?returnTo=/apps/fluidlab");
-  }, [path]);
-  if (path === "/fluidlab")
-    return (
-      <main className="route-loading">
-        <span>Opening your UniqEnergy Account…</span>
-      </main>
-    );
   return (
     <>
       <a className="skip-link" href="#main">

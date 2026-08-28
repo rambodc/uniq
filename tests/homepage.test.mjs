@@ -103,11 +103,23 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 test("enterprise routes are invitation-only and mini-app based", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts");
   for (const route of ["/portal", "/apps/fluidlab", "/apps/fluid-programs", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(app, /path="\/signup" element={<Navigate to="\/signin"/);
+  for (const legacy of ["/signup", "/account/profile", "/account/projects", "/apps/fluid-programs/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
   assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
   assert.match(registry, /adminOnly: true/);
   assert.match(registry, /alwaysVisible: true/);
   assert.match(registry, /user\.role === "admin"/);
+});
+
+test("enterprise authentication has one portal destination and one profile authority", async () => {
+  const app = await read("src/App.tsx"), authPage = await read("src/auth/EnterpriseAuth.tsx"), authContext = await read("src/portal/AuthContext.tsx"), publicSite = await read("src/public/PublicSite.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), firebase = await read("firebase.json");
+  assert.match(publicSite, /portalNavigate\("\/portal"\)/);
+  assert.match(authPage, /<Navigate to="\/portal" replace\/>/);
+  assert.doesNotMatch(app + authPage + publicSite + fluidlab, /returnTo/);
+  assert.match(authContext, /const delays = \[0, 250, 750\]/);
+  assert.match(authContext, /await signOut\(auth\)/);
+  assert.doesNotMatch(fluidlab, /authReady|auth\.currentUser/);
+  for (const legacy of ["/signup", "/fluidlab", "/account/**"]) assert.doesNotMatch(firebase, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("portal launcher contains four centrally registered mini apps", async () => {
