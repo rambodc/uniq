@@ -163,6 +163,8 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.match(pason, /file\.arrayBuffer\(\)/);
   assert.match(pason, /navigate\("\/"\)/);
   assert.doesNotMatch(pason, /Auto|Pause|setAuto/);
+  assert.match(pason, /Labels:.*labelMode/);
+  assert.match(pason, /navigationFocusSignal/);
   assert.doesNotMatch(pason, /httpsCallable|firestore|storage/);
 });
 

@@ -1,9 +1,10 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowDown, ArrowLeft, ArrowUp, FileArchive, FileUp, Gauge, Layers3, Maximize2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, FileArchive, FileUp, Gauge, Layers3, Maximize2, Tags } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { clampLegMd, legColor, metresToSurveyDisplay, surveyDisplayToMetres, type SurveyLeg } from "./survey";
 import { casingsAtMd, holeAtMd, parsePasonPackage, summarizeOperations, type HoleSection, type PasonWell } from "./pason-package";
+import { nextLabelMode, type LabelMode } from "./viewer-math";
 import "./pason-viewer.css";
 
 const Scene = lazy(() => import("./PasonScene"));
@@ -12,12 +13,13 @@ const nearestStation = (leg: SurveyLeg, md: number) => leg.stations.reduce((best
 
 export default function PasonViewer({ navigate }: { navigate: (path: string) => void }) {
   const [survey, setSurvey] = useState<PasonWell | null>(null), [selectedLegId, setSelectedLegId] = useState(""), [selectedSectionId, setSelectedSectionId] = useState<string | null>(null), [showCasings, setShowCasings] = useState(true), [error, setError] = useState(""), [loading, setLoading] = useState(false);
-  const [fitSignal, setFitSignal] = useState(0), [currentMd, setCurrentMd] = useState(0), [depthInput, setDepthInput] = useState("0");
+  const [fitSignal, setFitSignal] = useState(0), [navigationFocusSignal, setNavigationFocusSignal] = useState(0), [labelMode, setLabelMode] = useState<LabelMode>("smart"), [currentMd, setCurrentMd] = useState(0), [depthInput, setDepthInput] = useState("0");
   const [direction, setDirection] = useState<-1 | 0 | 1>(0), [visible, setVisible] = useState(!document.hidden);
   const input = useRef<HTMLInputElement>(null), shift = useRef(false), reducedMotion = Boolean(useReducedMotion());
   const leg = useMemo(() => survey?.legs.find((item) => item.id === selectedLegId) ?? survey?.legs.at(-1) ?? null, [selectedLegId, survey]);
   const imperial = survey?.sourceUnit === "imperial", unit = imperial ? "ft" : "m";
   const stop = useCallback(() => setDirection(0), []);
+  const beginMove = useCallback((value: -1 | 1) => { if (!leg) return; setNavigationFocusSignal((signal) => signal + 1); setDirection(value); }, [leg]);
 
   useEffect(() => { document.body.classList.add("pason-viewer-active"); return () => document.body.classList.remove("pason-viewer-active"); }, []);
   useEffect(() => { const change = () => { setVisible(!document.hidden); if (document.hidden) stop(); }; document.addEventListener("visibilitychange", change); return () => document.removeEventListener("visibilitychange", change); }, [stop]);
@@ -33,11 +35,11 @@ export default function PasonViewer({ navigate }: { navigate: (path: string) => 
   }, [direction, leg]);
   useEffect(() => { if (document.activeElement?.classList.contains("pason-depth-input")) return; setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1)); }, [currentMd, imperial]);
   useEffect(() => {
-    const down = (event: KeyboardEvent) => { shift.current = event.shiftKey; if (!leg || !["ArrowUp", "ArrowDown"].includes(event.key) || shouldIgnoreShortcut(event.target)) return; event.preventDefault(); setDirection(event.key === "ArrowUp" ? -1 : 1); };
+    const down = (event: KeyboardEvent) => { shift.current = event.shiftKey; if (!leg || !["ArrowUp", "ArrowDown"].includes(event.key) || shouldIgnoreShortcut(event.target)) return; event.preventDefault(); if (!event.repeat) beginMove(event.key === "ArrowUp" ? -1 : 1); };
     const up = (event: KeyboardEvent) => { shift.current = event.shiftKey; if (["ArrowUp", "ArrowDown"].includes(event.key)) setDirection(0); };
     const blur = () => { shift.current = false; setDirection(0); };
     addEventListener("keydown", down); addEventListener("keyup", up); addEventListener("blur", blur); return () => { removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("blur", blur); };
-  }, [leg]);
+  }, [beginMove, leg]);
 
   const importFile = async (file: File | undefined) => {
     if (!file) return;
@@ -46,14 +48,13 @@ export default function PasonViewer({ navigate }: { navigate: (path: string) => 
     setLoading(true); setError("");
     try {
       const parsed = parsePasonPackage(new Uint8Array(await file.arrayBuffer()), file.name), selected = parsed.legs.at(-1)!, firstSection = parsed.holeSections[selected.id]?.[0] ?? null;
-      setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
+      setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "This survey could not be read."); }
     finally { setLoading(false); if (input.current) input.current.value = ""; }
   };
   const selectLeg = (id: string) => { const next = survey?.legs.find((item) => item.id === id); if (!next) return; const md = (next.startMdM + next.endMdM) / 2; setSelectedLegId(id); setSelectedSectionId(holeAtMd(survey!, id, md)?.id ?? null); setCurrentMd(md); stop(); };
   const selectSection = (legId: string, section: HoleSection) => { setSelectedLegId(legId); setSelectedSectionId(section.id); setCurrentMd((section.startMdM + section.endMdM) / 2); stop(); };
   const commitDepth = () => { if (!leg) return; const parsed = Number(depthInput); if (!depthInput.trim() || !Number.isFinite(parsed)) { setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1)); return; } const next = clampLegMd(leg, surveyDisplayToMetres(parsed, imperial)); setCurrentMd(next); setDepthInput(metresToSurveyDisplay(next, imperial).toFixed(1)); stop(); };
-  const beginMove = (value: -1 | 1) => { if (!leg) return; setDirection(value); };
   const hold = (value: -1 | 1) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); beginMove(value); },
     onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); setDirection(0); }, onPointerCancel: () => setDirection(0), onLostPointerCapture: () => setDirection(0),
@@ -64,7 +65,7 @@ export default function PasonViewer({ navigate }: { navigate: (path: string) => 
   const station = leg ? nearestStation(leg, currentMd) : null, activeHole = survey && leg ? holeAtMd(survey, leg.id, currentMd) : null, activeCasings = survey ? casingsAtMd(survey, currentMd) : [], operations = survey ? summarizeOperations(survey, currentMd) : null;
 
   return <main className="pason-workspace">
-    <div className="pason-scene">{survey && leg ? <Suspense fallback={<div className="pason-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="pason-empty"><div><FileArchive/><span>Pason ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original Pason package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Pason ZIP</button></div>}</div>
+    <div className="pason-scene">{survey && leg ? <Suspense fallback={<div className="pason-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="pason-empty"><div><FileArchive/><span>Pason ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original Pason package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Pason ZIP</button></div>}</div>
     <header className="pason-topbar"><button aria-label="Back to UniqEnergy" title="Back to UniqEnergy" onClick={() => navigate("/")}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Pason Viewer</span>{survey && <button className="pason-import-again" onClick={() => input.current?.click()}><FileUp/>Import another ZIP</button>}<input ref={input} className="pason-file-input" type="file" accept=".zip,application/zip" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
     {loading && <div className="pason-status" role="status">Reading Pason package…</div>}{error && <div className="pason-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
     {survey && leg && <aside className="pason-panel" aria-label="Survey legs">
@@ -83,6 +84,7 @@ export default function PasonViewer({ navigate }: { navigate: (path: string) => 
       <label><span>MD</span><input className="pason-depth-input" inputMode="decimal" value={depthInput} onChange={(event) => setDepthInput(event.target.value)} onBlur={commitDepth} onKeyDown={(event) => { if (event.key === "Enter") { commitDepth(); event.currentTarget.blur(); } }}/><small>{unit}</small></label>
       <button className="pason-hold" {...hold(1)}><ArrowDown/><span>Deeper</span></button>
       <button onClick={() => { stop(); setFitSignal((value) => value + 1); }}><Maximize2/><span>Fit Well</span></button>
+      <button aria-label={`Labels: ${labelMode}`} title="Cycle scene labels" onClick={() => setLabelMode(nextLabelMode)}><Tags/><span>Labels: {labelMode[0].toUpperCase() + labelMode.slice(1)}</span></button>
     </div>}
   </main>;
 }
