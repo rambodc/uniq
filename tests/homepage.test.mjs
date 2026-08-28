@@ -148,7 +148,7 @@ test("enterprise clients call only version-one callable interfaces", async () =>
 });
 
 test("mini apps use independent navigation and the public viewer stays browser-only", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/public-tools/well-viewer/WellViewer.tsx");
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/public-tools/well-viewer/WellViewer.tsx"), wellScene = await read("src/public-tools/well-viewer/WellScene.tsx"), wellStyles = await read("src/public-tools/well-viewer/well-viewer.css");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-brand" to="\/"/);
   assert.match(account, /reauthenticateWithCredential/);
@@ -169,6 +169,12 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.match(well, /ArrowLeft.*\? -1 : 1/);
   assert.match(well, /ArrowUp.*\? -1 : 1/);
   assert.match(well, /↑↓ Zoom · ←→ Depth · Shift 4×/);
+  assert.match(well, /aria-controls="well-inspector" aria-expanded=\{panelOpen\}/);
+  assert.match(well, /aria-hidden=\{mobile && !panelOpen\} inert=\{mobile && !panelOpen\}/);
+  assert.match(well, /closeMobilePanel\(\)/);
+  assert.match(wellScene, /zIndexRange=\{\[20, 0\]\}/);
+  assert.match(wellStyles, /width:min\(82vw,340px\)/);
+  assert.match(wellStyles, /well-panel\.closed.*translateX/);
   assert.doesNotMatch(well, /httpsCallable|firestore|storage/);
 });
 

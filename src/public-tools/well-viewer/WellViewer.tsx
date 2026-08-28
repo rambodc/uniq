@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowDown, ArrowLeft, ArrowUp, FileArchive, FileUp, Gauge, Layers3, Maximize2, Tags } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, FileArchive, FileUp, Gauge, Layers3, Maximize2, PanelLeftOpen, Tags, X } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { clampLegMd, legColor, metresToSurveyDisplay, surveyDisplayToMetres, type SurveyLeg } from "./survey";
 import { casingsAtMd, holeAtMd, parseWellPackage, summarizeOperations, type HoleSection, type WellModel } from "./well-package";
@@ -15,14 +15,17 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   const [survey, setSurvey] = useState<WellModel | null>(null), [selectedLegId, setSelectedLegId] = useState(""), [selectedSectionId, setSelectedSectionId] = useState<string | null>(null), [showCasings, setShowCasings] = useState(true), [error, setError] = useState(""), [loading, setLoading] = useState(false);
   const [fitSignal, setFitSignal] = useState(0), [navigationFocusSignal, setNavigationFocusSignal] = useState(0), [labelMode, setLabelMode] = useState<LabelMode>("smart"), [currentMd, setCurrentMd] = useState(0), [depthInput, setDepthInput] = useState("0");
   const [direction, setDirection] = useState<-1 | 0 | 1>(0), [keyboardDepthDirection, setKeyboardDepthDirection] = useState<-1 | 0 | 1>(0), [keyboardZoomDirection, setKeyboardZoomDirection] = useState<-1 | 0 | 1>(0), [keyboardAccelerated, setKeyboardAccelerated] = useState(false), [visible, setVisible] = useState(!document.hidden);
-  const input = useRef<HTMLInputElement>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
+  const [mobile, setMobile] = useState(() => matchMedia("(max-width: 720px)").matches), [panelOpen, setPanelOpen] = useState(false);
+  const input = useRef<HTMLInputElement>(null), panelOpener = useRef<HTMLButtonElement>(null), panelClose = useRef<HTMLButtonElement>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
   const leg = useMemo(() => survey?.legs.find((item) => item.id === selectedLegId) ?? survey?.legs.at(-1) ?? null, [selectedLegId, survey]);
   const imperial = survey?.sourceUnit === "imperial", unit = imperial ? "ft" : "m";
   const stop = useCallback(() => { setDirection(0); setKeyboardDepthDirection(0); setKeyboardZoomDirection(0); pressedArrows.current.clear(); }, []);
   const beginMove = useCallback((value: -1 | 1) => { if (!leg) return; setNavigationFocusSignal((signal) => signal + 1); setDirection(value); }, [leg]);
 
   useEffect(() => { document.body.classList.add("well-viewer-active"); return () => document.body.classList.remove("well-viewer-active"); }, []);
+  useEffect(() => { const query = matchMedia("(max-width: 720px)"), change = () => setMobile(query.matches); query.addEventListener("change", change); return () => query.removeEventListener("change", change); }, []);
   useEffect(() => { const change = () => { setVisible(!document.hidden); if (document.hidden) stop(); }; document.addEventListener("visibilitychange", change); return () => document.removeEventListener("visibilitychange", change); }, [stop]);
+  useEffect(() => { if (!mobile || !panelOpen) return; const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); } }; addEventListener("keydown", keydown); return () => removeEventListener("keydown", keydown); }, [mobile, panelOpen]);
   useEffect(() => {
     const movementDirection = direction || keyboardDepthDirection;
     if (!leg || movementDirection === 0) return;
@@ -64,12 +67,13 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
     setLoading(true); setError("");
     try {
       const parsed = parseWellPackage(new Uint8Array(await file.arrayBuffer()), file.name), selected = parsed.legs.at(-1)!, firstSection = parsed.holeSections[selected.id]?.[0] ?? null;
-      setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
+      setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setPanelOpen(false); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "This survey could not be read."); }
     finally { setLoading(false); if (input.current) input.current.value = ""; }
   };
-  const selectLeg = (id: string) => { const next = survey?.legs.find((item) => item.id === id); if (!next) return; const md = (next.startMdM + next.endMdM) / 2; setSelectedLegId(id); setSelectedSectionId(holeAtMd(survey!, id, md)?.id ?? null); setCurrentMd(md); stop(); };
-  const selectSection = (legId: string, section: HoleSection) => { setSelectedLegId(legId); setSelectedSectionId(section.id); setCurrentMd((section.startMdM + section.endMdM) / 2); stop(); };
+  const closeMobilePanel = () => { if (!mobile || !panelOpen) return; setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); };
+  const selectLeg = (id: string) => { const next = survey?.legs.find((item) => item.id === id); if (!next) return; const md = (next.startMdM + next.endMdM) / 2; setSelectedLegId(id); setSelectedSectionId(holeAtMd(survey!, id, md)?.id ?? null); setCurrentMd(md); stop(); closeMobilePanel(); };
+  const selectSection = (legId: string, section: HoleSection) => { setSelectedLegId(legId); setSelectedSectionId(section.id); setCurrentMd((section.startMdM + section.endMdM) / 2); stop(); closeMobilePanel(); };
   const commitDepth = () => { if (!leg) return; const parsed = Number(depthInput); if (!depthInput.trim() || !Number.isFinite(parsed)) { setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1)); return; } const next = clampLegMd(leg, surveyDisplayToMetres(parsed, imperial)); setCurrentMd(next); setDepthInput(metresToSurveyDisplay(next, imperial).toFixed(1)); stop(); };
   const hold = (value: -1 | 1) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); beginMove(value); },
@@ -84,8 +88,9 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
     <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Well ZIP</button></div>}</div>
     <header className="well-topbar"><button aria-label="Back to UniqEnergy" title="Back to UniqEnergy" onClick={() => navigate("/")}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-import-again" onClick={() => input.current?.click()}><FileUp/>Import another ZIP</button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
     {loading && <div className="well-status" role="status">Reading well package…</div>}{error && <div className="well-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
-    {survey && leg && <aside className="well-panel" aria-label="Survey legs">
-      <div className="well-panel-heading"><span>Survey data</span><strong>{survey.name}</strong>{survey.dossierId && <small>Dossier {survey.dossierId}</small>}</div>
+    {survey && leg && mobile && <button ref={panelOpener} className="well-panel-opener" aria-controls="well-inspector" aria-expanded={panelOpen} onClick={() => { setPanelOpen(true); requestAnimationFrame(() => panelClose.current?.focus()); }}><PanelLeftOpen/><span>Well details</span></button>}
+    {survey && leg && <aside id="well-inspector" className={`well-panel${panelOpen ? " open" : " closed"}`} aria-label="Well details" aria-hidden={mobile && !panelOpen} inert={mobile && !panelOpen}>
+      <div className="well-panel-heading"><div><span>Survey data</span><strong>{survey.name}</strong>{survey.dossierId && <small>Dossier {survey.dossierId}</small>}</div>{mobile && <button ref={panelClose} className="well-panel-close" aria-label="Close well details" onClick={closeMobilePanel}><X/></button>}</div>
       <section className="well-summary"><div><span>Legs</span><b>{survey.legs.length}</b></div><div><span>Stations</span><b>{survey.legs.reduce((sum, item) => sum + item.stations.length, 0)}</b></div><div><span>Source units</span><b>{survey.sourceUnit === "imperial" ? "Imperial" : "Metric"}</b></div></section>
       {survey.warnings.length > 0 && <details className="well-warnings"><summary>{survey.warnings.length} import warning{survey.warnings.length === 1 ? "" : "s"}</summary>{survey.warnings.map((warning) => <p key={warning}>{warning}</p>)}</details>}
       <div className="well-leg-list">{survey.legs.map((item, index) => <button key={item.id} className={item.id === leg.id ? "active" : ""} onClick={() => selectLeg(item.id)}><i style={{ background: legColor(index) }}/><span><b>{item.name}</b><small>{item.parentId ? `Parent ${item.parentId} · ` : "Root · "}{item.stations.length} stations</small></span><em>{metresToSurveyDisplay(item.startMdM, imperial).toFixed(0)}–{metresToSurveyDisplay(item.endMdM, imperial).toFixed(0)} {unit}</em></button>)}</div>
