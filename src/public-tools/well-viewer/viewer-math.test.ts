@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { followDistanceM, nextLabelMode, smartLabelOpacity } from "./viewer-math";
 
-describe("Pason viewer camera framing", () => {
+describe("Well viewer camera framing", () => {
   it("derives a bounded close-follow distance from hole diameter", () => {
     expect(followDistanceM(159)).toBeCloseTo(3.18);
     expect(followDistanceM(222)).toBeCloseTo(4.44);
@@ -12,7 +12,7 @@ describe("Pason viewer camera framing", () => {
   });
 });
 
-describe("Pason viewer label policy", () => {
+describe("Well viewer label policy", () => {
   const opacity = (category: "current" | "terminal" | "junction" | "transition" | "casing", options: Partial<Parameters<typeof smartLabelOpacity>[0]> = {}) => smartLabelOpacity({ mode: "smart", category, selected: true, cameraDistance: 5, sceneExtent: 2000, mdDistance: 10, legSpan: 1000, ...options });
   it("cycles Smart, All, and Off", () => { expect(nextLabelMode("smart")).toBe("all"); expect(nextLabelMode("all")).toBe("off"); expect(nextLabelMode("off")).toBe("smart"); });
   it("makes All and Off unconditional", () => { expect(opacity("terminal", { mode: "all", selected: false })).toBe(1); expect(opacity("current", { mode: "off" })).toBe(0); });

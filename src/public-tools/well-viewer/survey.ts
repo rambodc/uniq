@@ -48,13 +48,13 @@ function finite(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function parsePasonSurvey(text: string, importedFileName = "survey.txt"): SurveyFile {
+export function parseWellSurvey(text: string, importedFileName = "survey.txt"): SurveyFile {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   const headerIndex = lines.findIndex((line) => {
     const headers = line.split("\t").map(baseHeader);
     return required.every((item) => headers.includes(item));
   });
-  if (headerIndex < 0) throw new SurveyParseError("This file does not contain a supported Pason deviation-survey header.");
+  if (headerIndex < 0) throw new SurveyParseError("This file does not contain a supported Well deviation-survey header.");
 
   const rawHeaders = lines[headerIndex].split("\t").map(tidyHeader);
   const headers = rawHeaders.map(baseHeader);

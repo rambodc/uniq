@@ -5,7 +5,7 @@ import { validContactInquiry } from "../apps/contact/validation.js";
 import { validFluidLabData } from "../apps/fluidlab/validation.js";
 
 test("enterprise users expose only normalized version-one access data", () => {
-  assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "pason-viewer", "fluidlab"]), ["fluidlab"]);
+  assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "well-viewer", "fluidlab"]), ["fluidlab"]);
   assert.deepEqual(publicUser("u1", { email: "a@example.com", role: "invalid", status: "invalid", enabledMiniApps: ["fluidlab"] }), { schemaVersion: 1, uid: "u1", email: "a@example.com", firstName: "", lastName: "", role: "user", status: "active", enabledMiniApps: ["fluidlab"] });
 });
 

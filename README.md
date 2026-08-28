@@ -18,7 +18,7 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 ## Mini apps and access
 
 - **FluidLab** — owner-private conceptual well projects
-- **Public Pason Viewer** — unlisted, session-only 3D visualization at `/pason-viewer`, combining survey, ETS, and drilling CSV data from an original Pason ZIP package
+- **Public Well Viewer** — unlisted, session-only 3D visualization at `/well-viewer`, combining survey, ETS, and drilling CSV data from an original well ZIP package
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
@@ -35,7 +35,7 @@ contactInquiries/{inquiryId}
 
 All records created by the enterprise system use `schemaVersion: 1`. There is no migration or legacy compatibility layer.
 
-Pason Viewer extracts the survey TXT, ETS XML, and drilling CSV locally from a Pason ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
+Well Viewer extracts the survey TXT, ETS XML, and drilling CSV locally from a well ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
 
 ## Local validation
 

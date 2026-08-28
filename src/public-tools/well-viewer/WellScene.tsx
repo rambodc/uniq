@@ -4,7 +4,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { legColor, pointAtLegMd, stationPoint, type SurveyLeg } from "./survey";
-import type { CasingString, HoleSection, PasonWell } from "./pason-package";
+import type { CasingString, HoleSection, WellModel } from "./well-package";
 import { followDistanceM, smartLabelOpacity, type LabelCategory, type LabelMode } from "./viewer-math";
 const vector = (point: { x: number; y: number; z: number }) => new THREE.Vector3(point.x, point.y, point.z);
 
@@ -35,7 +35,7 @@ function CasingTube({ leg, casing }: { leg: SurveyLeg; casing: CasingString }) {
   return <group><mesh geometry={geometries.outer}><meshPhysicalMaterial color="#b8c8cc" transparent opacity={0.16} roughness={0.25} metalness={0.65} depthWrite={false}/></mesh><mesh geometry={geometries.inner}><meshStandardMaterial color="#e7eff1" side={THREE.BackSide} transparent opacity={0.1} depthWrite={false}/></mesh></group>;
 }
 
-function CameraController({ survey, leg, currentMd, fitSignal, navigationFocusSignal, activeDiameterMm, reducedMotion, onInteraction }: { survey: PasonWell; leg: SurveyLeg; currentMd: number; fitSignal: number; navigationFocusSignal: number; activeDiameterMm: number; reducedMotion: boolean; onInteraction: () => void }) {
+function CameraController({ survey, leg, currentMd, fitSignal, navigationFocusSignal, activeDiameterMm, reducedMotion, onInteraction }: { survey: WellModel; leg: SurveyLeg; currentMd: number; fitSignal: number; navigationFocusSignal: number; activeDiameterMm: number; reducedMotion: boolean; onInteraction: () => void }) {
   const { camera, controls } = useThree();
   const lastMd = useRef(Number.NaN), lastLeg = useRef(""), lastFit = useRef(-1), lastNavigationFocus = useRef(navigationFocusSignal), approaching = useRef(false), approachDistance = useRef(0);
   const points = useMemo(() => survey.legs.flatMap((item) => item.stations.map((station) => vector(stationPoint(station)))), [survey]);
@@ -80,10 +80,10 @@ function CameraController({ survey, leg, currentMd, fitSignal, navigationFocusSi
 function Label({ position, children, mode, category, selected, sceneExtent, currentMd, labelMd, legSpan, active = false }: { position: THREE.Vector3; children: ReactNode; mode: LabelMode; category: LabelCategory; selected: boolean; sceneExtent: number; currentMd: number; labelMd: number; legSpan: number; active?: boolean }) {
   const { camera } = useThree(), element = useRef<HTMLSpanElement>(null);
   useFrame(() => { if (!element.current) return; const opacity = smartLabelOpacity({ mode, category, selected, cameraDistance: camera.position.distanceTo(position), sceneExtent, mdDistance: Math.abs(labelMd - currentMd), legSpan }); element.current.style.opacity = String(opacity); element.current.setAttribute("aria-hidden", opacity ? "false" : "true"); });
-  return <Html position={position} center occlude={false}><span ref={element} className={`pason-scene-label ${category}${active ? " active" : ""}`}>{children}</span></Html>;
+  return <Html position={position} center occlude={false}><span ref={element} className={`well-scene-label ${category}${active ? " active" : ""}`}>{children}</span></Html>;
 }
 
-export default function PasonScene({ survey, selectedLegId, selectedSectionId, currentMd, fitSignal, navigationFocusSignal, labelMode, reducedMotion, active, showCasings, onSelectLeg, onSelectSection, onManualInteraction }: { survey: PasonWell; selectedLegId: string; selectedSectionId: string | null; currentMd: number; fitSignal: number; navigationFocusSignal: number; labelMode: LabelMode; reducedMotion: boolean; active: boolean; showCasings: boolean; onSelectLeg: (id: string) => void; onSelectSection: (legId: string, section: HoleSection) => void; onManualInteraction: () => void }) {
+export default function WellScene({ survey, selectedLegId, selectedSectionId, currentMd, fitSignal, navigationFocusSignal, labelMode, reducedMotion, active, showCasings, onSelectLeg, onSelectSection, onManualInteraction }: { survey: WellModel; selectedLegId: string; selectedSectionId: string | null; currentMd: number; fitSignal: number; navigationFocusSignal: number; labelMode: LabelMode; reducedMotion: boolean; active: boolean; showCasings: boolean; onSelectLeg: (id: string) => void; onSelectSection: (legId: string, section: HoleSection) => void; onManualInteraction: () => void }) {
   const selected = survey.legs.find((leg) => leg.id === selectedLegId) ?? survey.legs.at(-1)!;
   const allPoints = useMemo(() => survey.legs.flatMap((leg) => leg.stations.map((station) => vector(stationPoint(station)))), [survey]);
   const extent = useMemo(() => Math.max(new THREE.Box3().setFromPoints(allPoints).getSize(new THREE.Vector3()).length(), 10), [allPoints]);

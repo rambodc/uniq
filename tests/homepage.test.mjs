@@ -100,12 +100,12 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
   for (const path of ["src/public/scenes/HomeWellScene.tsx", "src/public/scenes/ContactSignalScene.tsx", "src/public/scenes/TechnologyJourney.tsx"]) { const source = await read(path); assert.match(source, /prefers-reduced-motion/); assert.match(source, /IntersectionObserver/); assert.match(source, /canRenderWebGL/); }
 });
 
-test("enterprise routes are invitation-only while Pason Viewer is a public tool", async () => {
+test("enterprise routes are invitation-only while Well Viewer is a public tool", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
-  for (const route of ["/portal", "/apps/fluidlab", "/pason-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.doesNotMatch(app, /\/apps\/pason-viewer/);
-  assert.doesNotMatch(registry, /pason-viewer|Pason Viewer/);
-  assert.match(firebase, /"source": "\/pason-viewer", "destination": "\/index\.html"/);
+  for (const route of ["/portal", "/apps/fluidlab", "/well-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(app, /\/apps\/well-viewer/);
+  assert.doesNotMatch(registry, /well-viewer|Well Viewer/);
+  assert.match(firebase, /"source": "\/well-viewer", "destination": "\/index\.html"/);
   for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
   assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
@@ -128,7 +128,7 @@ test("enterprise authentication has one portal destination and one profile autho
 test("portal launcher contains only managed and account mini apps", async () => {
   const registry = await read("src/portal/miniApps.ts"), launcher = await read("src/portal/AppLauncher.tsx");
   for (const id of ["fluidlab", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
-  assert.doesNotMatch(registry, /pason-viewer/);
+  assert.doesNotMatch(registry, /well-viewer/);
   assert.match(launcher, /visibleMiniApps\(user\)/);
   assert.doesNotMatch(launcher, /Recent projects|Search projects/);
 });
@@ -148,7 +148,7 @@ test("enterprise clients call only version-one callable interfaces", async () =>
 });
 
 test("mini apps use independent navigation and the public viewer stays browser-only", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), pason = await read("src/public-tools/pason-viewer/PasonViewer.tsx");
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/public-tools/well-viewer/WellViewer.tsx");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-brand" to="\/"/);
   assert.match(account, /reauthenticateWithCredential/);
@@ -159,13 +159,13 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.match(fluidlab, />Projects<|>Builder</);
   assert.match(fluidlab, /<div className="workspace-brand">/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
-  assert.match(pason, /Import another ZIP/);
-  assert.match(pason, /file\.arrayBuffer\(\)/);
-  assert.match(pason, /navigate\("\/"\)/);
-  assert.doesNotMatch(pason, /Auto|Pause|setAuto/);
-  assert.match(pason, /Labels:.*labelMode/);
-  assert.match(pason, /navigationFocusSignal/);
-  assert.doesNotMatch(pason, /httpsCallable|firestore|storage/);
+  assert.match(well, /Import another ZIP/);
+  assert.match(well, /file\.arrayBuffer\(\)/);
+  assert.match(well, /navigate\("\/"\)/);
+  assert.doesNotMatch(well, /Auto|Pause|setAuto/);
+  assert.match(well, /Labels:.*labelMode/);
+  assert.match(well, /navigationFocusSignal/);
+  assert.doesNotMatch(well, /httpsCallable|firestore|storage/);
 });
 
 test("forgot-password delivery uses the protected SMTP callable", async () => {
