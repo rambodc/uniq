@@ -3,28 +3,40 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { legColor, pointAtLegMd, stationPoint, tangentAtLegMd, type PasonCameraMode, type SurveyFile, type SurveyLeg } from "./survey";
+import { legColor, pointAtLegMd, stationPoint, tangentAtLegMd, type PasonCameraMode, type SurveyLeg } from "./survey";
+import type { CasingString, HoleSection, PasonWell } from "./pason-package";
 const vector = (point: { x: number; y: number; z: number }) => new THREE.Vector3(point.x, point.y, point.z);
 
-function SurveyTube({ leg, index, selected, radius, onSelect }: { leg: SurveyLeg; index: number; selected: boolean; radius: number; onSelect: () => void }) {
-  const points = useMemo(() => leg.stations.map((station) => vector(stationPoint(station))), [leg]);
+const sizeColors: Record<number, string> = { 349: "#42dff5", 222: "#ffd166", 159: "#ef7da7" };
+const pointsBetween = (leg: SurveyLeg, start: number, end: number) => [vector(pointAtLegMd(leg, start)), ...leg.stations.filter((station) => station.mdM > start && station.mdM < end).map((station) => vector(stationPoint(station))), vector(pointAtLegMd(leg, end))];
+
+function HoleTube({ leg, section, selected, onSelect }: { leg: SurveyLeg; section: HoleSection; selected: boolean; onSelect: () => void }) {
+  const points = useMemo(() => pointsBetween(leg, section.startMdM, section.endMdM), [leg, section]);
   const geometry = useMemo(() => {
     if (points.length < 2) return null;
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
-    return new THREE.TubeGeometry(curve, Math.max(24, points.length * 3), radius * (selected ? 1.25 : 1), 12, false);
-  }, [points, radius, selected]);
-  const color = legColor(index);
-  if (!geometry) return <mesh position={points[0] ?? new THREE.Vector3()} onClick={(event) => { event.stopPropagation(); onSelect(); }}><sphereGeometry args={[radius * 1.6, 14, 14]}/><meshStandardMaterial color={color}/></mesh>;
+    return new THREE.TubeGeometry(curve, Math.max(16, points.length * 3), section.diameterMm / 2000, 14, false);
+  }, [points, section.diameterMm]);
+  const color = sizeColors[section.diameterMm] ?? "#a5e8dd";
+  if (!geometry) return null;
   return <group>
     <mesh geometry={geometry} onClick={(event) => { event.stopPropagation(); onSelect(); }}>
-      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={selected ? 0.3 : 0.06} transparent opacity={selected ? 1 : 0.68}/>
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={selected ? 0.45 : 0.08} transparent opacity={selected ? 1 : 0.86}/>
     </mesh>
-    <Line points={points} color={selected ? "#ffffff" : color} lineWidth={selected ? 2.5 : 1} transparent opacity={selected ? 0.9 : 0.35}/>
-    <mesh position={points.at(-1)}><sphereGeometry args={[radius * 1.5, 12, 12]}/><meshStandardMaterial color={selected ? "#ffffff" : color}/></mesh>
   </group>;
 }
 
-function CameraController({ survey, leg, mode, currentMd, fitSignal, reducedMotion, onInteraction }: { survey: SurveyFile; leg: SurveyLeg; mode: PasonCameraMode; currentMd: number; fitSignal: number; reducedMotion: boolean; onInteraction: () => void }) {
+function CasingTube({ leg, casing }: { leg: SurveyLeg; casing: CasingString }) {
+  const start = Math.max(leg.startMdM, casing.topMdM), end = Math.min(leg.endMdM, casing.bottomMdM), points = useMemo(() => pointsBetween(leg, start, end), [end, leg, start]);
+  const geometries = useMemo(() => { if (end <= start || points.length < 2) return null; const curve = new THREE.CatmullRomCurve3(points, false, "centripetal"); return {
+    outer: new THREE.TubeGeometry(curve, Math.max(16, points.length * 3), casing.outsideDiameterMm / 2000, 16, false),
+    inner: new THREE.TubeGeometry(curve, Math.max(16, points.length * 3), casing.insideDiameterMm / 2000, 16, false),
+  }; }, [casing.insideDiameterMm, casing.outsideDiameterMm, end, points, start]);
+  if (!geometries) return null;
+  return <group><mesh geometry={geometries.outer}><meshPhysicalMaterial color="#9fd4df" transparent opacity={0.38} roughness={0.2} metalness={0.55} depthWrite={false}/></mesh><mesh geometry={geometries.inner}><meshStandardMaterial color="#dffaff" side={THREE.BackSide} transparent opacity={0.24} depthWrite={false}/></mesh></group>;
+}
+
+function CameraController({ survey, leg, mode, currentMd, fitSignal, reducedMotion, onInteraction }: { survey: PasonWell; leg: SurveyLeg; mode: PasonCameraMode; currentMd: number; fitSignal: number; reducedMotion: boolean; onInteraction: () => void }) {
   const { camera, controls } = useThree();
   const lastMode = useRef<PasonCameraMode | null>(null), lastMd = useRef(Number.NaN), lastLeg = useRef(""), lastFit = useRef(-1);
   const goalTarget = useRef(new THREE.Vector3()), goalPosition = useRef(new THREE.Vector3()), settling = useRef(false);
@@ -46,7 +58,7 @@ function CameraController({ survey, leg, mode, currentMd, fitSignal, reducedMoti
     }
     if (lastMode.current !== mode || lastLeg.current !== leg.id || Math.abs(lastMd.current - currentMd) > 1e-6) {
       const target = vector(pointAtLegMd(leg, currentMd)), tangent = vector(tangentAtLegMd(leg, currentMd));
-      const distance = THREE.MathUtils.clamp(extent / 12, 35, 300);
+      const largestDiameterM = Math.max(...survey.bitRuns.map((bit) => bit.sizeMm), 159) / 1000, distance = THREE.MathUtils.clamp(largestDiameterM * 12, 2.5, 8);
       let side = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0));
       if (side.lengthSq() < 1e-6) side = new THREE.Vector3(1, 0, 0); else side.normalize();
       goalTarget.current.copy(target); goalPosition.current.copy(target).add(side.multiplyScalar(distance * 0.35)).add(new THREE.Vector3(0, distance * 0.15, distance));
@@ -68,17 +80,18 @@ function CameraController({ survey, leg, mode, currentMd, fitSignal, reducedMoti
   return null;
 }
 
-export default function PasonScene({ survey, selectedLegId, currentMd, cameraMode, fitSignal, reducedMotion, active, onSelect, onManualInteraction }: { survey: SurveyFile; selectedLegId: string; currentMd: number; cameraMode: PasonCameraMode; fitSignal: number; reducedMotion: boolean; active: boolean; onSelect: (id: string) => void; onManualInteraction: () => void }) {
+export default function PasonScene({ survey, selectedLegId, selectedSectionId, currentMd, cameraMode, fitSignal, reducedMotion, active, showCasings, onSelectLeg, onSelectSection, onManualInteraction }: { survey: PasonWell; selectedLegId: string; selectedSectionId: string | null; currentMd: number; cameraMode: PasonCameraMode; fitSignal: number; reducedMotion: boolean; active: boolean; showCasings: boolean; onSelectLeg: (id: string) => void; onSelectSection: (legId: string, section: HoleSection) => void; onManualInteraction: () => void }) {
   const selected = survey.legs.find((leg) => leg.id === selectedLegId) ?? survey.legs.at(-1)!;
   const allPoints = useMemo(() => survey.legs.flatMap((leg) => leg.stations.map((station) => vector(stationPoint(station)))), [survey]);
   const extent = useMemo(() => Math.max(new THREE.Box3().setFromPoints(allPoints).getSize(new THREE.Vector3()).length(), 10), [allPoints]);
-  const radius = THREE.MathUtils.clamp(extent / 550, 0.7, 10);
+  const root = survey.legs.find((leg) => !leg.parentId) ?? survey.legs[0];
   return <Canvas frameloop={active ? "always" : "demand"} camera={{ fov: 42 }} gl={{ antialias: true, alpha: false }}>
     <color attach="background" args={["#03131d"]}/><fog attach="fog" args={["#03131d", extent * 3, extent * 15]}/>
     <ambientLight intensity={1.2}/><directionalLight position={[500, 800, 700]} intensity={2}/>
     <gridHelper args={[Math.max(extent * 8, 1000), 100, "#197681", "#0b4650"]}/>
-    {survey.legs.map((leg, index) => <SurveyTube key={leg.id} leg={leg} index={index} selected={leg.id === selected.id} radius={radius} onSelect={() => onSelect(leg.id)}/>) }
-    <OrbitControls makeDefault enableDamping={!reducedMotion} enablePan={cameraMode === "manual"} enableRotate enableZoom minDistance={cameraMode === "manual" ? 0.5 : 15} maxDistance={cameraMode === "manual" ? Math.max(extent * 50, 10000) : 700} minPolarAngle={cameraMode === "manual" ? 0 : 0.12} maxPolarAngle={cameraMode === "manual" ? Math.PI : Math.PI - 0.12}/>
+    {survey.legs.map((leg, index) => <group key={leg.id}>{(survey.holeSections[leg.id] ?? []).map((section) => <HoleTube key={section.id} leg={leg} section={section} selected={selectedSectionId === section.id} onSelect={() => onSelectSection(leg.id, section)}/>)}<Line points={leg.stations.map((station) => vector(stationPoint(station)))} color={leg.id === selected.id ? "#ffffff" : legColor(index)} lineWidth={leg.id === selected.id ? 2.4 : 1.2} transparent opacity={cameraMode === "manual" ? 0.9 : 0.42} onClick={(event) => { event.stopPropagation(); onSelectLeg(leg.id); }}/></group>)}
+    {showCasings && root && survey.casings.map((casing) => <CasingTube key={casing.id} leg={root} casing={casing}/>)}
+    <OrbitControls makeDefault enableDamping={!reducedMotion} enablePan={cameraMode === "manual"} enableRotate enableZoom minDistance={cameraMode === "manual" ? 0.25 : 1} maxDistance={cameraMode === "manual" ? Math.max(extent * 50, 10000) : 25} minPolarAngle={cameraMode === "manual" ? 0 : 0.12} maxPolarAngle={cameraMode === "manual" ? Math.PI : Math.PI - 0.12}/>
     <CameraController survey={survey} leg={selected} mode={cameraMode} currentMd={currentMd} fitSignal={fitSignal} reducedMotion={reducedMotion} onInteraction={onManualInteraction}/>
   </Canvas>;
 }

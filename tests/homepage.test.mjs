@@ -155,8 +155,8 @@ test("mini apps use independent navigation and account-owned session controls", 
   assert.match(fluidlab, />Projects<|>Builder</);
   assert.match(fluidlab, /<div className="workspace-brand">/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
-  assert.match(pason, /Import another TXT/);
-  assert.match(pason, /file\.text\(\)/);
+  assert.match(pason, /Import another ZIP/);
+  assert.match(pason, /file\.arrayBuffer\(\)/);
   assert.doesNotMatch(pason, /httpsCallable|firestore|storage/);
 });
 

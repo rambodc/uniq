@@ -18,7 +18,7 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 ## Mini apps and access
 
 - **FluidLab** — owner-private conceptual well projects
-- **Pason Viewer** — session-only 3D visualization of locally imported Pason deviation surveys
+- **Pason Viewer** — session-only 3D visualization combining survey trajectory, bit sizes, and casing dimensions from an original Pason ZIP package
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
@@ -35,7 +35,7 @@ contactInquiries/{inquiryId}
 
 All records created by the enterprise system use `schemaVersion: 1`. There is no migration or legacy compatibility layer.
 
-Pason Viewer reads survey TXT files locally. Raw files and normalized stations are never uploaded or persisted.
+Pason Viewer extracts the survey TXT and ETS XML locally from a Pason ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
 
 ## Local validation
 
