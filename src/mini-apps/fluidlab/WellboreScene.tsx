@@ -19,6 +19,7 @@ function CameraController({
   points,
   mode,
   currentMd,
+  manualFitSignal,
   reducedMotion,
   onManualInteraction,
 }: {
@@ -26,6 +27,7 @@ function CameraController({
   points: THREE.Vector3[];
   mode: CameraMode;
   currentMd: number;
+  manualFitSignal: number;
   reducedMotion: boolean;
   onManualInteraction: () => void;
 }) {
@@ -36,6 +38,7 @@ function CameraController({
   const goalTarget = useRef(new THREE.Vector3());
   const goalPosition = useRef(new THREE.Vector3());
   const settling = useRef(false);
+  const fittedSignal = useRef(-1);
   const fit = useCallback(() => {
     if (!points.length) return;
     const box = new THREE.Box3().setFromPoints(points);
@@ -65,8 +68,12 @@ function CameraController({
   }, [camera, controls, points]);
   useFrame((_, delta) => {
     if (!points.length) return;
-    if (mode === "overview") {
-      if (modeRef.current !== mode) fit();
+    if (mode === "manual") {
+      if (modeRef.current !== mode || fittedSignal.current !== manualFitSignal || requestedPoints.current !== points) {
+        fit();
+        fittedSignal.current = manualFitSignal;
+        requestedPoints.current = points;
+      }
       modeRef.current = mode;
       return;
     }
@@ -207,6 +214,7 @@ export default function WellboreScene({
   active,
   cameraMode,
   currentMd,
+  manualFitSignal,
   onContextLost,
   onSelect,
   onManualCameraInteraction,
@@ -217,6 +225,7 @@ export default function WellboreScene({
   active: boolean;
   cameraMode: CameraMode;
   currentMd: number;
+  manualFitSignal: number;
   onContextLost: () => void;
   onSelect: (id: string) => void;
   onManualCameraInteraction: () => void;
@@ -232,6 +241,7 @@ export default function WellboreScene({
     };
   }, [design.sections, points]);
   const [labels, setLabels] = useState<LabelPosition[]>([]);
+  const sceneExtent = useMemo(() => points.length ? Math.max(new THREE.Box3().setFromPoints(points).getSize(new THREE.Vector3()).length(), 100) : 100, [points]);
   return (
     <><Canvas
       frameloop={active ? "always" : "demand"}
@@ -266,8 +276,8 @@ export default function WellboreScene({
             />
           ),
       )}
-      <OrbitControls makeDefault enableDamping={!reducedMotion} minDistance={25} maxDistance={900} minPolarAngle={0.15} maxPolarAngle={Math.PI - 0.15} enablePan={false} />
-      <CameraController design={design} points={points} mode={cameraMode} currentMd={currentMd} reducedMotion={reducedMotion} onManualInteraction={onManualCameraInteraction} />
+      <OrbitControls makeDefault enableDamping={!reducedMotion} minDistance={cameraMode === "manual" ? 1 : 25} maxDistance={cameraMode === "manual" ? Math.max(sceneExtent * 50, 10000) : 900} minPolarAngle={cameraMode === "manual" ? 0 : 0.15} maxPolarAngle={cameraMode === "manual" ? Math.PI : Math.PI - 0.15} enablePan={cameraMode === "manual"} enableRotate enableZoom />
+      <CameraController design={design} points={points} mode={cameraMode} currentMd={currentMd} manualFitSignal={manualFitSignal} reducedMotion={reducedMotion} onManualInteraction={onManualCameraInteraction} />
       {model.sections.length > 0 && <LabelTracker design={design} model={model} selectedId={selectedSectionId} onUpdate={setLabels} />}
     </Canvas><div className="scene-label-layer" aria-hidden="true">{labels.map((label) => <span key={label.id} className={label.selected ? "selected" : ""} style={{left:label.x,top:label.y}}>{label.text}</span>)}</div></>
   );

@@ -1,6 +1,6 @@
 import { pointAtMd, sectionTopMd, type WellProject } from "./engineering";
 
-export type CameraMode = "follow" | "overview";
+export type CameraMode = "follow" | "manual";
 
 export function totalMd(project: WellProject) {
   return project.sections.at(-1)?.endMdM ?? 0;

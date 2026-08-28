@@ -7,6 +7,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { useReducedMotion } from "motion/react";
@@ -139,6 +142,7 @@ export default function FluidLab({
     [collapsed, setCollapsed] = useState(false),
     [drawerOpen, setDrawerOpen] = useState(false),
     [cameraMode, setCameraMode] = useState<CameraMode>("follow"),
+    [manualFitSignal, setManualFitSignal] = useState(0),
     [currentMd, setCurrentMd] = useState(0),
     [depthInput, setDepthInput] = useState("0"),
     [autoFollow, setAutoFollow] = useState(false),
@@ -472,6 +476,15 @@ export default function FluidLab({
   };
   const beginMove = (direction: -1 | 1) => { setCameraMode("follow"); setAutoFollow(false); setMoveDirection(direction); };
   const endMove = () => setMoveDirection(0);
+  const holdButtonProps = (direction: -1 | 1) => ({
+    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); beginMove(direction); },
+    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); endMove(); },
+    onPointerCancel: endMove,
+    onLostPointerCapture: endMove,
+    onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
+    onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => { if ((event.key === " " || event.key === "Enter") && !event.repeat) { event.preventDefault(); beginMove(direction); } },
+    onKeyUp: (event: ReactKeyboardEvent<HTMLButtonElement>) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); endMove(); } },
+  });
   return (
     <main
       className={`fluidlab-workspace ${collapsed ? "panel-collapsed" : ""}`}
@@ -489,6 +502,7 @@ export default function FluidLab({
             active={visible}
             cameraMode={cameraMode}
             currentMd={currentMd}
+            manualFitSignal={manualFitSignal}
             onContextLost={() =>
               setNotice(
                 "The 3D context was interrupted. Reload if the scene does not recover.",
@@ -820,11 +834,11 @@ export default function FluidLab({
         </>}
       </aside>
       <div className="camera-toolbar">
-        <button aria-label="Move toward surface" title="Hold to move toward surface (Arrow Up)" onPointerDown={() => beginMove(-1)} onPointerUp={endMove} onPointerCancel={endMove} onPointerLeave={endMove}><ArrowUp/><span>Shallower</span></button>
+        <button className="camera-hold-button" aria-label="Move toward surface" title="Hold to move toward surface (Arrow Up)" {...holdButtonProps(-1)}><ArrowUp/><span>Shallower</span></button>
         <label className="camera-depth"><span>MD</span><input className="camera-depth-input" inputMode="decimal" value={depthInput} onChange={(event) => setDepthInput(event.target.value)} onBlur={commitDepth} onKeyDown={(event) => { if (event.key === "Enter") { commitDepth(); event.currentTarget.blur(); } }}/><small>{lunit(units)}</small></label>
-        <button aria-label="Move toward total depth" title="Hold to move toward total depth (Arrow Down)" onPointerDown={() => beginMove(1)} onPointerUp={endMove} onPointerCancel={endMove} onPointerLeave={endMove}><ArrowDown/><span>Deeper</span></button>
+        <button className="camera-hold-button" aria-label="Move toward total depth" title="Hold to move toward total depth (Arrow Down)" {...holdButtonProps(1)}><ArrowDown/><span>Deeper</span></button>
         <button className={autoFollow ? "active" : ""} onClick={() => { setMoveDirection(0); setCameraMode("follow"); setAutoFollow((value) => !value); }}>{autoFollow ? <Pause/> : <Play/>}<span>{autoFollow ? "Pause" : "Auto"}</span></button>
-        <button className={cameraMode === "overview" ? "active" : ""} title="Fit the complete well" onClick={() => { setMoveDirection(0); setAutoFollow(false); setCameraMode("overview"); }}><Maximize2/><span>Overview</span></button>
+        <button className={cameraMode === "manual" ? "active" : ""} title="Fit the complete well and control the camera" onClick={() => { setMoveDirection(0); setAutoFollow(false); setCameraMode("manual"); setManualFitSignal((value) => value + 1); }}><Maximize2/><span>Manual</span></button>
       </div>
       {notice && (
         <button className="workspace-notice" onClick={() => setNotice("")}>
