@@ -16,11 +16,13 @@
       { "source": "/signin", "destination": "/index.html" },
       { "source": "/forgot-password", "destination": "/index.html" },
       { "source": "/portal", "destination": "/index.html" },
+      { "source": "/pason-viewer", "destination": "/index.html" },
       { "source": "/invite/**", "destination": "/index.html" },
       { "source": "/apps/**", "destination": "/index.html" }
     ],
     "headers": [
       { "source": "/@(signin|forgot-password|portal)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
+      { "source": "/pason-viewer", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "/@(invite|apps)/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "**/*.@(js|css)", "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }] },
       { "source": "**/*.@(png|jpg|jpeg|webp|svg|woff2)", "headers": [{ "key": "Cache-Control", "value": "public,max-age=2592000" }] },

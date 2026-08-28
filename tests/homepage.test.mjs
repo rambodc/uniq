@@ -101,10 +101,11 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 });
 
 test("enterprise routes are invitation-only while Pason Viewer is a public tool", async () => {
-  const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts");
+  const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
   for (const route of ["/portal", "/apps/fluidlab", "/pason-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /\/apps\/pason-viewer/);
   assert.doesNotMatch(registry, /pason-viewer|Pason Viewer/);
+  assert.match(firebase, /"source": "\/pason-viewer", "destination": "\/index\.html"/);
   for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
   assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
