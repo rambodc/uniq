@@ -18,11 +18,11 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 ## Mini apps and access
 
 - **FluidLab** — owner-private conceptual well projects
-- **Pason Viewer** — session-only 3D visualization combining survey trajectory, bit sizes, and casing dimensions from an original Pason ZIP package
+- **Public Pason Viewer** — unlisted, session-only 3D visualization at `/pason-viewer`, combining survey, ETS, and drilling CSV data from an original Pason ZIP package
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
-Administrators automatically receive every mini app. Ordinary users receive explicit `fluidlab` and/or `pason-viewer` grants. There is no public signup route.
+Administrators automatically receive every managed mini app. Ordinary users receive explicit `fluidlab` access. There is no public signup route.
 
 ## Version-one data
 
@@ -35,7 +35,7 @@ contactInquiries/{inquiryId}
 
 All records created by the enterprise system use `schemaVersion: 1`. There is no migration or legacy compatibility layer.
 
-Pason Viewer extracts the survey TXT and ETS XML locally from a Pason ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
+Pason Viewer extracts the survey TXT, ETS XML, and drilling CSV locally from a Pason ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
 
 ## Local validation
 
@@ -87,7 +87,7 @@ After the verified reset, create the first user in Firebase Authentication throu
   "lastName": "User",
   "role": "admin",
   "status": "active",
-  "enabledMiniApps": ["fluidlab", "pason-viewer"]
+  "enabledMiniApps": ["fluidlab"]
 }
 ```
 

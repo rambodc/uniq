@@ -1,5 +1,5 @@
 export type UserRole = "admin" | "user";
-export type ManagedMiniAppId = "fluidlab" | "pason-viewer";
+export type ManagedMiniAppId = "fluidlab";
 
 export interface PortalUser {
   schemaVersion: 1;

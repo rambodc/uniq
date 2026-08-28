@@ -17,7 +17,6 @@ import type {
 
 const grants: { id: ManagedMiniAppId; label: string }[] = [
   { id: "fluidlab", label: "FluidLab" },
-  { id: "pason-viewer", label: "Pason Viewer" },
 ];
 function UserAccessRow({
   user,

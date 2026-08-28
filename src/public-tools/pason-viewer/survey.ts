@@ -1,5 +1,4 @@
 export type SurveyUnit = "metric" | "imperial";
-export type PasonCameraMode = "follow" | "manual";
 const legColors = ["#42dff5", "#ffd166", "#ef476f", "#8cff98", "#b99cff", "#ff9f68"];
 export const legColor = (index: number) => legColors[index % legColors.length];
 

@@ -4,7 +4,12 @@ import { parsePasonSurvey, type SurveyFile, type SurveyLeg } from "./survey";
 export interface BitRun { id: string; bitNo: string; sizeMm: number; manufacturer: string; bitType: string; serialNo: string; depthInM: number; depthOutM: number | null }
 export interface HoleSection { id: string; legId: string; startMdM: number; endMdM: number; diameterMm: number; bit: BitRun | null }
 export interface CasingString { id: string; category: string; outsideDiameterMm: number; insideDiameterMm: number; topMdM: number; bottomMdM: number; grade: string }
-export interface PasonWell extends SurveyFile { packageName: string; etsFileName: string; bitRuns: BitRun[]; holeSections: Record<string, HoleSection[]>; casings: CasingString[] }
+export type OperationalChannelId = "torque" | "rotary" | "rop" | "gas" | "standpipePressure" | "differentialPressure" | "pumpOutput" | "hookLoad" | "gamma";
+export interface OperationalChannel { id: OperationalChannelId; label: string; unit: string }
+export interface OperationalSample { timestamp: string; holeDepthM: number; bitDepthM: number; values: Partial<Record<OperationalChannelId, number>> }
+export interface OperationalStatistic { channel: OperationalChannel; count: number; minimum: number; average: number; maximum: number; latest: number }
+export interface OperationalSummary { radiusM: number; sampleCount: number; firstTimestamp: string; lastTimestamp: string; ambiguousLeg: boolean; statistics: OperationalStatistic[] }
+export interface PasonWell extends SurveyFile { packageName: string; etsFileName: string; csvFileName: string; bitRuns: BitRun[]; holeSections: Record<string, HoleSection[]>; casings: CasingString[]; operationalChannels: OperationalChannel[]; operationalSamples: OperationalSample[] }
 export class PasonPackageError extends Error { constructor(message: string) { super(message); this.name = "PasonPackageError"; } }
 
 const number = (value: string | null | undefined) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; };
@@ -15,6 +20,44 @@ const elements = (root: Node, name: string) => {
 };
 const text = (element: Element, name: string) => elements(element, name)[0]?.textContent?.trim() ?? "";
 const directValues = (element: Element) => Object.fromEntries(Array.from(element.childNodes).filter((child): child is Element => child.nodeType === 1).map((child) => [localName(child), child.textContent?.trim() ?? ""]));
+
+const channelDefinitions: { id: OperationalChannelId; aliases: string[]; label: string }[] = [
+  { id: "torque", aliases: ["top drive torque"], label: "Top drive torque" },
+  { id: "rotary", aliases: ["top drive rotary"], label: "Rotary speed" },
+  { id: "rop", aliases: ["rate of penetration", "rop"], label: "Rate of penetration" },
+  { id: "gas", aliases: ["pason gas", "gas"], label: "Pason gas" },
+  { id: "standpipePressure", aliases: ["standpipe pressure"], label: "Standpipe pressure" },
+  { id: "differentialPressure", aliases: ["differential pressure"], label: "Differential pressure" },
+  { id: "pumpOutput", aliases: ["total pump output"], label: "Total pump output" },
+  { id: "hookLoad", aliases: ["hook load"], label: "Hook load" },
+  { id: "gamma", aliases: ["gamma"], label: "Gamma" },
+];
+const csvCells = (line: string) => { const cells: string[] = []; let value = "", quoted = false; for (let index = 0; index < line.length; index += 1) { const char = line[index]; if (char === '"') { if (quoted && line[index + 1] === '"') { value += '"'; index += 1; } else quoted = !quoted; } else if (char === "," && !quoted) { cells.push(value.trim()); value = ""; } else value += char; } cells.push(value.trim()); return cells; };
+const headerName = (value: string) => value.replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
+const headerUnit = (value: string) => value.match(/\(([^)]*)\)\s*$/)?.[1]?.replaceAll("_", " ") ?? "";
+const usableOperationalNumber = (value: string | undefined) => { const parsed = Number(value); return Number.isFinite(parsed) && parsed > -900 ? parsed : null; };
+
+export function parseOperationalCsv(csv: string) {
+  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) throw new PasonPackageError("The drilling CSV does not contain usable rows.");
+  const headers = csvCells(lines[0]), names = headers.map(headerName);
+  const find = (...aliases: string[]) => names.findIndex((name) => aliases.includes(name));
+  const dateIndex = find("yyyy/mm/dd", "date"), timeIndex = find("hh:mm:ss", "time"), holeIndex = find("hole depth"), bitIndex = find("bit depth");
+  if (holeIndex < 0 || bitIndex < 0) throw new PasonPackageError("The drilling CSV is missing Hole Depth or Bit Depth.");
+  const mapped = channelDefinitions.flatMap((definition) => { const index = find(...definition.aliases); return index < 0 ? [] : [{ ...definition, index, unit: headerUnit(headers[index]) }]; });
+  if (!mapped.length) throw new PasonPackageError("The drilling CSV does not contain supported operational channels.");
+  const samples: OperationalSample[] = [];
+  for (const line of lines.slice(1)) {
+    const cells = csvCells(line), holeDepthM = usableOperationalNumber(cells[holeIndex]), bitDepthM = usableOperationalNumber(cells[bitIndex]);
+    if (holeDepthM == null || bitDepthM == null || holeDepthM < 0 || bitDepthM < 0) continue;
+    const values: OperationalSample["values"] = {};
+    for (const channel of mapped) { const value = usableOperationalNumber(cells[channel.index]); if (value != null) values[channel.id] = value; }
+    if (!Object.keys(values).length) continue;
+    samples.push({ timestamp: [cells[dateIndex] ?? "", cells[timeIndex] ?? ""].filter(Boolean).join(" "), holeDepthM, bitDepthM, values });
+  }
+  if (!samples.length) throw new PasonPackageError("The drilling CSV contains no usable operational samples.");
+  return { channels: mapped.map(({ id, label, unit }) => ({ id, label, unit })), samples };
+}
 
 export function parseEtsXml(xml: string) {
   if (typeof DOMParser === "undefined") throw new PasonPackageError("This browser cannot read ETS XML files.");
@@ -75,19 +118,26 @@ function compatibleNames(survey: string, ets: string) {
 }
 
 export function parsePasonPackage(bytes: Uint8Array, packageName: string): PasonWell {
-  const files = unzipSync(bytes, { filter: (file) => file.originalSize <= 15_000_000 && (/surveys_[^/]*\.txt$/i.test(file.name) || /(?:^|\/)ETS[^/]*\.xml$/i.test(file.name)) });
-  const names = Object.keys(files), surveys = names.filter((name) => /surveys_[^/]*\.txt$/i.test(name)), xmlFiles = names.filter((name) => /(?:^|\/)ETS[^/]*\.xml$/i.test(name));
+  const files = unzipSync(bytes, { filter: (file) => file.originalSize <= 15_000_000 && (/surveys_[^/]*\.txt$/i.test(file.name) || /(?:^|\/)ETS[^/]*\.xml$/i.test(file.name) || /(?:^|\/)[^/]+\.csv$/i.test(file.name)) });
+  const names = Object.keys(files), surveys = names.filter((name) => /surveys_[^/]*\.txt$/i.test(name)), xmlFiles = names.filter((name) => /(?:^|\/)ETS[^/]*\.xml$/i.test(name)), csvFiles = names.filter((name) => /(?:^|\/)[^/]+\.csv$/i.test(name));
   if (surveys.length !== 1) throw new PasonPackageError(surveys.length ? "This package contains multiple survey TXT files. Import a package for one well." : "This package does not contain a Pason surveys_*.txt file.");
   if (xmlFiles.length !== 1) throw new PasonPackageError(xmlFiles.length ? "This package contains multiple ETS XML files. Import a package for one well." : "This package does not contain an ETS XML file.");
-  const survey = parsePasonSurvey(strFromU8(files[surveys[0]]), surveys[0]), ets = parseEtsXml(strFromU8(files[xmlFiles[0]]));
+  if (csvFiles.length !== 1) throw new PasonPackageError(csvFiles.length ? "This package contains multiple drilling CSV files. Import a package for one well." : "This package does not contain a drilling CSV file.");
+  const survey = parsePasonSurvey(strFromU8(files[surveys[0]]), surveys[0]), ets = parseEtsXml(strFromU8(files[xmlFiles[0]])), operations = parseOperationalCsv(strFromU8(files[csvFiles[0]]));
   if (!ets.bitRuns.length) throw new PasonPackageError("The ETS XML does not contain usable bit-size and depth records.");
   if (!compatibleNames(survey.name, ets.wellName)) throw new PasonPackageError("The survey TXT and ETS XML appear to describe different wells.");
   const maximumSurveyMd = Math.max(...survey.legs.map((leg) => leg.endMdM)), maximumBitMd = Math.max(...ets.bitRuns.map((run) => run.depthOutM ?? run.depthInM));
   if (Math.abs(maximumSurveyMd - maximumBitMd) > Math.max(100, maximumSurveyMd * 0.1)) throw new PasonPackageError("The survey and ETS depth ranges do not match closely enough to combine safely.");
   const built = buildHoleSections(survey.legs, ets.bitRuns), warnings = [...survey.warnings, ...built.warnings];
   if (ets.incompleteCasings) warnings.push(`${ets.incompleteCasings} incomplete casing ${ets.incompleteCasings === 1 ? "record was" : "records were"} ignored.`);
-  return { ...survey, name: ets.wellName || survey.name, packageName, etsFileName: xmlFiles[0], bitRuns: ets.bitRuns, holeSections: built.sections, casings: ets.casings, warnings };
+  return { ...survey, name: ets.wellName || survey.name, packageName, etsFileName: xmlFiles[0], csvFileName: csvFiles[0], bitRuns: ets.bitRuns, holeSections: built.sections, casings: ets.casings, operationalChannels: operations.channels, operationalSamples: operations.samples, warnings };
 }
 
 export const holeAtMd = (well: PasonWell, legId: string, mdM: number) => { const sections = well.holeSections[legId] ?? []; return sections.find((section, index) => mdM >= section.startMdM && (mdM < section.endMdM || index === sections.length - 1)) ?? null; };
 export const casingsAtMd = (well: PasonWell, mdM: number) => well.casings.filter((casing) => mdM >= casing.topMdM && mdM <= casing.bottomMdM);
+export function summarizeOperations(well: PasonWell, mdM: number, radiusM = 2): OperationalSummary | null {
+  const nearby = well.operationalSamples.filter((sample) => Math.abs(sample.bitDepthM - mdM) <= radiusM);
+  if (!nearby.length) return null;
+  const statistics = well.operationalChannels.flatMap((channel) => { const values = nearby.flatMap((sample) => sample.values[channel.id] == null ? [] : [sample.values[channel.id]!]); if (!values.length) return []; return [{ channel, count: values.length, minimum: Math.min(...values), average: values.reduce((sum, value) => sum + value, 0) / values.length, maximum: Math.max(...values), latest: values.at(-1)! }]; });
+  return { radiusM, sampleCount: nearby.length, firstTimestamp: nearby[0].timestamp, lastTimestamp: nearby.at(-1)!.timestamp, ambiguousLeg: well.legs.filter((leg) => mdM >= leg.startMdM && mdM <= leg.endMdM).length > 1, statistics };
+}

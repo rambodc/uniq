@@ -100,9 +100,11 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
   for (const path of ["src/public/scenes/HomeWellScene.tsx", "src/public/scenes/ContactSignalScene.tsx", "src/public/scenes/TechnologyJourney.tsx"]) { const source = await read(path); assert.match(source, /prefers-reduced-motion/); assert.match(source, /IntersectionObserver/); assert.match(source, /canRenderWebGL/); }
 });
 
-test("enterprise routes are invitation-only and mini-app based", async () => {
+test("enterprise routes are invitation-only while Pason Viewer is a public tool", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts");
-  for (const route of ["/portal", "/apps/fluidlab", "/apps/pason-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const route of ["/portal", "/apps/fluidlab", "/pason-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(app, /\/apps\/pason-viewer/);
+  assert.doesNotMatch(registry, /pason-viewer|Pason Viewer/);
   for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
   assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
@@ -122,9 +124,10 @@ test("enterprise authentication has one portal destination and one profile autho
   for (const legacy of ["/signup", "/fluidlab", "/account/**"]) assert.doesNotMatch(firebase, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
-test("portal launcher contains four centrally registered mini apps", async () => {
+test("portal launcher contains only managed and account mini apps", async () => {
   const registry = await read("src/portal/miniApps.ts"), launcher = await read("src/portal/AppLauncher.tsx");
-  for (const id of ["fluidlab", "pason-viewer", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
+  for (const id of ["fluidlab", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
+  assert.doesNotMatch(registry, /pason-viewer/);
   assert.match(launcher, /visibleMiniApps\(user\)/);
   assert.doesNotMatch(launcher, /Recent projects|Search projects/);
 });
@@ -143,8 +146,8 @@ test("enterprise clients call only version-one callable interfaces", async () =>
   assert.doesNotMatch(api + projects, /registerAccount\"|createProject\"|autosaveProject\"/);
 });
 
-test("mini apps use independent navigation and account-owned session controls", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), pason = await read("src/mini-apps/pason-viewer/PasonViewer.tsx");
+test("mini apps use independent navigation and the public viewer stays browser-only", async () => {
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), pason = await read("src/public-tools/pason-viewer/PasonViewer.tsx");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-brand" to="\/"/);
   assert.match(account, /reauthenticateWithCredential/);
@@ -157,6 +160,8 @@ test("mini apps use independent navigation and account-owned session controls", 
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(pason, /Import another ZIP/);
   assert.match(pason, /file\.arrayBuffer\(\)/);
+  assert.match(pason, /navigate\("\/"\)/);
+  assert.doesNotMatch(pason, /Auto|Pause|setAuto/);
   assert.doesNotMatch(pason, /httpsCallable|firestore|storage/);
 });
 

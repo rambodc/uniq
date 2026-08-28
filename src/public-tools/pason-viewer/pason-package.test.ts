@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { DOMParser as XmlDomParser } from "@xmldom/xmldom";
 import { strToU8, zipSync } from "fflate";
-import { buildHoleSections, casingsAtMd, holeAtMd, parseEtsXml, parsePasonPackage, PasonPackageError } from "./pason-package";
+import { buildHoleSections, casingsAtMd, holeAtMd, parseEtsXml, parseOperationalCsv, parsePasonPackage, PasonPackageError, summarizeOperations } from "./pason-package";
 import { parsePasonSurvey } from "./survey";
 
 beforeAll(() => { globalThis.DOMParser = XmlDomParser as unknown as typeof DOMParser; });
@@ -12,6 +12,7 @@ const xml = `<?xml version="1.0"?><ETS xmlns="http://www.caodc.ca/ETS/v3"><WellT
 <Bit><BitNo>3</BitNo><Size>159</Size><Manufacturer>C</Manufacturer><BitType>PDC</BitType><SerialNo>three</SerialNo><DepthIn>1583</DepthIn><DepthOut>2500</DepthOut></Bit></Bits></Equipment>
 <Tubular><Casings><Casing><Category>SURFACE</Category><Grade>H40</Grade><OutsideDiameter>244.5</OutsideDiameter><InsideDiameter>228.63</InsideDiameter><KBToCasingHead>4.8</KBToCasingHead><KBToCasingBottom>183</KBToCasingBottom></Casing><Casing><Category>BAD</Category><InsideDiameter>157</InsideDiameter><KBToCasingBottom>24</KBToCasingBottom></Casing></Casings></Tubular>
 </DayTour></DayTours></WellTour></WellTours></ETS>`;
+const csv = `YYYY/MM/DD,HH:MM:SS,Hole Depth (meters),Bit Depth (meters),Top Drive Torque (kN_m),Top Drive Rotary (RPM),Rate Of Penetration (m_per_hr),Pason Gas (percent)\n2026/02/19,17:00:00,184,184,3,110,20,-999.25\n2026/02/19,17:01:00,185,185,5,120,30,2\n2026/02/19,17:02:00,186,185.5,7,130,40,3`;
 
 describe("ETS engineering data", () => {
   it("deduplicates bit snapshots and retains deepest depth-out", () => { const parsed = parseEtsXml(xml); expect(parsed.bitRuns).toHaveLength(3); expect(parsed.bitRuns[1].depthOutM).toBe(1583); expect(parsed.casings).toHaveLength(1); expect(parsed.incompleteCasings).toBe(1); });
@@ -21,6 +22,11 @@ describe("ETS engineering data", () => {
 
 describe("Pason ZIP package", () => {
   const archive = (files: Record<string, string>) => zipSync(Object.fromEntries(Object.entries(files).map(([name, value]) => [name, strToU8(value)])));
-  it("correlates survey, hole, and casing data without persistence", () => { const well = parsePasonPackage(archive({ "job/data/surveys_42.txt": surveyText, "job/data/ETS_test.xml": xml }), "job.zip"); expect(well.packageName).toBe("job.zip"); expect(holeAtMd(well, "10", 100)?.diameterMm).toBe(349); expect(casingsAtMd(well, 100)[0].outsideDiameterMm).toBe(244.5); expect(well.warnings).toContain("1 incomplete casing record was ignored."); });
-  it("rejects missing, ambiguous, and mismatched packages", () => { expect(() => parsePasonPackage(archive({ "readme.txt": "x" }), "bad.zip")).toThrow(/surveys_/); expect(() => parsePasonPackage(archive({ "surveys_a.txt": surveyText, "surveys_b.txt": surveyText, "ETS.xml": xml }), "bad.zip")).toThrow(/multiple survey/); expect(() => parsePasonPackage(archive({ "surveys_a.txt": surveyText, "ETS.xml": xml.replaceAll("TEST WELL", "OTHER BORE") }), "bad.zip")).toThrow(/different wells/); });
+  it("correlates survey, hole, casing, and operational data without persistence", () => { const well = parsePasonPackage(archive({ "job/data/surveys_42.txt": surveyText, "job/data/ETS_test.xml": xml, "job/data/42.csv": csv }), "job.zip"); expect(well.packageName).toBe("job.zip"); expect(holeAtMd(well, "10", 100)?.diameterMm).toBe(349); expect(casingsAtMd(well, 100)[0].outsideDiameterMm).toBe(244.5); expect(well.operationalSamples).toHaveLength(3); expect(summarizeOperations(well, 185)?.statistics.find((item) => item.channel.id === "torque")?.average).toBe(5); expect(well.warnings).toContain("1 incomplete casing record was ignored."); });
+  it("rejects missing, ambiguous, and mismatched packages", () => { expect(() => parsePasonPackage(archive({ "readme.txt": "x" }), "bad.zip")).toThrow(/surveys_/); expect(() => parsePasonPackage(archive({ "surveys_a.txt": surveyText, "surveys_b.txt": surveyText, "ETS.xml": xml, "42.csv": csv }), "bad.zip")).toThrow(/multiple survey/); expect(() => parsePasonPackage(archive({ "surveys_a.txt": surveyText, "ETS.xml": xml.replaceAll("TEST WELL", "OTHER BORE"), "42.csv": csv }), "bad.zip")).toThrow(/different wells/); expect(() => parsePasonPackage(archive({ "surveys_a.txt": surveyText, "ETS.xml": xml }), "bad.zip")).toThrow(/drilling CSV/); });
+});
+
+describe("operational CSV", () => {
+  it("parses supported channels and ignores Pason sentinel values", () => { const parsed = parseOperationalCsv(csv); expect(parsed.channels.map((item) => item.id)).toContain("torque"); expect(parsed.samples[0].values.gas).toBeUndefined(); expect(parsed.samples[2].values.rop).toBe(40); });
+  it("rejects missing depth columns and unsupported channels", () => { expect(() => parseOperationalCsv("Date,Value\n2026/01/01,2")).toThrow(/Hole Depth/); expect(() => parseOperationalCsv("Hole Depth (meters),Bit Depth (meters),Unknown\n1,1,2")).toThrow(/supported operational/); });
 });
