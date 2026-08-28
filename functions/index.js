@@ -17,5 +17,3 @@ export { createFluidLabProject } from "./apps/fluidlab/create-project.js";
 export { getFluidLabProject } from "./apps/fluidlab/get-project.js";
 export { saveFluidLabProject } from "./apps/fluidlab/save-project.js";
 export { deleteFluidLabProject } from "./apps/fluidlab/delete-project.js";
-
-export { sendFluidProgramsMessage } from "./apps/fluid-programs/send-message.js";

@@ -102,8 +102,8 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 
 test("enterprise routes are invitation-only and mini-app based", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts");
-  for (const route of ["/portal", "/apps/fluidlab", "/apps/fluid-programs", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  for (const legacy of ["/signup", "/account/profile", "/account/projects", "/apps/fluid-programs/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const route of ["/portal", "/apps/fluidlab", "/apps/pason-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
   assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
   assert.match(registry, /adminOnly: true/);
@@ -124,7 +124,7 @@ test("enterprise authentication has one portal destination and one profile autho
 
 test("portal launcher contains four centrally registered mini apps", async () => {
   const registry = await read("src/portal/miniApps.ts"), launcher = await read("src/portal/AppLauncher.tsx");
-  for (const id of ["fluidlab", "fluid-programs", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
+  for (const id of ["fluidlab", "pason-viewer", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
   assert.match(launcher, /visibleMiniApps\(user\)/);
   assert.doesNotMatch(launcher, /Recent projects|Search projects/);
 });
@@ -136,16 +136,15 @@ test("FluidLab retains engineering behavior and autosave conflict states", async
 });
 
 test("enterprise clients call only version-one callable interfaces", async () => {
-  const api = await read("src/core/api.ts"), projects = await read("src/mini-apps/fluidlab/projects.ts"), programs = await read("src/mini-apps/fluid-programs/api.ts"), exports = await read("functions/index.js");
+  const api = await read("src/core/api.ts"), projects = await read("src/mini-apps/fluidlab/projects.ts"), exports = await read("functions/index.js");
   for (const endpoint of ["getCurrentUser", "adminListUsers", "adminInviteUser", "previewInvite", "acceptInvite"]) assert.match(api, new RegExp(endpoint));
   for (const endpoint of ["listFluidLabProjects", "saveFluidLabProject"]) assert.match(projects, new RegExp(endpoint));
-  assert.match(programs, /sendFluidProgramsMessage/);
-  assert.doesNotMatch(exports + projects + programs, /listFluidProgramsProjects|createFluidProgramsProject|getFluidProgramsProject|saveFluidProgramsProject|deleteFluidProgramsProject/);
+  assert.doesNotMatch(exports + projects, /assistant project history/);
   assert.doesNotMatch(api + projects, /registerAccount\"|createProject\"|autosaveProject\"/);
 });
 
 test("mini apps use independent navigation and account-owned session controls", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), programs = await read("src/mini-apps/fluid-programs/FluidPrograms.tsx");
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), pason = await read("src/mini-apps/pason-viewer/PasonViewer.tsx");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-brand" to="\/"/);
   assert.match(account, /reauthenticateWithCredential/);
@@ -156,9 +155,9 @@ test("mini apps use independent navigation and account-owned session controls", 
   assert.match(fluidlab, />Projects<|>Builder</);
   assert.match(fluidlab, /<div className="workspace-brand">/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
-  assert.match(programs, /This conversation is not stored/);
-  assert.match(programs, /<div className="programs-brand">/);
-  assert.doesNotMatch(programs, /className="programs-brand" href=/);
+  assert.match(pason, /Import another TXT/);
+  assert.match(pason, /file\.text\(\)/);
+  assert.doesNotMatch(pason, /httpsCallable|firestore|storage/);
 });
 
 test("forgot-password delivery uses the protected SMTP callable", async () => {

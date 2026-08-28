@@ -1,12 +1,12 @@
-import { Box, BrainCircuit, Shield, UserRound, type LucideIcon } from "lucide-react";
+import { Box, Route, Shield, UserRound, type LucideIcon } from "lucide-react";
 import type { PortalUser } from "../core/types";
 
-export type MiniAppId = "fluidlab" | "fluid-programs" | "user-access" | "account";
+export type MiniAppId = "fluidlab" | "pason-viewer" | "user-access" | "account";
 export interface MiniAppDefinition { id: MiniAppId; label: string; description: string; path: string; icon: LucideIcon; adminOnly?: boolean; alwaysVisible?: boolean }
 
 export const MINI_APPS: MiniAppDefinition[] = [
   { id: "fluidlab", label: "FluidLab", description: "Build and manage conceptual measured-depth well profiles in 3D.", path: "/apps/fluidlab", icon: Box },
-  { id: "fluid-programs", label: "Fluid Programs", description: "Work with UniqEnergy’s drilling-fluids educational assistant.", path: "/apps/fluid-programs", icon: BrainCircuit },
+  { id: "pason-viewer", label: "Pason Viewer", description: "Import a Pason deviation survey and explore the well trajectory in 3D.", path: "/apps/pason-viewer", icon: Route },
   { id: "user-access", label: "User Access", description: "Invite users and control access to UniqEnergy mini apps.", path: "/apps/user-access", icon: Shield, adminOnly: true },
   { id: "account", label: "Account", description: "Manage your profile and sign-in settings.", path: "/apps/account", icon: UserRound, alwaysVisible: true },
 ];
@@ -16,7 +16,7 @@ export function canAccessMiniApp(user: PortalUser, appId: MiniAppId) {
   if (!app) return false;
   if (app.alwaysVisible || user.role === "admin") return true;
   if (app.adminOnly) return false;
-  return user.enabledMiniApps.includes(app.id as "fluidlab" | "fluid-programs");
+  return user.enabledMiniApps.includes(app.id as "fluidlab" | "pason-viewer");
 }
 
 export const visibleMiniApps = (user: PortalUser) => MINI_APPS.filter((app) => canAccessMiniApp(user, app.id));
