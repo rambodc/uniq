@@ -6,6 +6,16 @@ export function followDistanceM(diameterMm: number) {
   return Math.min(8, Math.max(2.5, diameterM * 20));
 }
 
+export function keyboardZoomDistance(currentDistance: number, direction: -1 | 0 | 1, elapsedSeconds: number, accelerated: boolean, minimumDistance: number, maximumDistance: number) {
+  const minimum = Math.max(0, minimumDistance);
+  const maximum = Math.max(minimum, maximumDistance);
+  if (!Number.isFinite(currentDistance)) return minimum;
+  if (direction === 0 || !Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return Math.min(maximum, Math.max(minimum, currentDistance));
+  const speed = 1.4 * (accelerated ? 4 : 1);
+  const next = currentDistance * Math.exp(direction * speed * elapsedSeconds);
+  return Math.min(maximum, Math.max(minimum, next));
+}
+
 export function smartLabelOpacity({ mode, category, selected, cameraDistance, sceneExtent, mdDistance = Infinity, legSpan = 0 }: { mode: LabelMode; category: LabelCategory; selected: boolean; cameraDistance: number; sceneExtent: number; mdDistance?: number; legSpan?: number }) {
   if (mode === "off") return 0;
   if (mode === "all") return 1;

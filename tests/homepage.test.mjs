@@ -165,6 +165,10 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.doesNotMatch(well, /Auto|Pause|setAuto/);
   assert.match(well, /Labels:.*labelMode/);
   assert.match(well, /navigationFocusSignal/);
+  assert.match(well, /ArrowUp.*ArrowDown.*ArrowLeft.*ArrowRight/);
+  assert.match(well, /ArrowLeft.*\? -1 : 1/);
+  assert.match(well, /ArrowUp.*\? -1 : 1/);
+  assert.match(well, /↑↓ Zoom · ←→ Depth · Shift 4×/);
   assert.doesNotMatch(well, /httpsCallable|firestore|storage/);
 });
 

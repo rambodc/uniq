@@ -5,7 +5,7 @@ import { Html, Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { legColor, pointAtLegMd, stationPoint, type SurveyLeg } from "./survey";
 import type { CasingString, HoleSection, WellModel } from "./well-package";
-import { followDistanceM, smartLabelOpacity, type LabelCategory, type LabelMode } from "./viewer-math";
+import { followDistanceM, keyboardZoomDistance, smartLabelOpacity, type LabelCategory, type LabelMode } from "./viewer-math";
 const vector = (point: { x: number; y: number; z: number }) => new THREE.Vector3(point.x, point.y, point.z);
 
 const pointsBetween = (leg: SurveyLeg, start: number, end: number) => [vector(pointAtLegMd(leg, start)), ...leg.stations.filter((station) => station.mdM > start && station.mdM < end).map((station) => vector(stationPoint(station))), vector(pointAtLegMd(leg, end))];
@@ -35,7 +35,7 @@ function CasingTube({ leg, casing }: { leg: SurveyLeg; casing: CasingString }) {
   return <group><mesh geometry={geometries.outer}><meshPhysicalMaterial color="#b8c8cc" transparent opacity={0.16} roughness={0.25} metalness={0.65} depthWrite={false}/></mesh><mesh geometry={geometries.inner}><meshStandardMaterial color="#e7eff1" side={THREE.BackSide} transparent opacity={0.1} depthWrite={false}/></mesh></group>;
 }
 
-function CameraController({ survey, leg, currentMd, fitSignal, navigationFocusSignal, activeDiameterMm, reducedMotion, onInteraction }: { survey: WellModel; leg: SurveyLeg; currentMd: number; fitSignal: number; navigationFocusSignal: number; activeDiameterMm: number; reducedMotion: boolean; onInteraction: () => void }) {
+function CameraController({ survey, leg, currentMd, fitSignal, navigationFocusSignal, keyboardZoomDirection, keyboardAccelerated, activeDiameterMm, reducedMotion, onInteraction }: { survey: WellModel; leg: SurveyLeg; currentMd: number; fitSignal: number; navigationFocusSignal: number; keyboardZoomDirection: -1 | 0 | 1; keyboardAccelerated: boolean; activeDiameterMm: number; reducedMotion: boolean; onInteraction: () => void }) {
   const { camera, controls } = useThree();
   const lastMd = useRef(Number.NaN), lastLeg = useRef(""), lastFit = useRef(-1), lastNavigationFocus = useRef(navigationFocusSignal), approaching = useRef(false), approachDistance = useRef(0);
   const points = useMemo(() => survey.legs.flatMap((item) => item.stations.map((station) => vector(stationPoint(station)))), [survey]);
@@ -66,6 +66,13 @@ function CameraController({ survey, leg, currentMd, fitSignal, navigationFocusSi
       if (distance <= targetDistance + 0.01) approaching.current = false;
       else { const nextDistance = reducedMotion ? targetDistance : THREE.MathUtils.damp(distance, targetDistance, 6, delta); camera.position.copy(orbit.target).add(offset.normalize().multiplyScalar(nextDistance)); orbit.update(); }
     }
+    if (keyboardZoomDirection !== 0 && controls && "target" in controls) {
+      const orbit = controls as unknown as { target: THREE.Vector3; update: () => void }, offset = camera.position.clone().sub(orbit.target), distance = offset.length();
+      const minimum = Math.max(0.006, activeDiameterMm / 10000), maximum = Math.max(extent * 50, 10000);
+      const nextDistance = keyboardZoomDistance(distance, keyboardZoomDirection, Math.min(delta, 0.1), keyboardAccelerated, minimum, maximum);
+      if (distance > 0) camera.position.copy(orbit.target).add(offset.multiplyScalar(nextDistance / distance));
+      orbit.update();
+    }
     camera.near = 0.002; camera.far = Math.max(10000, extent * 20); camera.updateProjectionMatrix();
   });
   useEffect(() => {
@@ -83,7 +90,7 @@ function Label({ position, children, mode, category, selected, sceneExtent, curr
   return <Html position={position} center occlude={false}><span ref={element} className={`well-scene-label ${category}${active ? " active" : ""}`}>{children}</span></Html>;
 }
 
-export default function WellScene({ survey, selectedLegId, selectedSectionId, currentMd, fitSignal, navigationFocusSignal, labelMode, reducedMotion, active, showCasings, onSelectLeg, onSelectSection, onManualInteraction }: { survey: WellModel; selectedLegId: string; selectedSectionId: string | null; currentMd: number; fitSignal: number; navigationFocusSignal: number; labelMode: LabelMode; reducedMotion: boolean; active: boolean; showCasings: boolean; onSelectLeg: (id: string) => void; onSelectSection: (legId: string, section: HoleSection) => void; onManualInteraction: () => void }) {
+export default function WellScene({ survey, selectedLegId, selectedSectionId, currentMd, fitSignal, navigationFocusSignal, keyboardZoomDirection, keyboardAccelerated, labelMode, reducedMotion, active, showCasings, onSelectLeg, onSelectSection, onManualInteraction }: { survey: WellModel; selectedLegId: string; selectedSectionId: string | null; currentMd: number; fitSignal: number; navigationFocusSignal: number; keyboardZoomDirection: -1 | 0 | 1; keyboardAccelerated: boolean; labelMode: LabelMode; reducedMotion: boolean; active: boolean; showCasings: boolean; onSelectLeg: (id: string) => void; onSelectSection: (legId: string, section: HoleSection) => void; onManualInteraction: () => void }) {
   const selected = survey.legs.find((leg) => leg.id === selectedLegId) ?? survey.legs.at(-1)!;
   const allPoints = useMemo(() => survey.legs.flatMap((leg) => leg.stations.map((station) => vector(stationPoint(station)))), [survey]);
   const extent = useMemo(() => Math.max(new THREE.Box3().setFromPoints(allPoints).getSize(new THREE.Vector3()).length(), 10), [allPoints]);
@@ -98,6 +105,6 @@ export default function WellScene({ survey, selectedLegId, selectedSectionId, cu
     {showCasings && root && survey.casings.map((casing) => <Label key={`shoe-${casing.id}`} position={vector(pointAtLegMd(root, Math.min(root.endMdM, casing.bottomMdM)))} mode={labelMode} category="casing" selected={root.id === selected.id} sceneExtent={extent} currentMd={currentMd} labelMd={casing.bottomMdM} legSpan={root.endMdM - root.startMdM}>{casing.category} shoe · MD {casing.bottomMdM.toFixed(0)} m</Label>)}
     <Label position={vector(pointAtLegMd(selected, currentMd))} mode={labelMode} category="current" selected sceneExtent={extent} currentMd={currentMd} labelMd={currentMd} legSpan={selected.endMdM - selected.startMdM} active>MD {currentMd.toFixed(1)} m · {activeHole?.diameterMm.toFixed(0) ?? "—"} mm</Label>
     <OrbitControls makeDefault enableDamping={!reducedMotion} enablePan enableRotate enableZoom minDistance={Math.max(0.006, (survey.holeSections[selected.id]?.find((section) => currentMd >= section.startMdM && currentMd <= section.endMdM)?.diameterMm ?? 159) / 10000)} maxDistance={Math.max(extent * 50, 10000)} minPolarAngle={0} maxPolarAngle={Math.PI}/>
-    <CameraController survey={survey} leg={selected} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} activeDiameterMm={activeHole?.diameterMm ?? 159} reducedMotion={reducedMotion} onInteraction={onManualInteraction}/>
+    <CameraController survey={survey} leg={selected} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} activeDiameterMm={activeHole?.diameterMm ?? 159} reducedMotion={reducedMotion} onInteraction={onManualInteraction}/>
   </Canvas>;
 }

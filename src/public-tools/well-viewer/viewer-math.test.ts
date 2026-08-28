@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { followDistanceM, nextLabelMode, smartLabelOpacity } from "./viewer-math";
+import { followDistanceM, keyboardZoomDistance, nextLabelMode, smartLabelOpacity } from "./viewer-math";
 
 describe("Well viewer camera framing", () => {
   it("derives a bounded close-follow distance from hole diameter", () => {
@@ -9,6 +9,22 @@ describe("Well viewer camera framing", () => {
     expect(followDistanceM(20)).toBe(2.5);
     expect(followDistanceM(1000)).toBe(8);
     expect(followDistanceM(Number.NaN)).toBeCloseTo(3.18);
+  });
+});
+
+describe("Well viewer keyboard zoom", () => {
+  it("zooms in and out proportionally", () => {
+    expect(keyboardZoomDistance(10, -1, 0.5, false, 1, 100)).toBeLessThan(10);
+    expect(keyboardZoomDistance(10, 1, 0.5, false, 1, 100)).toBeGreaterThan(10);
+  });
+  it("accelerates with Shift and respects camera bounds", () => {
+    expect(keyboardZoomDistance(10, -1, 0.5, true, 1, 100)).toBeLessThan(keyboardZoomDistance(10, -1, 0.5, false, 1, 100));
+    expect(keyboardZoomDistance(1, -1, 1, true, 1, 100)).toBe(1);
+    expect(keyboardZoomDistance(100, 1, 1, true, 1, 100)).toBe(100);
+  });
+  it("handles idle and invalid values safely", () => {
+    expect(keyboardZoomDistance(10, 0, 1, false, 1, 100)).toBe(10);
+    expect(keyboardZoomDistance(Number.NaN, 1, 1, false, 2, 100)).toBe(2);
   });
 });
 

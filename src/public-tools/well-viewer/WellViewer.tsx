@@ -14,32 +14,48 @@ const nearestStation = (leg: SurveyLeg, md: number) => leg.stations.reduce((best
 export default function WellViewer({ navigate }: { navigate: (path: string) => void }) {
   const [survey, setSurvey] = useState<WellModel | null>(null), [selectedLegId, setSelectedLegId] = useState(""), [selectedSectionId, setSelectedSectionId] = useState<string | null>(null), [showCasings, setShowCasings] = useState(true), [error, setError] = useState(""), [loading, setLoading] = useState(false);
   const [fitSignal, setFitSignal] = useState(0), [navigationFocusSignal, setNavigationFocusSignal] = useState(0), [labelMode, setLabelMode] = useState<LabelMode>("smart"), [currentMd, setCurrentMd] = useState(0), [depthInput, setDepthInput] = useState("0");
-  const [direction, setDirection] = useState<-1 | 0 | 1>(0), [visible, setVisible] = useState(!document.hidden);
-  const input = useRef<HTMLInputElement>(null), shift = useRef(false), reducedMotion = Boolean(useReducedMotion());
+  const [direction, setDirection] = useState<-1 | 0 | 1>(0), [keyboardDepthDirection, setKeyboardDepthDirection] = useState<-1 | 0 | 1>(0), [keyboardZoomDirection, setKeyboardZoomDirection] = useState<-1 | 0 | 1>(0), [keyboardAccelerated, setKeyboardAccelerated] = useState(false), [visible, setVisible] = useState(!document.hidden);
+  const input = useRef<HTMLInputElement>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
   const leg = useMemo(() => survey?.legs.find((item) => item.id === selectedLegId) ?? survey?.legs.at(-1) ?? null, [selectedLegId, survey]);
   const imperial = survey?.sourceUnit === "imperial", unit = imperial ? "ft" : "m";
-  const stop = useCallback(() => setDirection(0), []);
+  const stop = useCallback(() => { setDirection(0); setKeyboardDepthDirection(0); setKeyboardZoomDirection(0); pressedArrows.current.clear(); }, []);
   const beginMove = useCallback((value: -1 | 1) => { if (!leg) return; setNavigationFocusSignal((signal) => signal + 1); setDirection(value); }, [leg]);
 
   useEffect(() => { document.body.classList.add("well-viewer-active"); return () => document.body.classList.remove("well-viewer-active"); }, []);
   useEffect(() => { const change = () => { setVisible(!document.hidden); if (document.hidden) stop(); }; document.addEventListener("visibilitychange", change); return () => document.removeEventListener("visibilitychange", change); }, [stop]);
   useEffect(() => {
-    if (!leg || direction === 0) return;
+    const movementDirection = direction || keyboardDepthDirection;
+    if (!leg || movementDirection === 0) return;
     let frame = 0, previous = performance.now();
     const tick = (now: number) => {
       const elapsed = Math.min((now - previous) / 1000, 0.1), span = Math.max(leg.endMdM - leg.startMdM, 1), speed = span * 0.08 * (shift.current ? 4 : 1); previous = now;
-      setCurrentMd((value) => clampLegMd(leg, value + elapsed * speed * direction));
+      setCurrentMd((value) => clampLegMd(leg, value + elapsed * speed * movementDirection));
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
-  }, [direction, leg]);
+  }, [direction, keyboardDepthDirection, leg]);
   useEffect(() => { if (document.activeElement?.classList.contains("well-depth-input")) return; setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1)); }, [currentMd, imperial]);
   useEffect(() => {
-    const down = (event: KeyboardEvent) => { shift.current = event.shiftKey; if (!leg || !["ArrowUp", "ArrowDown"].includes(event.key) || shouldIgnoreShortcut(event.target)) return; event.preventDefault(); if (!event.repeat) beginMove(event.key === "ArrowUp" ? -1 : 1); };
-    const up = (event: KeyboardEvent) => { shift.current = event.shiftKey; if (["ArrowUp", "ArrowDown"].includes(event.key)) setDirection(0); };
-    const blur = () => { shift.current = false; setDirection(0); };
+    const arrows = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+    const sync = () => {
+      const keys = pressedArrows.current;
+      setKeyboardDepthDirection(keys.has("ArrowLeft") === keys.has("ArrowRight") ? 0 : keys.has("ArrowLeft") ? -1 : 1);
+      setKeyboardZoomDirection(keys.has("ArrowUp") === keys.has("ArrowDown") ? 0 : keys.has("ArrowUp") ? -1 : 1);
+    };
+    const down = (event: KeyboardEvent) => {
+      shift.current = event.shiftKey; setKeyboardAccelerated(event.shiftKey);
+      if (!leg || !arrows.includes(event.key) || shouldIgnoreShortcut(event.target)) return;
+      event.preventDefault();
+      if (!pressedArrows.current.has(event.key)) {
+        pressedArrows.current.add(event.key);
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") setNavigationFocusSignal((signal) => signal + 1);
+        sync();
+      }
+    };
+    const up = (event: KeyboardEvent) => { shift.current = event.shiftKey; setKeyboardAccelerated(event.shiftKey); if (arrows.includes(event.key)) { pressedArrows.current.delete(event.key); sync(); } };
+    const blur = () => { shift.current = false; setKeyboardAccelerated(false); stop(); };
     addEventListener("keydown", down); addEventListener("keyup", up); addEventListener("blur", blur); return () => { removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("blur", blur); };
-  }, [beginMove, leg]);
+  }, [leg, stop]);
 
   const importFile = async (file: File | undefined) => {
     if (!file) return;
@@ -65,7 +81,7 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   const station = leg ? nearestStation(leg, currentMd) : null, activeHole = survey && leg ? holeAtMd(survey, leg.id, currentMd) : null, activeCasings = survey ? casingsAtMd(survey, currentMd) : [], operations = survey ? summarizeOperations(survey, currentMd) : null;
 
   return <main className="well-workspace">
-    <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Well ZIP</button></div>}</div>
+    <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Well ZIP</button></div>}</div>
     <header className="well-topbar"><button aria-label="Back to UniqEnergy" title="Back to UniqEnergy" onClick={() => navigate("/")}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-import-again" onClick={() => input.current?.click()}><FileUp/>Import another ZIP</button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
     {loading && <div className="well-status" role="status">Reading well package…</div>}{error && <div className="well-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
     {survey && leg && <aside className="well-panel" aria-label="Survey legs">
@@ -80,11 +96,12 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
       <p className="well-disclaimer">Trajectory coordinates come from the survey TXT. Hole and casing radii use ETS XML dimensions at true relative scale. Operational values come from the CSV and remain browser-only.</p>
     </aside>}
     {survey && leg && <div className="well-camera-dock">
-      <button className="well-hold" {...hold(-1)}><ArrowUp/><span>Shallower</span></button>
+      <button className="well-hold" aria-keyshortcuts="ArrowLeft" title="Hold or press Left Arrow to move shallower" {...hold(-1)}><ArrowUp/><span>Shallower</span></button>
       <label><span>MD</span><input className="well-depth-input" inputMode="decimal" value={depthInput} onChange={(event) => setDepthInput(event.target.value)} onBlur={commitDepth} onKeyDown={(event) => { if (event.key === "Enter") { commitDepth(); event.currentTarget.blur(); } }}/><small>{unit}</small></label>
-      <button className="well-hold" {...hold(1)}><ArrowDown/><span>Deeper</span></button>
+      <button className="well-hold" aria-keyshortcuts="ArrowRight" title="Hold or press Right Arrow to move deeper" {...hold(1)}><ArrowDown/><span>Deeper</span></button>
       <button onClick={() => { stop(); setFitSignal((value) => value + 1); }}><Maximize2/><span>Fit Well</span></button>
       <button aria-label={`Labels: ${labelMode}`} title="Cycle scene labels" onClick={() => setLabelMode(nextLabelMode)}><Tags/><span>Labels: {labelMode[0].toUpperCase() + labelMode.slice(1)}</span></button>
+      <span className="well-key-hint" aria-hidden="true">↑↓ Zoom · ←→ Depth · Shift 4×</span>
     </div>}
   </main>;
 }
