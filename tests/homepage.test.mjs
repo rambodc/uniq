@@ -102,7 +102,7 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 
 test("enterprise routes are invitation-only while Well Viewer is a public tool", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
-  for (const route of ["/portal", "/apps/fluidlab", "/well-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/well-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /\/apps\/well-viewer/);
   assert.doesNotMatch(registry, /well-viewer|Well Viewer/);
   assert.match(firebase, /"source": "\/well-viewer", "destination": "\/index\.html"/);
@@ -112,6 +112,17 @@ test("enterprise routes are invitation-only while Well Viewer is a public tool",
   assert.match(registry, /adminOnly: true/);
   assert.match(registry, /alwaysVisible: true/);
   assert.match(registry, /user\.role === "admin"/);
+});
+
+test("Well Viewer carries layered search-engine exclusion", async () => {
+  const firebase = await read("firebase.json"), robots = await read("public/robots.txt"), main = await read("src/main.tsx"), sitemap = await read("public/sitemap.xml"), routes = await read("src/public/seo-routes.json"), source = await read("src/public/PublicSite.tsx");
+  assert.match(firebase, /"source": "\/well-viewer"[^\n]+"X-Robots-Tag"[^\n]+"noindex, nofollow"/);
+  assert.match(robots, /Disallow: \/well-viewer/);
+  assert.match(main, /apps\|well-viewer/);
+  assert.match(main, /robots\.content = "noindex, nofollow"/);
+  assert.doesNotMatch(sitemap, /well-viewer/);
+  assert.doesNotMatch(routes, /well-viewer/);
+  assert.doesNotMatch(source, /well-viewer/);
 });
 
 test("enterprise authentication has one portal destination and one profile authority", async () => {
@@ -131,6 +142,14 @@ test("portal launcher contains only managed and account mini apps", async () => 
   assert.doesNotMatch(registry, /well-viewer/);
   assert.match(launcher, /visibleMiniApps\(user\)/);
   assert.doesNotMatch(launcher, /Recent projects|Search projects/);
+});
+
+test("Contact Form is managed through the portal and callable-only backend", async () => {
+  const registry = await read("src/portal/miniApps.ts"), types = await read("src/core/types.ts"), access = await read("src/mini-apps/user-access/UserAccessApp.tsx"), app = await read("src/mini-apps/contact-form/ContactFormApp.tsx"), exports = await read("functions/index.js"), config = await read("functions/core/config.js"), rules = await read("firestore.rules");
+  for (const source of [registry, types, access, config]) assert.match(source, /contact-form/);
+  assert.match(app, /listContactInquiries/); assert.match(app, /archiveContactInquiry/); assert.match(app, /restoreContactInquiry/);
+  for (const callable of ["listContactInquiries", "archiveContactInquiry", "restoreContactInquiry"]) assert.match(exports, new RegExp(callable));
+  assert.match(rules, /allow read, write: if false/);
 });
 
 test("FluidLab retains engineering behavior and autosave conflict states", async () => {

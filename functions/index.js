@@ -2,6 +2,9 @@ export { getCurrentUser } from "./apps/account/get-current-user.js";
 export { updateCurrentUser } from "./apps/account/update-current-user.js";
 export { requestPasswordReset } from "./apps/account/request-password-reset.js";
 export { submitContactInquiry } from "./apps/contact/submit-contact-inquiry.js";
+export { listContactInquiries } from "./apps/contact/list-contact-inquiries.js";
+export { archiveContactInquiry } from "./apps/contact/archive-contact-inquiry.js";
+export { restoreContactInquiry } from "./apps/contact/restore-contact-inquiry.js";
 
 export { adminListUsers } from "./apps/user-access/list-users.js";
 export { adminInviteUser } from "./apps/user-access/invite-user.js";

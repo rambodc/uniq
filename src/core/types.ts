@@ -1,5 +1,5 @@
 export type UserRole = "admin" | "user";
-export type ManagedMiniAppId = "fluidlab";
+export type ManagedMiniAppId = "fluidlab" | "contact-form";
 
 export interface PortalUser {
   schemaVersion: 1;
@@ -25,3 +25,24 @@ export interface Invitation {
   createdAt: string | null;
   updatedAt: string | null;
 }
+
+export type ContactInquiryType = "operations" | "general" | "careers";
+export interface ContactInquiry {
+  id: string;
+  schemaVersion: 1;
+  inquiryType: ContactInquiryType;
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  areaOfInterest?: string;
+  linkedinUrl?: string;
+  message: string;
+  source: "public-contact";
+  createdAt: string | null;
+  archived: boolean;
+  archivedAt: string | null;
+  archivedBy: string | null;
+}
+
+export interface ContactInquiryCounts { all: number; operations: number; general: number; careers: number }

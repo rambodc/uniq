@@ -2,11 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeMiniApps, publicUser } from "../core/auth.js";
 import { validContactInquiry } from "../apps/contact/validation.js";
+import { filterContactInquiries, publicContactInquiry, validContactAction, validContactListRequest } from "../apps/contact/inbox.js";
 import { validFluidLabData } from "../apps/fluidlab/validation.js";
 
 test("enterprise users expose only normalized version-one access data", () => {
-  assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "well-viewer", "fluidlab"]), ["fluidlab"]);
-  assert.deepEqual(publicUser("u1", { email: "a@example.com", role: "invalid", status: "invalid", enabledMiniApps: ["fluidlab"] }), { schemaVersion: 1, uid: "u1", email: "a@example.com", firstName: "", lastName: "", role: "user", status: "active", enabledMiniApps: ["fluidlab"] });
+  assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "contact-form", "fluidlab"]), ["fluidlab", "contact-form"]);
+  assert.deepEqual(publicUser("u1", { email: "a@example.com", role: "invalid", status: "invalid", enabledMiniApps: ["fluidlab", "contact-form"] }), { schemaVersion: 1, uid: "u1", email: "a@example.com", firstName: "", lastName: "", role: "user", status: "active", enabledMiniApps: ["fluidlab", "contact-form"] });
+});
+
+test("contact inbox validates filters and treats legacy records as active", () => {
+  assert.deepEqual(validContactListRequest({ archiveState: "active", inquiryType: "operations", query: "  FIELD  ", cursor: 0, pageSize: 20 }), { archiveState: "active", inquiryType: "operations", query: "field", cursor: 0, pageSize: 20 });
+  assert.throws(() => validContactListRequest({ archiveState: "deleted" }), /archive view/);
+  assert.throws(() => validContactListRequest({ inquiryType: "sales" }), /inquiry type/);
+  assert.equal(validContactAction({ inquiryId: "abc123" }), "abc123");
+  assert.throws(() => validContactAction({ inquiryId: "abc", extra: true }), /action is invalid/);
+  const active = publicContactInquiry("one", { schemaVersion: 1, inquiryType: "operations", name: "Field Lead", email: "field@example.com", company: "Rig Co", message: "Need fluid support", createdAt: null });
+  const archived = publicContactInquiry("two", { schemaVersion: 1, inquiryType: "careers", name: "Jane", email: "jane@example.com", areaOfInterest: "Engineering", message: "Career inquiry", archived: true, archivedBy: "admin", createdAt: null });
+  assert.equal(active.archived, false);
+  assert.deepEqual(filterContactInquiries([active, archived], validContactListRequest({ archiveState: "active", inquiryType: "all", query: "rig" })), { inquiries: [active], counts: { all: 1, operations: 1, general: 0, careers: 0 }, nextCursor: null, total: 1 });
+  assert.equal(filterContactInquiries([active, archived], validContactListRequest({ archiveState: "archived" })).inquiries[0].id, "two");
 });
 
 test("FluidLab validation accepts sequential version-one measured-depth data", () => {

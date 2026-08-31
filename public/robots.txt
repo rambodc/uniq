@@ -6,4 +6,5 @@ Disallow: /account
 Disallow: /signin
 Disallow: /forgot-password
 Disallow: /invite/
+Disallow: /well-viewer
 Sitemap: https://uniqenergy.com/sitemap.xml

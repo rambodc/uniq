@@ -9,6 +9,7 @@ import AppLauncher from "./portal/AppLauncher";
 import { canAccessMiniApp, type MiniAppId } from "./portal/miniApps";
 import UserAccessApp from "./mini-apps/user-access/UserAccessApp";
 import AccountApp from "./mini-apps/account/AccountApp";
+import ContactFormApp from "./mini-apps/contact-form/ContactFormApp";
 
 const FluidLab = lazy(() => import("./mini-apps/fluidlab/FluidLab"));
 const WellViewer = lazy(() => import("./public-tools/well-viewer/WellViewer"));
@@ -19,5 +20,5 @@ function FluidLabEditor() { const { projectId = "" } = useParams(), navigate = u
 function WellViewerPage() { const navigate = useNavigate(); return <Suspense fallback={<main className="route-loading">Loading Well Viewer…</main>}><WellViewer navigate={navigate}/></Suspense>; }
 
 export default function App() {
-  return <AuthProvider><Routes><Route path="/well-viewer" element={<WellViewerPage/>}/><Route path="/signin" element={<EnterpriseAuth mode="signin"/>}/><Route path="/forgot-password" element={<EnterpriseAuth mode="forgot"/>}/><Route path="/invite/:token" element={<InviteAccept/>}/><Route element={<Protected/>}><Route element={<PortalLayout/>}><Route path="/portal" element={<AppLauncher/>}/><Route element={<AppAccess appId="user-access"/>}><Route path="/apps/user-access" element={<UserAccessApp/>}/></Route><Route path="/apps/account" element={<AccountApp/>}/></Route><Route element={<AppAccess appId="fluidlab"/>}><Route path="/apps/fluidlab" element={<FluidLabEditor/>}/><Route path="/apps/fluidlab/projects/:projectId" element={<FluidLabEditor/>}/></Route></Route><Route path="*" element={<PublicSite/>}/></Routes></AuthProvider>;
+  return <AuthProvider><Routes><Route path="/well-viewer" element={<WellViewerPage/>}/><Route path="/signin" element={<EnterpriseAuth mode="signin"/>}/><Route path="/forgot-password" element={<EnterpriseAuth mode="forgot"/>}/><Route path="/invite/:token" element={<InviteAccept/>}/><Route element={<Protected/>}><Route element={<PortalLayout/>}><Route path="/portal" element={<AppLauncher/>}/><Route element={<AppAccess appId="user-access"/>}><Route path="/apps/user-access" element={<UserAccessApp/>}/></Route><Route path="/apps/account" element={<AccountApp/>}/><Route element={<AppAccess appId="contact-form"/>}><Route path="/apps/contact-form" element={<ContactFormApp/>}/></Route></Route><Route element={<AppAccess appId="fluidlab"/>}><Route path="/apps/fluidlab" element={<FluidLabEditor/>}/><Route path="/apps/fluidlab/projects/:projectId" element={<FluidLabEditor/>}/></Route></Route><Route path="*" element={<PublicSite/>}/></Routes></AuthProvider>;
 }

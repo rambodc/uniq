@@ -1,6 +1,6 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "./firebase";
-import type { Invitation, ManagedMiniAppId, PortalUser, UserRole } from "./types";
+import type { ContactInquiry, ContactInquiryCounts, ContactInquiryType, Invitation, ManagedMiniAppId, PortalUser, UserRole } from "./types";
 
 async function invoke<TRequest, TResponse>(name: string, data?: TRequest): Promise<TResponse> {
   return (await httpsCallable<TRequest, TResponse>(functions, name)(data as TRequest)).data;
@@ -22,3 +22,8 @@ export const adminUpdateInvite = (data: { invitationId: string; email: string; f
 export const previewInvite = (token: string) => invoke<{ token: string }, { invitation: Invitation }>("previewInvite", { token });
 export const acceptInvite = (token: string, password: string, firstName: string, lastName: string) =>
   invoke<{ token: string; password: string; firstName: string; lastName: string }, { customToken: string }>("acceptInvite", { token, password, firstName, lastName });
+export interface ContactInquiryListRequest { archiveState: "active" | "archived"; inquiryType: ContactInquiryType | "all"; query: string; cursor?: number; pageSize?: number }
+export interface ContactInquiryListResponse { inquiries: ContactInquiry[]; counts: ContactInquiryCounts; nextCursor: number | null; total: number; limited: boolean }
+export const listContactInquiries = (data: ContactInquiryListRequest) => invoke<ContactInquiryListRequest, ContactInquiryListResponse>("listContactInquiries", data);
+export const archiveContactInquiry = (inquiryId: string) => invoke<{ inquiryId: string }, { inquiry: ContactInquiry }>("archiveContactInquiry", { inquiryId });
+export const restoreContactInquiry = (inquiryId: string) => invoke<{ inquiryId: string }, { inquiry: ContactInquiry }>("restoreContactInquiry", { inquiryId });
