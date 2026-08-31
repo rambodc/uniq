@@ -1,4 +1,4 @@
-import { strFromU8, unzipSync } from "fflate";
+import { AsyncUnzipInflate, strFromU8, Unzip, UnzipPassThrough, unzipSync } from "fflate";
 import { parseWellSurvey, type SurveyFile, type SurveyLeg } from "./survey";
 
 export interface BitRun { id: string; bitNo: string; sizeMm: number; manufacturer: string; bitType: string; serialNo: string; depthInM: number; depthOutM: number | null }
@@ -6,10 +6,16 @@ export interface HoleSection { id: string; legId: string; startMdM: number; endM
 export interface CasingString { id: string; category: string; outsideDiameterMm: number; insideDiameterMm: number; topMdM: number; bottomMdM: number; grade: string }
 export type OperationalChannelId = "torque" | "rotary" | "rop" | "gas" | "standpipePressure" | "differentialPressure" | "pumpOutput" | "hookLoad" | "gamma";
 export interface OperationalChannel { id: OperationalChannelId; label: string; unit: string }
-export interface OperationalSample { timestamp: string; holeDepthM: number; bitDepthM: number; values: Partial<Record<OperationalChannelId, number>> }
+export type OperationalDetail = "detailed" | "balanced" | "compact";
+export interface OperationalValueBucket { count: number; sum: number; minimum: number; maximum: number; latest: number }
+export interface OperationalDepthBucket { bandStartM: number; bitDepthM: number; holeDepthM: number; sampleCount: number; firstTimestamp: string; lastTimestamp: string; values: Partial<Record<OperationalChannelId, OperationalValueBucket>> }
+export interface OperationalImportMetadata { sourceRows: number; validObservations: number; depthBandCount: number; depthResolutionM: number; csvSizeBytes: number }
 export interface OperationalStatistic { channel: OperationalChannel; count: number; minimum: number; average: number; maximum: number; latest: number }
 export interface OperationalSummary { radiusM: number; sampleCount: number; firstTimestamp: string; lastTimestamp: string; ambiguousLeg: boolean; statistics: OperationalStatistic[] }
-export interface WellModel extends SurveyFile { packageName: string; etsFileName: string; csvFileName: string; bitRuns: BitRun[]; holeSections: Record<string, HoleSection[]>; casings: CasingString[]; operationalChannels: OperationalChannel[]; operationalSamples: OperationalSample[] }
+export interface WellModel extends SurveyFile { packageName: string; etsFileName: string; csvFileName: string; bitRuns: BitRun[]; holeSections: Record<string, HoleSection[]>; casings: CasingString[]; operationalChannels: OperationalChannel[]; operationalBuckets: OperationalDepthBucket[]; operationalImport: OperationalImportMetadata }
+export interface WellPackageManifest { file: Blob; packageName: string; surveyFileName: string; etsFileName: string; csvFileName: string; csvSizeBytes: number; requiresDetailSelection: boolean }
+export interface WellImportProgress { phase: "extracting" | "parsing" | "building"; percent: number; message: string }
+export interface ParseWellPackageOptions { detail: OperationalDetail; signal?: AbortSignal }
 export class WellPackageError extends Error { constructor(message: string) { super(message); this.name = "WellPackageError"; } }
 
 const number = (value: string | null | undefined) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; };
@@ -37,26 +43,58 @@ const headerName = (value: string) => value.replace(/\s*\([^)]*\)\s*$/, "").trim
 const headerUnit = (value: string) => value.match(/\(([^)]*)\)\s*$/)?.[1]?.replaceAll("_", " ") ?? "";
 const usableOperationalNumber = (value: string | undefined) => { const parsed = Number(value); return Number.isFinite(parsed) && parsed > -900 ? parsed : null; };
 
-export function parseOperationalCsv(csv: string) {
-  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) throw new WellPackageError("The drilling CSV does not contain usable rows.");
-  const headers = csvCells(lines[0]), names = headers.map(headerName);
-  const find = (...aliases: string[]) => names.findIndex((name) => aliases.some((alias) => name === alias || name.endsWith(` ${alias}`)));
-  const dateIndex = find("yyyy/mm/dd", "date"), timeIndex = find("hh:mm:ss", "time"), holeIndex = find("hole depth"), bitIndex = find("bit depth");
-  if (holeIndex < 0 || bitIndex < 0) throw new WellPackageError("The drilling CSV is missing Hole Depth or Bit Depth.");
-  const mapped = channelDefinitions.flatMap((definition) => { const index = find(...definition.aliases); return index < 0 ? [] : [{ ...definition, index, unit: headerUnit(headers[index]) }]; });
-  if (!mapped.length) throw new WellPackageError("The drilling CSV does not contain supported operational channels.");
-  const samples: OperationalSample[] = [];
-  for (const line of lines.slice(1)) {
-    const cells = csvCells(line), holeDepthM = usableOperationalNumber(cells[holeIndex]), bitDepthM = usableOperationalNumber(cells[bitIndex]);
-    if (holeDepthM == null || bitDepthM == null || holeDepthM < 0 || bitDepthM < 0) continue;
-    const values: OperationalSample["values"] = {};
-    for (const channel of mapped) { const value = usableOperationalNumber(cells[channel.index]); if (value != null) values[channel.id] = value; }
-    if (!Object.keys(values).length) continue;
-    samples.push({ timestamp: [cells[dateIndex] ?? "", cells[timeIndex] ?? ""].filter(Boolean).join(" "), holeDepthM, bitDepthM, values });
+export const operationalResolution = (detail: OperationalDetail) => detail === "detailed" ? 0.25 : detail === "balanced" ? 0.5 : 1;
+
+class OperationalCsvAggregator {
+  private remainder = ""; private headersParsed = false; private rowCount = 0; private validCount = 0;
+  private holeIndex = -1; private bitIndex = -1; private dateIndex = -1; private timeIndex = -1; private depthFactor = 1;
+  private mapped: ({ id: OperationalChannelId; label: string; unit: string; index: number })[] = [];
+  private buckets = new Map<number, OperationalDepthBucket>();
+  readonly decoder = new TextDecoder();
+  constructor(readonly resolutionM: number, readonly csvSizeBytes = 0) {}
+  push(chunk: Uint8Array, final = false) {
+    this.remainder += this.decoder.decode(chunk, { stream: !final });
+    if (this.remainder.length > 1_000_000 && !this.remainder.includes("\n")) throw new WellPackageError("The drilling CSV contains an unsafe line longer than 1 MB.");
+    const lines = this.remainder.split("\n");
+    if (final) this.remainder = ""; else this.remainder = lines.pop() ?? "";
+    for (const raw of lines) { const line = raw.replace(/\r$/, ""); if (line.trim()) this.consume(line); }
   }
-  if (!samples.length) throw new WellPackageError("The drilling CSV contains no usable operational samples.");
-  return { channels: mapped.map(({ id, label, unit }) => ({ id, label, unit })), samples };
+  private consume(line: string) {
+    if (!this.headersParsed) {
+      const headers = csvCells(line.replace(/^\uFEFF/, "")), names = headers.map(headerName);
+      const find = (...aliases: string[]) => names.findIndex((name) => aliases.some((alias) => name === alias || name.endsWith(` ${alias}`)));
+      this.dateIndex = find("yyyy/mm/dd", "date"); this.timeIndex = find("hh:mm:ss", "time"); this.holeIndex = find("hole depth"); this.bitIndex = find("bit depth");
+      if (this.holeIndex < 0 || this.bitIndex < 0) throw new WellPackageError("The drilling CSV is missing Hole Depth or Bit Depth.");
+      const depthUnit = `${headerUnit(headers[this.bitIndex])} ${headerUnit(headers[this.holeIndex])}`.toLowerCase();
+      this.depthFactor = /\b(ft|feet|foot)\b/.test(depthUnit) ? 0.3048 : 1;
+      this.mapped = channelDefinitions.flatMap((definition) => { const index = find(...definition.aliases); return index < 0 ? [] : [{ ...definition, index, unit: headerUnit(headers[index]) }]; });
+      if (!this.mapped.length) throw new WellPackageError("The drilling CSV does not contain supported operational channels.");
+      this.headersParsed = true; return;
+    }
+    this.rowCount += 1; if (this.rowCount > 5_000_000) throw new WellPackageError("The drilling CSV exceeds the safe limit of 5 million rows.");
+    const cells = csvCells(line), rawHole = usableOperationalNumber(cells[this.holeIndex]), rawBit = usableOperationalNumber(cells[this.bitIndex]);
+    if (rawHole == null || rawBit == null || rawHole < 0 || rawBit < 0) return;
+    const values: Partial<Record<OperationalChannelId, number>> = {};
+    for (const channel of this.mapped) { const value = usableOperationalNumber(cells[channel.index]); if (value != null) values[channel.id] = value; }
+    if (!Object.keys(values).length) return;
+    const holeDepthM = rawHole * this.depthFactor, bitDepthM = rawBit * this.depthFactor, band = Math.floor((bitDepthM + 1e-9) / this.resolutionM), bandStartM = band * this.resolutionM;
+    const timestamp = [cells[this.dateIndex] ?? "", cells[this.timeIndex] ?? ""].filter(Boolean).join(" ");
+    const bucket = this.buckets.get(band) ?? { bandStartM, bitDepthM, holeDepthM, sampleCount: 0, firstTimestamp: timestamp, lastTimestamp: timestamp, values: {} };
+    bucket.sampleCount += 1; bucket.bitDepthM = bitDepthM; bucket.holeDepthM = holeDepthM; bucket.lastTimestamp = timestamp || bucket.lastTimestamp;
+    for (const channel of this.mapped) { const value = values[channel.id]; if (value == null) continue; const aggregate = bucket.values[channel.id]; bucket.values[channel.id] = aggregate ? { count: aggregate.count + 1, sum: aggregate.sum + value, minimum: Math.min(aggregate.minimum, value), maximum: Math.max(aggregate.maximum, value), latest: value } : { count: 1, sum: value, minimum: value, maximum: value, latest: value }; }
+    this.buckets.set(band, bucket); this.validCount += 1;
+    if (this.buckets.size > 100_000) throw new WellPackageError("The drilling CSV creates too many depth bands to display safely.");
+  }
+  finish() {
+    if (!this.headersParsed) throw new WellPackageError("The drilling CSV does not contain a header.");
+    if (!this.validCount) throw new WellPackageError("The drilling CSV contains no usable operational samples.");
+    return { channels: this.mapped.map(({ id, label, unit }) => ({ id, label, unit })), buckets: [...this.buckets.values()].sort((a, b) => a.bandStartM - b.bandStartM), metadata: { sourceRows: this.rowCount, validObservations: this.validCount, depthBandCount: this.buckets.size, depthResolutionM: this.resolutionM, csvSizeBytes: this.csvSizeBytes } };
+  }
+}
+
+export function parseOperationalCsv(csv: string, detail: OperationalDetail = "detailed") {
+  const parser = new OperationalCsvAggregator(operationalResolution(detail), new TextEncoder().encode(csv).byteLength);
+  parser.push(new TextEncoder().encode(csv), true); return parser.finish();
 }
 
 export function parseEtsXml(xml: string) {
@@ -117,27 +155,67 @@ function compatibleNames(survey: string, ets: string) {
   return [...a].filter((word) => word.length > 1 && b.has(word)).length >= Math.min(3, a.size);
 }
 
-export function parseWellPackage(bytes: Uint8Array, packageName: string): WellModel {
-  const files = unzipSync(bytes, { filter: (file) => file.originalSize <= 15_000_000 && (/surveys_[^/]*\.txt$/i.test(file.name) || /(?:^|\/)ETS[^/]*\.xml$/i.test(file.name) || /(?:^|\/)[^/]+\.csv$/i.test(file.name)) });
-  const names = Object.keys(files), surveys = names.filter((name) => /surveys_[^/]*\.txt$/i.test(name)), xmlFiles = names.filter((name) => /(?:^|\/)ETS[^/]*\.xml$/i.test(name)), csvFiles = names.filter((name) => /(?:^|\/)[^/]+\.csv$/i.test(name));
+type ZipEntryInfo = { name: string; originalSize: number };
+const surveyPattern = /surveys_[^/]*\.txt$/i, etsPattern = /(?:^|\/)ETS[^/]*\.xml$/i, csvPattern = /(?:^|\/)[^/]+\.csv$/i;
+
+export async function inspectWellPackage(file: File | (Blob & { name?: string })): Promise<WellPackageManifest> {
+  if (file.size > 100_000_000) throw new WellPackageError("This ZIP is larger than the 100 MB compressed package limit.");
+  const entries: ZipEntryInfo[] = [];
+  try { unzipSync(new Uint8Array(await file.arrayBuffer()), { filter: (entry) => { entries.push({ name: entry.name, originalSize: entry.originalSize }); if (entries.length > 1_000) throw new WellPackageError("This ZIP contains too many entries."); return false; } }); }
+  catch (cause) { throw cause instanceof WellPackageError ? cause : new WellPackageError("The ZIP package is malformed or unsupported."); }
+  const surveys = entries.filter((entry) => surveyPattern.test(entry.name)), xmlFiles = entries.filter((entry) => etsPattern.test(entry.name)), csvFiles = entries.filter((entry) => csvPattern.test(entry.name));
   if (surveys.length !== 1) throw new WellPackageError(surveys.length ? "This package contains multiple survey TXT files. Import a package for one well." : "This package does not contain a surveys_*.txt file.");
   if (xmlFiles.length !== 1) throw new WellPackageError(xmlFiles.length ? "This package contains multiple ETS XML files. Import a package for one well." : "This package does not contain an ETS XML file.");
   if (csvFiles.length !== 1) throw new WellPackageError(csvFiles.length ? "This package contains multiple drilling CSV files. Import a package for one well." : "This package does not contain a drilling CSV file.");
-  const survey = parseWellSurvey(strFromU8(files[surveys[0]]), surveys[0]), ets = parseEtsXml(strFromU8(files[xmlFiles[0]])), operations = parseOperationalCsv(strFromU8(files[csvFiles[0]]));
+  if (surveys[0].originalSize > 5_000_000 || xmlFiles[0].originalSize > 15_000_000) throw new WellPackageError("The survey TXT or ETS XML exceeds its safe extraction limit.");
+  if (csvFiles[0].originalSize > 250_000_000) throw new WellPackageError("The drilling CSV exceeds the 250 MB uncompressed limit.");
+  return { file, packageName: file.name || "well-package.zip", surveyFileName: surveys[0].name, etsFileName: xmlFiles[0].name, csvFileName: csvFiles[0].name, csvSizeBytes: csvFiles[0].originalSize, requiresDetailSelection: csvFiles[0].originalSize > 15_000_000 };
+}
+
+async function extractSelected(manifest: WellPackageManifest, options: ParseWellPackageOptions, onProgress?: (progress: WellImportProgress) => void) {
+  const textChunks = new Map<string, Uint8Array[]>(), parser = new OperationalCsvAggregator(operationalResolution(options.detail), manifest.csvSizeBytes);
+  const wanted = new Set([manifest.surveyFileName, manifest.etsFileName, manifest.csvFileName]); let compressedRead = 0, pending = 0, resolveEntries!: () => void, rejectEntries!: (error: unknown) => void;
+  const entriesDone = new Promise<void>((resolve, reject) => { resolveEntries = resolve; rejectEntries = reject; });
+  const unzip = new Unzip((entry) => {
+    if (!wanted.has(entry.name)) return;
+    pending += 1; if (entry.name !== manifest.csvFileName) textChunks.set(entry.name, []);
+    entry.ondata = (error, chunk, final) => {
+      if (error) { rejectEntries(error); return; }
+      try { if (entry.name === manifest.csvFileName) parser.push(chunk, final); else textChunks.get(entry.name)!.push(chunk); }
+      catch (cause) { rejectEntries(cause); return; }
+      if (final) { pending -= 1; if (pending === 0) resolveEntries(); }
+    };
+    entry.start();
+  });
+  unzip.register(AsyncUnzipInflate); unzip.register(UnzipPassThrough);
+  const reader = manifest.file.stream().getReader();
+  try {
+    while (true) { if (options.signal?.aborted) throw new DOMException("Import cancelled", "AbortError"); const { done, value } = await reader.read(); if (done) break; compressedRead += value.byteLength; unzip.push(value, false); onProgress?.({ phase: "extracting", percent: Math.min(90, compressedRead / manifest.file.size * 90), message: `Reading ${manifest.csvFileName}…` }); }
+    unzip.push(new Uint8Array(), true); if (pending) await entriesDone;
+  } catch (cause) { reader.cancel().catch(() => {}); throw cause; }
+  const join = (name: string) => { const chunks = textChunks.get(name); if (!chunks) throw new WellPackageError(`The expected file ${name} could not be extracted.`); const size = chunks.reduce((sum, chunk) => sum + chunk.length, 0), joined = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { joined.set(chunk, offset); offset += chunk.length; } return strFromU8(joined); };
+  onProgress?.({ phase: "parsing", percent: 94, message: "Combining survey and engineering records…" });
+  return { surveyText: join(manifest.surveyFileName), etsText: join(manifest.etsFileName), operations: parser.finish() };
+}
+
+export async function parseWellPackage(manifest: WellPackageManifest, options: ParseWellPackageOptions, onProgress?: (progress: WellImportProgress) => void): Promise<WellModel> {
+  const extracted = await extractSelected(manifest, options, onProgress);
+  const survey = parseWellSurvey(extracted.surveyText, manifest.surveyFileName), ets = parseEtsXml(extracted.etsText), operations = extracted.operations;
   if (!ets.bitRuns.length) throw new WellPackageError("The ETS XML does not contain usable bit-size and depth records.");
   if (!compatibleNames(survey.name, ets.wellName)) throw new WellPackageError("The survey TXT and ETS XML appear to describe different wells.");
   const maximumSurveyMd = Math.max(...survey.legs.map((leg) => leg.endMdM)), maximumBitMd = Math.max(...ets.bitRuns.map((run) => run.depthOutM ?? run.depthInM));
   if (Math.abs(maximumSurveyMd - maximumBitMd) > Math.max(100, maximumSurveyMd * 0.1)) throw new WellPackageError("The survey and ETS depth ranges do not match closely enough to combine safely.");
   const built = buildHoleSections(survey.legs, ets.bitRuns), warnings = [...survey.warnings, ...built.warnings];
   if (ets.incompleteCasings) warnings.push(`${ets.incompleteCasings} incomplete casing ${ets.incompleteCasings === 1 ? "record was" : "records were"} ignored.`);
-  return { ...survey, name: ets.wellName || survey.name, packageName, etsFileName: xmlFiles[0], csvFileName: csvFiles[0], bitRuns: ets.bitRuns, holeSections: built.sections, casings: ets.casings, operationalChannels: operations.channels, operationalSamples: operations.samples, warnings };
+  onProgress?.({ phase: "building", percent: 100, message: "Building the 3D well…" });
+  return { ...survey, name: ets.wellName || survey.name, packageName: manifest.packageName, etsFileName: manifest.etsFileName, csvFileName: manifest.csvFileName, bitRuns: ets.bitRuns, holeSections: built.sections, casings: ets.casings, operationalChannels: operations.channels, operationalBuckets: operations.buckets, operationalImport: operations.metadata, warnings };
 }
 
 export const holeAtMd = (well: WellModel, legId: string, mdM: number) => { const sections = well.holeSections[legId] ?? []; return sections.find((section, index) => mdM >= section.startMdM && (mdM < section.endMdM || index === sections.length - 1)) ?? null; };
 export const casingsAtMd = (well: WellModel, mdM: number) => well.casings.filter((casing) => mdM >= casing.topMdM && mdM <= casing.bottomMdM);
 export function summarizeOperations(well: WellModel, mdM: number, radiusM = 2): OperationalSummary | null {
-  const nearby = well.operationalSamples.filter((sample) => Math.abs(sample.bitDepthM - mdM) <= radiusM);
+  const nearby = well.operationalBuckets.filter((sample) => sample.bandStartM <= mdM + radiusM && sample.bandStartM + well.operationalImport.depthResolutionM >= mdM - radiusM);
   if (!nearby.length) return null;
-  const statistics = well.operationalChannels.flatMap((channel) => { const values = nearby.flatMap((sample) => sample.values[channel.id] == null ? [] : [sample.values[channel.id]!]); if (!values.length) return []; return [{ channel, count: values.length, minimum: Math.min(...values), average: values.reduce((sum, value) => sum + value, 0) / values.length, maximum: Math.max(...values), latest: values.at(-1)! }]; });
-  return { radiusM, sampleCount: nearby.length, firstTimestamp: nearby[0].timestamp, lastTimestamp: nearby.at(-1)!.timestamp, ambiguousLeg: well.legs.filter((leg) => mdM >= leg.startMdM && mdM <= leg.endMdM).length > 1, statistics };
+  const statistics = well.operationalChannels.flatMap((channel) => { const values = nearby.flatMap((bucket) => bucket.values[channel.id] ? [bucket.values[channel.id]!] : []); if (!values.length) return []; const count = values.reduce((sum, value) => sum + value.count, 0); return [{ channel, count, minimum: Math.min(...values.map((value) => value.minimum)), average: values.reduce((sum, value) => sum + value.sum, 0) / count, maximum: Math.max(...values.map((value) => value.maximum)), latest: values.at(-1)!.latest }]; });
+  return { radiusM, sampleCount: nearby.reduce((sum, bucket) => sum + bucket.sampleCount, 0), firstTimestamp: nearby[0].firstTimestamp, lastTimestamp: nearby.at(-1)!.lastTimestamp, ambiguousLeg: well.legs.filter((leg) => mdM >= leg.startMdM && mdM <= leg.endMdM).length > 1, statistics };
 }

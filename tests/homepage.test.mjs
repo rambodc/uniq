@@ -169,7 +169,9 @@ test("enterprise clients call only version-one callable interfaces", async () =>
 test("mini apps use independent navigation and the public viewer stays browser-only", async () => {
   const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/public-tools/well-viewer/WellViewer.tsx"), wellScene = await read("src/public-tools/well-viewer/WellScene.tsx"), wellStyles = await read("src/public-tools/well-viewer/well-viewer.css");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
-  assert.match(layout, /className="portal-brand" to="\/"/);
+  assert.match(layout, /className="portal-back-button" to="\/portal"/);
+  assert.match(layout, /className="portal-brand-mark"/);
+  assert.doesNotMatch(layout, /portal-brand.*to=|Back to mini apps<\/Link>/);
   assert.match(account, /reauthenticateWithCredential/);
   assert.match(account, /updatePassword/);
   assert.match(account, /<details className="account-card account-security">/);
@@ -179,7 +181,8 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.match(fluidlab, /<div className="workspace-brand">/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(well, /Import another ZIP/);
-  assert.match(well, /file\.arrayBuffer\(\)/);
+  assert.match(well, /inspectWellPackage\(file\)/);
+  assert.match(await read("src/public-tools/well-viewer/well-package.ts"), /manifest\.file\.stream\(\)/);
   assert.match(well, /navigate\("\/"\)/);
   assert.doesNotMatch(well, /Auto|Pause|setAuto/);
   assert.match(well, /Labels:.*labelMode/);

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { DOMParser as XmlDomParser } from "@xmldom/xmldom";
 import { strToU8, zipSync } from "fflate";
-import { buildHoleSections, casingsAtMd, holeAtMd, parseEtsXml, parseOperationalCsv, parseWellPackage, WellPackageError, summarizeOperations } from "./well-package";
+import { buildHoleSections, casingsAtMd, holeAtMd, inspectWellPackage, parseEtsXml, parseOperationalCsv, parseWellPackage, WellPackageError, summarizeOperations } from "./well-package";
 import { parseWellSurvey } from "./survey";
 
 beforeAll(() => { globalThis.DOMParser = XmlDomParser as unknown as typeof DOMParser; });
@@ -22,11 +22,14 @@ describe("ETS engineering data", () => {
 
 describe("Well ZIP package", () => {
   const archive = (files: Record<string, string>) => zipSync(Object.fromEntries(Object.entries(files).map(([name, value]) => [name, strToU8(value)])));
-  it("correlates survey, hole, casing, and operational data without persistence", () => { const well = parseWellPackage(archive({ "job/data/surveys_42.txt": surveyText, "job/data/ETS_test.xml": xml, "job/data/42.csv": csv }), "job.zip"); expect(well.packageName).toBe("job.zip"); expect(holeAtMd(well, "10", 100)?.diameterMm).toBe(349); expect(casingsAtMd(well, 100)[0].outsideDiameterMm).toBe(244.5); expect(well.operationalSamples).toHaveLength(3); expect(summarizeOperations(well, 185)?.statistics.find((item) => item.channel.id === "torque")?.average).toBe(5); expect(well.warnings).toContain("1 incomplete casing record was ignored."); });
-  it("rejects missing, ambiguous, and mismatched packages", () => { expect(() => parseWellPackage(archive({ "readme.txt": "x" }), "bad.zip")).toThrow(/surveys_/); expect(() => parseWellPackage(archive({ "surveys_a.txt": surveyText, "surveys_b.txt": surveyText, "ETS.xml": xml, "42.csv": csv }), "bad.zip")).toThrow(/multiple survey/); expect(() => parseWellPackage(archive({ "surveys_a.txt": surveyText, "ETS.xml": xml.replaceAll("TEST WELL", "OTHER BORE"), "42.csv": csv }), "bad.zip")).toThrow(/different wells/); expect(() => parseWellPackage(archive({ "surveys_a.txt": surveyText, "ETS.xml": xml }), "bad.zip")).toThrow(/drilling CSV/); });
+  const file = (bytes: Uint8Array, name: string) => Object.assign(new Blob([bytes as BlobPart]), { name });
+  const manifest = (files: Record<string, string>, name = "job.zip") => inspectWellPackage(file(archive(files), name));
+  it("correlates survey, hole, casing, and operational data without persistence", async () => { const inspected = await manifest({ "job/data/surveys_42.txt": surveyText, "job/data/ETS_test.xml": xml, "job/data/42.csv": csv }); const well = await parseWellPackage(inspected, { detail: "detailed" }); expect(well.packageName).toBe("job.zip"); expect(holeAtMd(well, "10", 100)?.diameterMm).toBe(349); expect(casingsAtMd(well, 100)[0].outsideDiameterMm).toBe(244.5); expect(well.operationalImport.validObservations).toBe(3); expect(summarizeOperations(well, 185)?.statistics.find((item) => item.channel.id === "torque")?.average).toBe(5); expect(well.warnings).toContain("1 incomplete casing record was ignored."); });
+  it("rejects missing, ambiguous, and mismatched packages", async () => { await expect(manifest({ "readme.txt": "x" }, "bad.zip")).rejects.toThrow(/surveys_/); await expect(manifest({ "surveys_a.txt": surveyText, "surveys_b.txt": surveyText, "ETS.xml": xml, "42.csv": csv }, "bad.zip")).rejects.toThrow(/multiple survey/); const mismatched = await manifest({ "surveys_a.txt": surveyText, "ETS.xml": xml.replaceAll("TEST WELL", "OTHER BORE"), "42.csv": csv }, "bad.zip"); await expect(parseWellPackage(mismatched, { detail: "detailed" })).rejects.toThrow(/different wells/); await expect(manifest({ "surveys_a.txt": surveyText, "ETS.xml": xml }, "bad.zip")).rejects.toThrow(/drilling CSV/); });
 });
 
 describe("operational CSV", () => {
-  it("parses supported channels and ignores Well sentinel values", () => { const parsed = parseOperationalCsv(csv); expect(parsed.channels.map((item) => item.id)).toContain("torque"); expect(parsed.samples[0].values.gas).toBeUndefined(); expect(parsed.samples[2].values.rop).toBe(40); });
+  it("parses supported channels, ignores sentinels, and retains weighted statistics", () => { const parsed = parseOperationalCsv(csv); expect(parsed.channels.map((item) => item.id)).toContain("torque"); expect(parsed.buckets[0].values.gas).toBeUndefined(); expect(parsed.buckets.at(-1)?.values.rop?.latest).toBe(40); expect(parsed.metadata.validObservations).toBe(3); });
+  it("uses selectable depth resolutions", () => { expect(parseOperationalCsv(csv, "detailed").metadata.depthResolutionM).toBe(.25); expect(parseOperationalCsv(csv, "balanced").metadata.depthResolutionM).toBe(.5); expect(parseOperationalCsv(csv, "compact").metadata.depthResolutionM).toBe(1); });
   it("rejects missing depth columns and unsupported channels", () => { expect(() => parseOperationalCsv("Date,Value\n2026/01/01,2")).toThrow(/Hole Depth/); expect(() => parseOperationalCsv("Hole Depth (meters),Bit Depth (meters),Unknown\n1,1,2")).toThrow(/supported operational/); });
 });

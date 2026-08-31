@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { ArrowDown, ArrowLeft, ArrowUp, FileArchive, FileUp, Gauge, Layers3, Maximize2, PanelLeftOpen, Tags, X } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { clampLegMd, legColor, metresToSurveyDisplay, surveyDisplayToMetres, type SurveyLeg } from "./survey";
-import { casingsAtMd, holeAtMd, parseWellPackage, summarizeOperations, type HoleSection, type WellModel } from "./well-package";
+import { casingsAtMd, holeAtMd, inspectWellPackage, parseWellPackage, summarizeOperations, type HoleSection, type OperationalDetail, type WellImportProgress, type WellModel, type WellPackageManifest } from "./well-package";
 import { nextLabelMode, type LabelMode } from "./viewer-math";
 import "./well-viewer.css";
 
@@ -13,10 +13,11 @@ const nearestStation = (leg: SurveyLeg, md: number) => leg.stations.reduce((best
 
 export default function WellViewer({ navigate }: { navigate: (path: string) => void }) {
   const [survey, setSurvey] = useState<WellModel | null>(null), [selectedLegId, setSelectedLegId] = useState(""), [selectedSectionId, setSelectedSectionId] = useState<string | null>(null), [showCasings, setShowCasings] = useState(true), [error, setError] = useState(""), [loading, setLoading] = useState(false);
+  const [pendingPackage, setPendingPackage] = useState<WellPackageManifest | null>(null), [detail, setDetail] = useState<OperationalDetail>("balanced"), [progress, setProgress] = useState<WellImportProgress | null>(null);
   const [fitSignal, setFitSignal] = useState(0), [navigationFocusSignal, setNavigationFocusSignal] = useState(0), [labelMode, setLabelMode] = useState<LabelMode>("smart"), [currentMd, setCurrentMd] = useState(0), [depthInput, setDepthInput] = useState("0");
   const [direction, setDirection] = useState<-1 | 0 | 1>(0), [keyboardDepthDirection, setKeyboardDepthDirection] = useState<-1 | 0 | 1>(0), [keyboardZoomDirection, setKeyboardZoomDirection] = useState<-1 | 0 | 1>(0), [keyboardAccelerated, setKeyboardAccelerated] = useState(false), [visible, setVisible] = useState(!document.hidden);
   const [mobile, setMobile] = useState(() => matchMedia("(max-width: 720px)").matches), [panelOpen, setPanelOpen] = useState(false);
-  const input = useRef<HTMLInputElement>(null), panelOpener = useRef<HTMLButtonElement>(null), panelClose = useRef<HTMLButtonElement>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
+  const input = useRef<HTMLInputElement>(null), panelOpener = useRef<HTMLButtonElement>(null), panelClose = useRef<HTMLButtonElement>(null), importAbort = useRef<AbortController | null>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
   const leg = useMemo(() => survey?.legs.find((item) => item.id === selectedLegId) ?? survey?.legs.at(-1) ?? null, [selectedLegId, survey]);
   const imperial = survey?.sourceUnit === "imperial", unit = imperial ? "ft" : "m";
   const stop = useCallback(() => { setDirection(0); setKeyboardDepthDirection(0); setKeyboardZoomDirection(0); pressedArrows.current.clear(); }, []);
@@ -60,16 +61,27 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
     addEventListener("keydown", down); addEventListener("keyup", up); addEventListener("blur", blur); return () => { removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("blur", blur); };
   }, [leg, stop]);
 
+  const commitWell = (parsed: WellModel) => {
+    const selected = parsed.legs.at(-1)!, firstSection = parsed.holeSections[selected.id]?.[0] ?? null;
+    setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setPanelOpen(false); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
+  };
+  const processPackage = async (manifest: WellPackageManifest, selectedDetail: OperationalDetail) => {
+    const controller = new AbortController(); importAbort.current = controller;
+    setLoading(true); setProgress({ phase: "extracting", percent: 0, message: "Preparing the well package…" }); setError("");
+    try { commitWell(await parseWellPackage(manifest, { detail: selectedDetail, signal: controller.signal }, setProgress)); setPendingPackage(null); }
+    catch (cause) { if (!(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "This survey could not be read."); }
+    finally { if (importAbort.current === controller) importAbort.current = null; setLoading(false); setProgress(null); }
+  };
   const importFile = async (file: File | undefined) => {
     if (!file) return;
     if (!/\.zip$/i.test(file.name)) { setError("Choose the original well ZIP package."); return; }
-    if (file.size > 25_000_000) { setError("This well package is larger than the 25 MB import limit."); return; }
-    setLoading(true); setError("");
+    setLoading(true); setProgress({ phase: "extracting", percent: 0, message: "Inspecting the ZIP manifest…" }); setError("");
     try {
-      const parsed = parseWellPackage(new Uint8Array(await file.arrayBuffer()), file.name), selected = parsed.legs.at(-1)!, firstSection = parsed.holeSections[selected.id]?.[0] ?? null;
-      setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setPanelOpen(false); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
+      const manifest = await inspectWellPackage(file);
+      if (manifest.requiresDetailSelection) { setDetail("balanced"); setPendingPackage(manifest); }
+      else { setLoading(false); setProgress(null); await processPackage(manifest, "detailed"); }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "This survey could not be read."); }
-    finally { setLoading(false); if (input.current) input.current.value = ""; }
+    finally { setLoading(false); setProgress(null); if (input.current) input.current.value = ""; }
   };
   const closeMobilePanel = () => { if (!mobile || !panelOpen) return; setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); };
   const selectLeg = (id: string) => { const next = survey?.legs.find((item) => item.id === id); if (!next) return; const md = (next.startMdM + next.endMdM) / 2; setSelectedLegId(id); setSelectedSectionId(holeAtMd(survey!, id, md)?.id ?? null); setCurrentMd(md); stop(); closeMobilePanel(); };
@@ -87,11 +99,13 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   return <main className="well-workspace">
     <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Well ZIP</button></div>}</div>
     <header className="well-topbar"><button aria-label="Back to UniqEnergy" title="Back to UniqEnergy" onClick={() => navigate("/")}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-import-again" onClick={() => input.current?.click()}><FileUp/>Import another ZIP</button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
-    {loading && <div className="well-status" role="status">Reading well package…</div>}{error && <div className="well-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
+    {loading && <div className="well-status" role="status"><span>{progress?.message ?? "Reading well package…"}</span>{progress && <progress max="100" value={progress.percent}/>}<button onClick={() => importAbort.current?.abort()}>Cancel import</button></div>}{error && <div className="well-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
+    {pendingPackage && !loading && <div className="well-import-dialog-wrap"><section className="well-import-dialog" role="dialog" aria-modal="true" aria-labelledby="well-import-title"><header><div><span>Large drilling file</span><h2 id="well-import-title">Choose operational detail</h2></div><button aria-label="Cancel import" onClick={() => setPendingPackage(null)}><X/></button></header><p><b>{pendingPackage.csvFileName}</b> is {(pendingPackage.csvSizeBytes / 1_000_000).toFixed(1)} MB uncompressed. Every valid row will be examined; this setting controls depth resolution, not random row deletion. Peaks, counts, timestamps, averages, and latest values are retained.</p><div className="well-detail-options">{(["detailed", "balanced", "compact"] as const).map((choice) => <label key={choice} className={detail === choice ? "active" : ""}><input aria-label={`${choice} operational detail`} type="radio" name="operational-detail" value={choice} checked={detail === choice} onChange={() => setDetail(choice)}/><span><b>{choice[0].toUpperCase() + choice.slice(1)}</b><small>{choice === "detailed" ? "0.25 m bands · maximum depth detail" : choice === "balanced" ? "0.5 m bands · recommended" : "1.0 m bands · smallest memory use"}</small></span></label>)}</div><footer><button className="secondary" onClick={() => setPendingPackage(null)}>Cancel</button><button onClick={() => void processPackage(pendingPackage, detail)}>Import well</button></footer></section></div>}
     {survey && leg && mobile && <button ref={panelOpener} className="well-panel-opener" aria-controls="well-inspector" aria-expanded={panelOpen} onClick={() => { setPanelOpen(true); requestAnimationFrame(() => panelClose.current?.focus()); }}><PanelLeftOpen/><span>Well details</span></button>}
     {survey && leg && <aside id="well-inspector" className={`well-panel${panelOpen ? " open" : " closed"}`} aria-label="Well details" aria-hidden={mobile && !panelOpen} inert={mobile && !panelOpen}>
       <div className="well-panel-heading"><div><span>Survey data</span><strong>{survey.name}</strong>{survey.dossierId && <small>Dossier {survey.dossierId}</small>}</div>{mobile && <button ref={panelClose} className="well-panel-close" aria-label="Close well details" onClick={closeMobilePanel}><X/></button>}</div>
       <section className="well-summary"><div><span>Legs</span><b>{survey.legs.length}</b></div><div><span>Stations</span><b>{survey.legs.reduce((sum, item) => sum + item.stations.length, 0)}</b></div><div><span>Source units</span><b>{survey.sourceUnit === "imperial" ? "Imperial" : "Metric"}</b></div></section>
+      <p className="well-import-meta">{survey.operationalImport.validObservations.toLocaleString()} observations summarized into {survey.operationalImport.depthBandCount.toLocaleString()} depth bands at {survey.operationalImport.depthResolutionM} m.</p>
       {survey.warnings.length > 0 && <details className="well-warnings"><summary>{survey.warnings.length} import warning{survey.warnings.length === 1 ? "" : "s"}</summary>{survey.warnings.map((warning) => <p key={warning}>{warning}</p>)}</details>}
       <div className="well-leg-list">{survey.legs.map((item, index) => <button key={item.id} className={item.id === leg.id ? "active" : ""} onClick={() => selectLeg(item.id)}><i style={{ background: legColor(index) }}/><span><b>{item.name}</b><small>{item.parentId ? `Parent ${item.parentId} · ` : "Root · "}{item.stations.length} stations</small></span><em>{metresToSurveyDisplay(item.startMdM, imperial).toFixed(0)}–{metresToSurveyDisplay(item.endMdM, imperial).toFixed(0)} {unit}</em></button>)}</div>
       <section className="well-engineering"><header><div><span>Physical well model</span><b>{survey.holeSections[leg.id]?.length ?? 0} hole sections · {survey.casings.length} casing strings</b></div><button className={showCasings ? "active" : ""} aria-pressed={showCasings} onClick={() => setShowCasings((value) => !value)}><Layers3/>{showCasings ? "Casing on" : "Casing off"}</button></header><div>{(survey.holeSections[leg.id] ?? []).map((section) => <button key={section.id} className={selectedSectionId === section.id ? "active" : ""} onClick={() => selectSection(leg.id, section)}><i style={{ width: Math.max(8, section.diameterMm / 22) }}/><span><b>{section.diameterMm.toFixed(0)} mm hole</b><small>MD {metresToSurveyDisplay(section.startMdM, imperial).toFixed(0)}–{metresToSurveyDisplay(section.endMdM, imperial).toFixed(0)} {unit}{section.bit ? ` · ${section.bit.manufacturer} ${section.bit.bitType}` : ""}</small></span></button>)}</div></section>
