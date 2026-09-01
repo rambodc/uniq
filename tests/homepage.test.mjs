@@ -191,6 +191,10 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.match(well, /ArrowLeft.*\? -1 : 1/);
   assert.match(well, /ArrowUp.*\? -1 : 1/);
   assert.match(well, /↑↓ Zoom · ←→ Depth · Shift 4×/);
+  assert.match(well, /className="well-joystick" role="slider"/);
+  assert.match(well, /joystickIntensity/);
+  assert.doesNotMatch(well, /className="well-hold"/);
+  assert.match(well, /className="well-label-toggle"/);
   assert.match(well, /aria-controls="well-inspector" aria-expanded=\{panelOpen\}/);
   assert.match(well, /aria-hidden=\{mobile && !panelOpen\} inert=\{mobile && !panelOpen\}/);
   assert.match(well, /closeMobilePanel\(\)/);

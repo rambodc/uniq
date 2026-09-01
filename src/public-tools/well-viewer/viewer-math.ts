@@ -6,6 +6,35 @@ export function followDistanceM(diameterMm: number) {
   return Math.min(8, Math.max(2.5, diameterM * 20));
 }
 
+export function travelDistanceM(diameterMm: number) {
+  return Math.min(8, Math.max(4, followDistanceM(diameterMm) * 1.2));
+}
+
+export function joystickIntensity(raw: number, deadZone = 0.14) {
+  if (!Number.isFinite(raw)) return 0;
+  const clamped = Math.min(1, Math.max(-1, raw)), threshold = Math.min(0.9, Math.max(0, deadZone));
+  if (Math.abs(clamped) <= threshold) return 0;
+  return Math.sign(clamped) * (Math.abs(clamped) - threshold) / (1 - threshold);
+}
+
+export function travelLookAheadM(legSpanM: number, intensity: number) {
+  const span = Number.isFinite(legSpanM) ? Math.max(0, legSpanM) : 0;
+  return Math.min(24, Math.max(4, span * 0.012)) * Math.max(0.35, Math.min(1, Math.abs(intensity)));
+}
+
+export type MathVector3 = { x: number; y: number; z: number };
+export function stablePerpendicularOffset(offset: MathVector3, tangent: MathVector3) {
+  const tangentLength = Math.hypot(tangent.x, tangent.y, tangent.z) || 1;
+  const tx = tangent.x / tangentLength, ty = tangent.y / tangentLength, tz = tangent.z / tangentLength;
+  const dot = offset.x * tx + offset.y * ty + offset.z * tz;
+  let x = offset.x - tx * dot, y = offset.y - ty * dot, z = offset.z - tz * dot, length = Math.hypot(x, y, z);
+  if (length < 1e-6) {
+    const reference = Math.abs(ty) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    x = ty * reference.z - tz * reference.y; y = tz * reference.x - tx * reference.z; z = tx * reference.y - ty * reference.x; length = Math.hypot(x, y, z) || 1;
+  }
+  return { x: x / length, y: y / length, z: z / length };
+}
+
 export function keyboardZoomDistance(currentDistance: number, direction: -1 | 0 | 1, elapsedSeconds: number, accelerated: boolean, minimumDistance: number, maximumDistance: number) {
   const minimum = Math.max(0, minimumDistance);
   const maximum = Math.max(minimum, maximumDistance);

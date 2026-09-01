@@ -1,34 +1,34 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowDown, ArrowLeft, ArrowUp, FileArchive, FileUp, Gauge, Layers3, Maximize2, PanelLeftOpen, Tags, X } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowLeft, FileArchive, FileUp, Gauge, Layers3, Maximize2, PanelLeftOpen, Tags, X } from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import { clampLegMd, legColor, metresToSurveyDisplay, surveyDisplayToMetres, type SurveyLeg } from "./survey";
 import { casingsAtMd, holeAtMd, inspectWellPackage, parseWellPackage, summarizeOperations, type HoleSection, type OperationalDetail, type WellImportProgress, type WellModel, type WellPackageManifest } from "./well-package";
-import { nextLabelMode, type LabelMode } from "./viewer-math";
+import { joystickIntensity, nextLabelMode, type LabelMode } from "./viewer-math";
 import "./well-viewer.css";
 
 const Scene = lazy(() => import("./WellScene"));
-const shouldIgnoreShortcut = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, select, button, [contenteditable='true'], [role='dialog'], .well-panel");
+const shouldIgnoreShortcut = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, select, button, [contenteditable='true'], [role='dialog'], [role='slider'], .well-panel");
 const nearestStation = (leg: SurveyLeg, md: number) => leg.stations.reduce((best, item) => Math.abs(item.mdM - md) < Math.abs(best.mdM - md) ? item : best, leg.stations[0]);
 
 export default function WellViewer({ navigate }: { navigate: (path: string) => void }) {
   const [survey, setSurvey] = useState<WellModel | null>(null), [selectedLegId, setSelectedLegId] = useState(""), [selectedSectionId, setSelectedSectionId] = useState<string | null>(null), [showCasings, setShowCasings] = useState(true), [error, setError] = useState(""), [loading, setLoading] = useState(false);
   const [pendingPackage, setPendingPackage] = useState<WellPackageManifest | null>(null), [detail, setDetail] = useState<OperationalDetail>("balanced"), [progress, setProgress] = useState<WellImportProgress | null>(null);
   const [fitSignal, setFitSignal] = useState(0), [navigationFocusSignal, setNavigationFocusSignal] = useState(0), [labelMode, setLabelMode] = useState<LabelMode>("smart"), [currentMd, setCurrentMd] = useState(0), [depthInput, setDepthInput] = useState("0");
-  const [direction, setDirection] = useState<-1 | 0 | 1>(0), [keyboardDepthDirection, setKeyboardDepthDirection] = useState<-1 | 0 | 1>(0), [keyboardZoomDirection, setKeyboardZoomDirection] = useState<-1 | 0 | 1>(0), [keyboardAccelerated, setKeyboardAccelerated] = useState(false), [visible, setVisible] = useState(!document.hidden);
+  const [navigationIntensity, setNavigationIntensity] = useState(0), [keyboardDepthDirection, setKeyboardDepthDirection] = useState<-1 | 0 | 1>(0), [keyboardZoomDirection, setKeyboardZoomDirection] = useState<-1 | 0 | 1>(0), [keyboardAccelerated, setKeyboardAccelerated] = useState(false), [visible, setVisible] = useState(!document.hidden);
   const [mobile, setMobile] = useState(() => matchMedia("(max-width: 720px)").matches), [panelOpen, setPanelOpen] = useState(false);
-  const input = useRef<HTMLInputElement>(null), panelOpener = useRef<HTMLButtonElement>(null), panelClose = useRef<HTMLButtonElement>(null), importAbort = useRef<AbortController | null>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
+  const input = useRef<HTMLInputElement>(null), panelOpener = useRef<HTMLButtonElement>(null), panelClose = useRef<HTMLButtonElement>(null), joystick = useRef<HTMLDivElement>(null), importAbort = useRef<AbortController | null>(null), shift = useRef(false), pressedArrows = useRef(new Set<string>()), reducedMotion = Boolean(useReducedMotion());
   const leg = useMemo(() => survey?.legs.find((item) => item.id === selectedLegId) ?? survey?.legs.at(-1) ?? null, [selectedLegId, survey]);
   const imperial = survey?.sourceUnit === "imperial", unit = imperial ? "ft" : "m";
-  const stop = useCallback(() => { setDirection(0); setKeyboardDepthDirection(0); setKeyboardZoomDirection(0); pressedArrows.current.clear(); }, []);
-  const beginMove = useCallback((value: -1 | 1) => { if (!leg) return; setNavigationFocusSignal((signal) => signal + 1); setDirection(value); }, [leg]);
+  const stop = useCallback(() => { setNavigationIntensity(0); setKeyboardDepthDirection(0); setKeyboardZoomDirection(0); pressedArrows.current.clear(); }, []);
+  const beginMove = useCallback((value: number) => { if (!leg) return; setNavigationFocusSignal((signal) => signal + 1); setNavigationIntensity(Math.min(1, Math.max(-1, value))); }, [leg]);
 
   useEffect(() => { document.body.classList.add("well-viewer-active"); return () => document.body.classList.remove("well-viewer-active"); }, []);
   useEffect(() => { const query = matchMedia("(max-width: 720px)"), change = () => setMobile(query.matches); query.addEventListener("change", change); return () => query.removeEventListener("change", change); }, []);
   useEffect(() => { const change = () => { setVisible(!document.hidden); if (document.hidden) stop(); }; document.addEventListener("visibilitychange", change); return () => document.removeEventListener("visibilitychange", change); }, [stop]);
   useEffect(() => { if (!mobile || !panelOpen) return; const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); } }; addEventListener("keydown", keydown); return () => removeEventListener("keydown", keydown); }, [mobile, panelOpen]);
   useEffect(() => {
-    const movementDirection = direction || keyboardDepthDirection;
+    const movementDirection = navigationIntensity || keyboardDepthDirection;
     if (!leg || movementDirection === 0) return;
     let frame = 0, previous = performance.now();
     const tick = (now: number) => {
@@ -37,7 +37,8 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
-  }, [direction, keyboardDepthDirection, leg]);
+  }, [navigationIntensity, keyboardDepthDirection, leg]);
+  useEffect(() => { const movementDirection = navigationIntensity || keyboardDepthDirection; if (!leg || movementDirection === 0) return; if ((movementDirection < 0 && currentMd <= leg.startMdM + 1e-6) || (movementDirection > 0 && currentMd >= leg.endMdM - 1e-6)) stop(); }, [currentMd, keyboardDepthDirection, leg, navigationIntensity, stop]);
   useEffect(() => { if (document.activeElement?.classList.contains("well-depth-input")) return; setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1)); }, [currentMd, imperial]);
   useEffect(() => {
     const arrows = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
@@ -63,7 +64,7 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
 
   const commitWell = (parsed: WellModel) => {
     const selected = parsed.legs.at(-1)!, firstSection = parsed.holeSections[selected.id]?.[0] ?? null;
-    setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setPanelOpen(false); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setDirection(0);
+    setSurvey(parsed); setSelectedLegId(selected.id); setSelectedSectionId(firstSection?.id ?? null); setShowCasings(true); setLabelMode("smart"); setPanelOpen(false); setCurrentMd(selected.startMdM); setDepthInput(metresToSurveyDisplay(selected.startMdM, parsed.sourceUnit === "imperial").toFixed(1)); setFitSignal((value) => value + 1); setNavigationIntensity(0);
   };
   const processPackage = async (manifest: WellPackageManifest, selectedDetail: OperationalDetail) => {
     const controller = new AbortController(); importAbort.current = controller;
@@ -87,18 +88,20 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   const selectLeg = (id: string) => { const next = survey?.legs.find((item) => item.id === id); if (!next) return; const md = (next.startMdM + next.endMdM) / 2; setSelectedLegId(id); setSelectedSectionId(holeAtMd(survey!, id, md)?.id ?? null); setCurrentMd(md); stop(); closeMobilePanel(); };
   const selectSection = (legId: string, section: HoleSection) => { setSelectedLegId(legId); setSelectedSectionId(section.id); setCurrentMd((section.startMdM + section.endMdM) / 2); stop(); closeMobilePanel(); };
   const commitDepth = () => { if (!leg) return; const parsed = Number(depthInput); if (!depthInput.trim() || !Number.isFinite(parsed)) { setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1)); return; } const next = clampLegMd(leg, surveyDisplayToMetres(parsed, imperial)); setCurrentMd(next); setDepthInput(metresToSurveyDisplay(next, imperial).toFixed(1)); stop(); };
-  const hold = (value: -1 | 1) => ({
-    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); beginMove(value); },
-    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); setDirection(0); }, onPointerCancel: () => setDirection(0), onLostPointerCapture: () => setDirection(0),
-    onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
-    onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => { if ((event.key === " " || event.key === "Enter") && !event.repeat) { event.preventDefault(); beginMove(value); } },
-    onKeyUp: (event: ReactKeyboardEvent<HTMLButtonElement>) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); setDirection(0); } },
-  });
+  const updateJoystick = (clientX: number, element: HTMLDivElement) => { const bounds = element.getBoundingClientRect(), raw = (clientX - (bounds.left + bounds.width / 2)) / Math.max(bounds.width * 0.38, 1); setNavigationIntensity(joystickIntensity(raw)); };
+  const releaseJoystick = (element?: HTMLDivElement, pointerId?: number) => { if (element && pointerId != null && element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId); setNavigationIntensity(0); };
+  const joystickEvents = {
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setNavigationFocusSignal((signal) => signal + 1); updateJoystick(event.clientX, event.currentTarget); },
+    onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) updateJoystick(event.clientX, event.currentTarget); },
+    onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => releaseJoystick(event.currentTarget, event.pointerId), onPointerCancel: () => setNavigationIntensity(0), onLostPointerCapture: () => setNavigationIntensity(0),
+    onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => { if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !event.repeat) { event.preventDefault(); shift.current = event.shiftKey; beginMove(event.key === "ArrowLeft" ? -1 : 1); } },
+    onKeyUp: (event: ReactKeyboardEvent<HTMLDivElement>) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setNavigationIntensity(0); } },
+  };
   const station = leg ? nearestStation(leg, currentMd) : null, activeHole = survey && leg ? holeAtMd(survey, leg.id, currentMd) : null, activeCasings = survey ? casingsAtMd(survey, currentMd) : [], operations = survey ? summarizeOperations(survey, currentMd) : null;
 
   return <main className="well-workspace">
-    <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Well ZIP</button></div>}</div>
-    <header className="well-topbar"><button aria-label="Back to UniqEnergy" title="Back to UniqEnergy" onClick={() => navigate("/")}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-import-again" onClick={() => input.current?.click()}><FileUp/>Import another ZIP</button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
+    <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} navigationIntensity={navigationIntensity || keyboardDepthDirection} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Survey, ETS, and drilling CSV data are combined locally and never uploaded.</p><button onClick={() => input.current?.click()}><FileUp/>Choose Well ZIP</button></div>}</div>
+    <header className="well-topbar"><button aria-label="Back to UniqEnergy" title="Back to UniqEnergy" onClick={() => navigate("/")}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-label-toggle" aria-label={`Labels: ${labelMode}`} title="Cycle scene labels" onClick={() => setLabelMode(nextLabelMode)}><Tags/><span>{labelMode[0].toUpperCase() + labelMode.slice(1)}</span></button>}{survey && <button className="well-import-again" onClick={() => input.current?.click()}><FileUp/>Import another ZIP</button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => void importFile(event.target.files?.[0])}/></header>
     {loading && <div className="well-status" role="status"><span>{progress?.message ?? "Reading well package…"}</span>{progress && <progress max="100" value={progress.percent}/>}<button onClick={() => importAbort.current?.abort()}>Cancel import</button></div>}{error && <div className="well-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
     {pendingPackage && !loading && <div className="well-import-dialog-wrap"><section className="well-import-dialog" role="dialog" aria-modal="true" aria-labelledby="well-import-title"><header><div><span>Large drilling file</span><h2 id="well-import-title">Choose operational detail</h2></div><button aria-label="Cancel import" onClick={() => setPendingPackage(null)}><X/></button></header><p><b>{pendingPackage.csvFileName}</b> is {(pendingPackage.csvSizeBytes / 1_000_000).toFixed(1)} MB uncompressed. Every valid row will be examined; this setting controls depth resolution, not random row deletion. Peaks, counts, timestamps, averages, and latest values are retained.</p><div className="well-detail-options">{(["detailed", "balanced", "compact"] as const).map((choice) => <label key={choice} className={detail === choice ? "active" : ""}><input aria-label={`${choice} operational detail`} type="radio" name="operational-detail" value={choice} checked={detail === choice} onChange={() => setDetail(choice)}/><span><b>{choice[0].toUpperCase() + choice.slice(1)}</b><small>{choice === "detailed" ? "0.25 m bands · maximum depth detail" : choice === "balanced" ? "0.5 m bands · recommended" : "1.0 m bands · smallest memory use"}</small></span></label>)}</div><footer><button className="secondary" onClick={() => setPendingPackage(null)}>Cancel</button><button onClick={() => void processPackage(pendingPackage, detail)}>Import well</button></footer></section></div>}
     {survey && leg && mobile && <button ref={panelOpener} className="well-panel-opener" aria-controls="well-inspector" aria-expanded={panelOpen} onClick={() => { setPanelOpen(true); requestAnimationFrame(() => panelClose.current?.focus()); }}><PanelLeftOpen/><span>Well details</span></button>}
@@ -115,11 +118,9 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
       <p className="well-disclaimer">Trajectory coordinates come from the survey TXT. Hole and casing radii use ETS XML dimensions at true relative scale. Operational values come from the CSV and remain browser-only.</p>
     </aside>}
     {survey && leg && <div className="well-camera-dock">
-      <button className="well-hold" aria-keyshortcuts="ArrowLeft" title="Hold or press Left Arrow to move shallower" {...hold(-1)}><ArrowUp/><span>Shallower</span></button>
+      <div ref={joystick} className="well-joystick" role="slider" tabIndex={0} aria-label="Well depth navigation" aria-valuemin={-100} aria-valuemax={100} aria-valuenow={Math.round(navigationIntensity * 100)} aria-valuetext={navigationIntensity < 0 ? `Shallower ${Math.round(Math.abs(navigationIntensity) * 100)} percent` : navigationIntensity > 0 ? `Deeper ${Math.round(navigationIntensity * 100)} percent` : "Stopped"} aria-keyshortcuts="ArrowLeft ArrowRight" {...joystickEvents}><span>Shallower</span><div className="well-joystick-track"><i style={{ left: `calc(${50 + navigationIntensity * 50}% - ${11 + navigationIntensity * 11}px)` }}><b/></i></div><span>Deeper</span></div>
       <label><span>MD</span><input className="well-depth-input" inputMode="decimal" value={depthInput} onChange={(event) => setDepthInput(event.target.value)} onBlur={commitDepth} onKeyDown={(event) => { if (event.key === "Enter") { commitDepth(); event.currentTarget.blur(); } }}/><small>{unit}</small></label>
-      <button className="well-hold" aria-keyshortcuts="ArrowRight" title="Hold or press Right Arrow to move deeper" {...hold(1)}><ArrowDown/><span>Deeper</span></button>
       <button onClick={() => { stop(); setFitSignal((value) => value + 1); }}><Maximize2/><span>Fit Well</span></button>
-      <button aria-label={`Labels: ${labelMode}`} title="Cycle scene labels" onClick={() => setLabelMode(nextLabelMode)}><Tags/><span>Labels: {labelMode[0].toUpperCase() + labelMode.slice(1)}</span></button>
       <span className="well-key-hint" aria-hidden="true">↑↓ Zoom · ←→ Depth · Shift 4×</span>
     </div>}
   </main>;

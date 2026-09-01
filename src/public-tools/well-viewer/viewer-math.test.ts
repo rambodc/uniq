@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { followDistanceM, keyboardZoomDistance, nextLabelMode, smartLabelOpacity } from "./viewer-math";
+import { followDistanceM, joystickIntensity, keyboardZoomDistance, nextLabelMode, smartLabelOpacity, stablePerpendicularOffset, travelDistanceM, travelLookAheadM } from "./viewer-math";
 
 describe("Well viewer camera framing", () => {
   it("derives a bounded close-follow distance from hole diameter", () => {
@@ -9,6 +9,27 @@ describe("Well viewer camera framing", () => {
     expect(followDistanceM(20)).toBe(2.5);
     expect(followDistanceM(1000)).toBe(8);
     expect(followDistanceM(Number.NaN)).toBeCloseTo(3.18);
+  });
+});
+
+describe("Well viewer guided travel", () => {
+  it("maps joystick travel through a center dead zone", () => {
+    expect(joystickIntensity(0.1)).toBe(0);
+    expect(joystickIntensity(-1)).toBe(-1);
+    expect(joystickIntensity(1)).toBe(1);
+    expect(joystickIntensity(0.57)).toBeCloseTo(0.5);
+  });
+  it("uses comfortable bounded travel framing", () => {
+    expect(travelDistanceM(159)).toBe(4);
+    expect(travelDistanceM(349)).toBe(8);
+    expect(travelLookAheadM(1000, 1)).toBe(12);
+    expect(travelLookAheadM(1000, 0.5)).toBe(6);
+  });
+  it("preserves a normalized viewing side perpendicular to the pipe", () => {
+    const side = stablePerpendicularOffset({ x: 4, y: 3, z: 0 }, { x: 1, y: 0, z: 0 });
+    expect(side.x).toBeCloseTo(0); expect(side.y).toBeCloseTo(1); expect(Math.hypot(side.x, side.y, side.z)).toBeCloseTo(1);
+    const fallback = stablePerpendicularOffset({ x: 0, y: -4, z: 0 }, { x: 0, y: -1, z: 0 });
+    expect(Math.hypot(fallback.x, fallback.y, fallback.z)).toBeCloseTo(1);
   });
 });
 
