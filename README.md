@@ -18,11 +18,11 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 ## Mini apps and access
 
 - **FluidLab** — owner-private conceptual well projects
-- **Public Well Viewer** — unlisted, session-only 3D visualization at `/well-viewer`, combining survey, ETS, and drilling CSV data from an original well ZIP package
+- **Well Viewer** — permission-controlled portal mini app at `/apps/well-viewer`, combining survey, ETS, and drilling CSV data from an original well ZIP package
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
-Administrators automatically receive every managed mini app. Ordinary users receive explicit `fluidlab` access. There is no public signup route.
+Administrators automatically receive every managed mini app. Ordinary users need explicit grants for each managed app, including `well-viewer`. There is no public signup route.
 
 ## Version-one data
 

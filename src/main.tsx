@@ -5,7 +5,7 @@ import App from "./App";
 import "./styles.css";
 
 const root = document.getElementById("root")!;
-if (/^\/(?:signin|forgot-password|invite|portal|apps|well-viewer)(?:\/|$)/.test(location.pathname)) {
+if (/^\/(?:signin|forgot-password|invite|portal|apps)(?:\/|$)/.test(location.pathname)) {
   let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
   if (!robots) { robots = document.createElement("meta"); robots.name = "robots"; document.head.append(robots); }
   robots.content = "noindex, nofollow";

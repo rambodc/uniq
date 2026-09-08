@@ -100,12 +100,12 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
   for (const path of ["src/public/scenes/HomeWellScene.tsx", "src/public/scenes/ContactSignalScene.tsx", "src/public/scenes/TechnologyJourney.tsx"]) { const source = await read(path); assert.match(source, /prefers-reduced-motion/); assert.match(source, /IntersectionObserver/); assert.match(source, /canRenderWebGL/); }
 });
 
-test("enterprise routes are invitation-only while Well Viewer is a public tool", async () => {
+test("enterprise routes include the private Well Viewer mini app", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
-  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/well-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.doesNotMatch(app, /\/apps\/well-viewer/);
-  assert.doesNotMatch(registry, /well-viewer|Well Viewer/);
-  assert.match(firebase, /"source": "\/well-viewer", "destination": "\/index\.html"/);
+  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/apps/well-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(app, /path="\/well-viewer"/);
+  assert.match(registry, /well-viewer|Well Viewer/);
+  assert.doesNotMatch(firebase, /well-viewer/);
   for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
   assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
@@ -116,9 +116,10 @@ test("enterprise routes are invitation-only while Well Viewer is a public tool",
 
 test("Well Viewer carries layered search-engine exclusion", async () => {
   const firebase = await read("firebase.json"), robots = await read("public/robots.txt"), main = await read("src/main.tsx"), sitemap = await read("public/sitemap.xml"), routes = await read("src/public/seo-routes.json"), source = await read("src/public/PublicSite.tsx");
-  assert.match(firebase, /"source": "\/well-viewer"[^\n]+"X-Robots-Tag"[^\n]+"noindex, nofollow"/);
-  assert.match(robots, /Disallow: \/well-viewer/);
-  assert.match(main, /apps\|well-viewer/);
+  assert.match(firebase, /"source": "\/@\(invite\|apps\)\/\*\*"[^\n]+"X-Robots-Tag"[^\n]+"noindex, nofollow"/);
+  assert.match(robots, /Disallow: \/apps/);
+  assert.doesNotMatch(robots, /well-viewer/);
+  assert.doesNotMatch(main, /well-viewer/);
   assert.match(main, /robots\.content = "noindex, nofollow"/);
   assert.doesNotMatch(sitemap, /well-viewer/);
   assert.doesNotMatch(routes, /well-viewer/);
@@ -138,8 +139,8 @@ test("enterprise authentication has one portal destination and one profile autho
 
 test("portal launcher contains only managed and account mini apps", async () => {
   const registry = await read("src/portal/miniApps.ts"), launcher = await read("src/portal/AppLauncher.tsx");
-  for (const id of ["fluidlab", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
-  assert.doesNotMatch(registry, /well-viewer/);
+  for (const id of ["fluidlab", "well-viewer", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
+  assert.match(registry, /well-viewer/);
   assert.match(launcher, /visibleMiniApps\(user\)/);
   assert.doesNotMatch(launcher, /Recent projects|Search projects/);
 });
@@ -166,8 +167,8 @@ test("enterprise clients call only version-one callable interfaces", async () =>
   assert.doesNotMatch(api + projects, /registerAccount\"|createProject\"|autosaveProject\"/);
 });
 
-test("mini apps use independent navigation and the public viewer stays browser-only", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/public-tools/well-viewer/WellViewer.tsx"), wellScene = await read("src/public-tools/well-viewer/WellScene.tsx"), wellStyles = await read("src/public-tools/well-viewer/well-viewer.css");
+test("mini apps use independent navigation and Well Viewer stays browser-only", async () => {
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/mini-apps/well-viewer/WellViewer.tsx"), wellScene = await read("src/mini-apps/well-viewer/WellScene.tsx"), wellStyles = await read("src/mini-apps/well-viewer/well-viewer.css");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-back-button" to="\/portal"/);
   assert.match(layout, /className="portal-brand-mark"/);
@@ -182,8 +183,8 @@ test("mini apps use independent navigation and the public viewer stays browser-o
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(well, /Import another ZIP/);
   assert.match(well, /inspectWellPackage\(file\)/);
-  assert.match(await read("src/public-tools/well-viewer/well-package.ts"), /manifest\.file\.stream\(\)/);
-  assert.match(well, /navigate\("\/"\)/);
+  assert.match(await read("src/mini-apps/well-viewer/well-package.ts"), /manifest\.file\.stream\(\)/);
+  assert.match(well, /navigate\("\/portal"\)/);
   assert.doesNotMatch(well, /Auto|Pause|setAuto/);
   assert.match(well, /Labels:.*labelMode/);
   assert.match(well, /navigationFocusSignal/);

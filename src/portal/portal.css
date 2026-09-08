@@ -341,7 +341,7 @@
 }
 .access-editor {
   display: grid;
-  grid-template-columns: minmax(190px, 1fr) 110px 110px repeat(2, auto) auto;
+  grid-template-columns: minmax(190px, 1fr) 110px 110px repeat(3, auto) auto;
 }
 .portal-modal-backdrop {
   position: fixed;
