@@ -12,18 +12,6 @@ export const normalize = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-export const kinds = [
-  "well",
-  "report",
-  "product",
-  "usage",
-  "movement",
-  "branch",
-  "event",
-  "measurement",
-  "equipment",
-  "survey",
-];
 export const Fact = z.object({
   value: z.string().nullable(),
   originalValue: z.string().nullable().optional(),
@@ -31,15 +19,6 @@ export const Fact = z.object({
   unit: z.string().nullable(),
   sources: z.array(z.string()),
   status: z.enum(["reported", "interpreted", "edited"]),
-});
-export const RecordSchema = z.object({
-  id: z.string(),
-  kind: z.enum(kinds),
-  label: z.string().max(300),
-  report: z.string().nullable(),
-  product: z.string().nullable(),
-  branch: z.string().nullable(),
-  facts: z.record(z.string(), Fact),
 });
 export const emptyDataset = () => ({
   schemaVersion: 2,
@@ -542,124 +521,4 @@ export function importedWellbore(dataset) {
     casings,
     status: "interpreted",
   };
-}
-
-export function validateWellbore(value) {
-  const section = z.object({
-    id: z.string().max(100),
-    label: z.string().max(100),
-    endM: z.number().positive().max(30000),
-    diameterMm: z.number().positive().max(5000),
-    sources: z.array(z.string()).max(100),
-  });
-  const schema = z.object({
-    kickoffM: z.number().min(0).max(30000),
-    horizontalTvdM: z.number().positive().max(30000),
-    casings: z.array(section).max(30),
-    status: z.enum(["interpreted", "edited"]),
-  });
-  const parsed = schema.parse(value);
-  if (parsed.kickoffM > parsed.horizontalTvdM)
-    throw new Error(
-      "Kickoff cannot be deeper than the schematic horizontal TVD.",
-    );
-  return parsed;
-}
-
-// Only documented new drilling is eligible. Intervals are unioned across reports.
-export function allocations(dataset) {
-  const events = dataset.records
-    .filter(
-      (r) =>
-        r.kind === "event" &&
-        fact(r, "type") === "drilling" &&
-        r.branch &&
-        r.report &&
-        num(r, "endM") > num(r, "startM"),
-    )
-    .sort((a, b) =>
-      String(fact(a, "date") || "").localeCompare(
-        String(fact(b, "date") || ""),
-      ),
-    );
-  const seen = new Map(),
-    lengths = new Map();
-  for (const e of events) {
-    const branch = dataset.records.find(
-      (r) => r.kind === "branch" && r.label === e.branch,
-    );
-    if (!branch) continue;
-    const start = Math.max(num(e, "startM"), num(branch, "startM") ?? 0),
-      end = Math.min(num(e, "endM"), num(branch, "endM") ?? Infinity);
-    if (end <= start) continue;
-    let pieces = [[start, end]];
-    for (const [a, b] of seen.get(e.branch) || [])
-      pieces = pieces.flatMap(([s, t]) =>
-        b <= s || a >= t
-          ? [[s, t]]
-          : [
-              [s, Math.min(a, t)],
-              [Math.max(b, s), t],
-            ].filter(([x, y]) => y > x),
-      );
-    seen.set(e.branch, [...(seen.get(e.branch) || []), [start, end]]);
-    const key = `${e.report}\u001f${e.branch}`;
-    lengths.set(
-      key,
-      (lengths.get(key) || 0) + pieces.reduce((s, [a, b]) => s + b - a, 0),
-    );
-  }
-  const results = [];
-  for (const report of dataset.records.filter((r) => r.kind === "report")) {
-    const pairs = [...lengths].filter(([k]) =>
-        k.startsWith(`${report.label}\u001f`),
-      ),
-      totalLength = pairs.reduce((s, [, v]) => s + v, 0);
-    for (const totals of summarize(dataset, report.label).currencies) {
-      // Negative corrections and service charges stay unallocated.
-      const positive = dataset.records.filter(
-        (r) =>
-          r.kind === "usage" &&
-          r.report === report.label &&
-          num(r, "quantity") > 0,
-      );
-      const positiveData = {
-        ...dataset,
-        records: dataset.records.filter(
-          (r) => r.kind !== "usage" || positive.includes(r),
-        ),
-      };
-      const eligible = dec(
-        summarize(positiveData, report.label).currencies.find(
-          (g) => g.currency === totals.currency,
-        )?.productCost,
-      );
-      let allocated = dec(0);
-      if (totalLength > 0)
-        pairs.forEach(([key, length], i) => {
-          const cost =
-            i === pairs.length - 1
-              ? eligible.minus(allocated)
-              : eligible.times(length).div(totalLength).toDecimalPlaces(2);
-          allocated = allocated.plus(cost);
-          results.push({
-            report: report.label,
-            branch: key.split("\u001f")[1],
-            currency: totals.currency,
-            length,
-            cost: cost.toFixed(2),
-            status: "estimated",
-          });
-        });
-      results.push({
-        report: report.label,
-        branch: null,
-        currency: totals.currency,
-        length: 0,
-        cost: dec(totals.totalCost).minus(allocated).toFixed(2),
-        status: "unallocated",
-      });
-    }
-  }
-  return results;
 }

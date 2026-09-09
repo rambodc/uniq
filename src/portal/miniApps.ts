@@ -5,7 +5,7 @@ export type MiniAppId = ManagedMiniAppId | "user-access" | "account";
 export interface MiniAppDefinition { id: MiniAppId; label: string; description: string; path: string; icon: LucideIcon; adminOnly?: boolean; alwaysVisible?: boolean }
 
 export const MINI_APPS: MiniAppDefinition[] = [
-  { id: "fluidlab", label: "FluidLab", description: "Explore drilling fluids, inventory, and costs in 3D with AI.", path: "/apps/fluidlab", icon: Box },
+  { id: "fluidlab", label: "FluidLab", description: "Explore costs, mud reports, and AI answers. Generate 3D wells when needed.", path: "/apps/fluidlab", icon: Box },
   { id: "well-viewer", label: "Well Viewer", description: "Explore survey, casing, and drilling data from well ZIP packages in 3D.", path: "/apps/well-viewer", icon: Orbit },
   { id: "contact-form", label: "Contact Form", description: "Review and archive inquiries received from the public contact page.", path: "/apps/contact-form", icon: MessagesSquare },
   { id: "user-access", label: "User Access", description: "Invite users and control access to UniqEnergy mini apps.", path: "/apps/user-access", icon: Shield, adminOnly: true },

@@ -25,3 +25,5 @@ export { deleteSavedWell } from "./apps/well-viewer/delete-well.js";
 export { cleanupSavedWells } from "./apps/well-viewer/cleanup.js";
 
 export { listFluidWells, createFluidWell, renameFluidWell, getFluidWell, getFluidSources, getFluidHistory, beginFluidImport, completeFluidImport, retryFluidImport, cancelFluidImport, getFluidImport, processFluidImport, saveFluidWell, restoreFluidVersion, deleteFluidWell, getFluidChat, askFluidChat, cleanupFluidImports } from "./apps/fluidlab/service.js";
+
+export { generateFluidGeometry } from "./apps/fluidlab/service.js";

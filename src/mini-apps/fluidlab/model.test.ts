@@ -1,32 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { validateBranches, value, numeric, type Branch } from "./model";
-const branch: Branch = {
-  id: "a",
-  label: "A",
-  startM: 100,
-  endM: 1000,
-  diameterMm: 200,
-  parent: null,
-  inclination: 90,
-  azimuth: 0,
-  visible: true,
-  status: "edited",
-  sources: [],
-};
-describe("FluidLab editable reconstruction", () => {
-  it("rejects invalid paths and cyclic parentage", () => {
-    expect(validateBranches([branch])).toBeNull();
-    expect(validateBranches([{ ...branch, endM: 90 }])).toMatch(/length/);
-    expect(validateBranches([{ ...branch, parent: "a" }])).toMatch(/cycle/);
-    expect(
-      validateBranches([
-        branch,
-        { ...branch, id: "b", parent: "a", startM: 50 },
-      ]),
-    ).toMatch(/Kickoff/);
+import { value, numeric, scopedCosts, type Dataset } from "./model";
+describe("FluidLab values", () => {
+  it("preserves missing measurements", () => {
+    expect(value(undefined, "density")).toBeNull();
+    expect(numeric(undefined, "density")).toBeNull();
   });
-  it("does not turn missing measurements into zero", () => {
-    expect(value(undefined, "depth")).toBeNull();
-    expect(numeric(undefined, "depth")).toBeNull();
+  it("flags unpriced usage rather than manufacturing a zero cost", () => {
+    const data = {
+      records: [
+        {
+          id: "u",
+          kind: "usage",
+          label: "unknown",
+          product: "unknown",
+          report: "R1",
+          branch: null,
+          facts: {
+            quantity: {
+              value: "4",
+              unit: null,
+              status: "reported",
+              sources: [],
+            },
+          },
+        },
+      ],
+      currency: null,
+    } as unknown as Dataset;
+    expect(scopedCosts(data, null, null)).toEqual({ groups: [], unpriced: 1 });
   });
 });

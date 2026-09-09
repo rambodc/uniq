@@ -171,8 +171,8 @@ test("mini apps use independent navigation and Well Viewer stores private ZIPs",
   assert.match(account, /<details className="account-card account-security">/);
   assert.doesNotMatch(account, /sendPasswordResetEmail|Forgot current password/);
   assert.match(account, /Sign out/);
-  assert.match(fluidlab, /PRIVATE WELL LIBRARY/);
-  assert.match(fluidlab, /<div className="workspace-brand">/);
+  assert.match(fluidlab, /Manage wells/);
+  assert.match(fluidlab, /Costs/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(well, /WellLibrary/);
   assert.match(well, /useWellLibrary/);

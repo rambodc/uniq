@@ -1,13 +1,15 @@
+import { generateGeometry } from "../apps/fluidlab/geometry.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as XLSX from "xlsx";
 import {
   applyMapping,
+  extractFiles,
+  mappingBatches,
   readSpreadsheet,
   hasNumericEvidence,
 } from "../apps/fluidlab/extraction.js";
 import {
-  allocations,
   emptyDataset,
   idFor,
   mergeDatasets,
@@ -108,48 +110,6 @@ test("version merge preserves accepted values, user geometry, and source conflic
   assert.equal(merged.geometry[0].id, "custom");
   assert.ok(
     merged.issues.some((i) => i.code === "conflict" && i.field === "unitPrice"),
-  );
-});
-test("new-drilled-length allocation removes overlaps, ignores reaming, and conserves total", () => {
-  const d = fixture();
-  d.records.push(
-    record("branch", "Leg 1", { startM: 100, endM: 300 }),
-    record("branch", "Leg 2", { startM: 200, endM: 400 }),
-    record(
-      "event",
-      "first",
-      { type: "drilling", startM: 100, endM: 300, date: "2025-01-01" },
-      { report: "R1", branch: "Leg 1" },
-    ),
-    record(
-      "event",
-      "overlap",
-      { type: "drilling", startM: 200, endM: 300, date: "2025-01-01" },
-      { report: "R1", branch: "Leg 1" },
-    ),
-    record(
-      "event",
-      "second",
-      { type: "drilling", startM: 200, endM: 400, date: "2025-01-01" },
-      { report: "R1", branch: "Leg 2" },
-    ),
-    record(
-      "event",
-      "ream",
-      { type: "reaming", startM: 200, endM: 400, date: "2025-01-01" },
-      { report: "R1", branch: "Leg 2" },
-    ),
-  );
-  const a = allocations(d);
-  assert.equal(
-    a.filter((x) => x.branch).reduce((s, x) => s + x.length, 0),
-    400,
-  );
-  assert.equal(a.find((x) => x.branch === "Leg 1").cost, "49893.55");
-  assert.equal(a.find((x) => x.branch === null).cost, "7000.00");
-  assert.equal(
-    a.reduce((s, x) => s + Math.round(Number(x.cost) * 100), 0),
-    10678710,
   );
 });
 test("geometry rejects cycles and kickoff outside parent", () => {
@@ -323,4 +283,179 @@ test("updates add newly documented branches without reviving manually removed br
     updated.geometry.map((b) => b.label),
     ["Leg 2"],
   );
+});
+
+test("a workbook uses one layout call, retains full notes, and never interprets notes during import", async () => {
+  const note =
+    "Historical report notes. " +
+    "Detailed text and recommendations. ".repeat(40);
+  const sheet = XLSX.utils.aoa_to_sheet([
+      ["Property", "R1"],
+      ["Depth ft", 100],
+      ["Activity", note],
+    ]),
+    w = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(w, sheet, "Renamed reports");
+  const file = {
+    name: "unknown.xlsx",
+    id: "test",
+    buffer: XLSX.write(w, { type: "buffer", bookType: "xlsx" }),
+  };
+  let calls = 0;
+  const result = await extractFiles([file], {
+    client: {
+      responses: {
+        parse: async (request) => {
+          calls++;
+          assert.ok(!request.input.includes(note));
+          return {
+            output_parsed: {
+              sheets: [
+                {
+                  sheetId: idFor("test", "Renamed reports"),
+                  mapping: {
+                    tables: [
+                      {
+                        kind: "report",
+                        orientation: "columns",
+                        indices: [2],
+                        labelIndex: 1,
+                        fields: [
+                          { name: "mdM", index: 2, unit: "ft" },
+                          { name: "activitySummary", index: 3, unit: null },
+                        ],
+                      },
+                    ],
+                    matrices: [],
+                    narrativeCells: ["B3"],
+                    warnings: [],
+                  },
+                },
+              ],
+            },
+            usage: { total_tokens: 20 },
+          };
+        },
+      },
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.dataset.records.length, 1);
+  assert.equal(result.dataset.geometry.length, 0);
+  assert.equal(result.dataset.records[0].facts.activitySummary.value, note);
+  assert.equal(result.dataset.records[0].facts.mdM.value, "30.48");
+});
+test("large mapping regions retain shared headings and stay bounded", () => {
+  const cells = Array.from({ length: 1000 }, (_, i) => ({
+    cell: `A${i + 1}`,
+    row: i + 1,
+    column: 1,
+    raw: i === 0 ? "Report" : i,
+    display: i === 0 ? "Report" : String(i),
+  }));
+  const batches = mappingBatches(
+    [{ fileId: "f", file: "f.csv", name: "any", merges: [], cells }],
+    4000,
+  );
+  assert.ok(batches.length > 1);
+  for (const batch of batches) {
+    assert.ok(JSON.stringify(batch).length < 4000);
+    for (const region of batch) assert.equal(region.context[0][3], "Report");
+  }
+});
+
+test("optional geometry uses only cited numeric leg data and leaves report data intact", async () => {
+  const d = emptyDataset();
+  d.records = [record("report", "R1", { mdM: 200 })];
+  d.sources = [
+    {
+      id: "n",
+      raw: "Leg 1 from 100m-200m, losses 5m3. " + "Source context. ".repeat(20),
+    },
+  ];
+  const key = idFor("geometry-v1", "n");
+  const result = await generateGeometry(d, {
+    apiKey: "offline",
+    checkpoints: {
+      [key]: {
+        legs: [
+          {
+            label: "Leg 1",
+            startM: 100,
+            endM: 200,
+            lossesM3: 5,
+            diameterMm: null,
+            sources: ["n"],
+          },
+          {
+            label: "Invented",
+            startM: 500,
+            endM: 900,
+            lossesM3: 30,
+            diameterMm: null,
+            sources: ["n"],
+          },
+        ],
+      },
+    },
+    onProgress: async () => {},
+  });
+  assert.equal(result.usage.calls, 0);
+  assert.equal(result.dataset.geometry.length, 1);
+  assert.equal(
+    result.dataset.records.filter((r) => r.kind === "report").length,
+    1,
+  );
+  assert.equal(
+    result.dataset.records.find((r) => r.kind === "branch").facts.lossesM3
+      .value,
+    "5",
+  );
+});
+
+test("an unresolved mapping gets only one repair and opens usable records with flags", async () => {
+  let calls = 0;
+  const mapping = {
+    sheets: [
+      {
+        sheetId: idFor("f", "Sheet1"),
+        mapping: {
+          tables: [
+            {
+              kind: "product",
+              orientation: "rows",
+              indices: [2],
+              labelIndex: 1,
+              fields: [{ name: "unitPrice", index: 2, unit: null }],
+            },
+          ],
+          matrices: [],
+          narrativeCells: [],
+          warnings: [],
+        },
+      },
+    ],
+  };
+  const result = await extractFiles(
+    [
+      {
+        name: "p.csv",
+        id: "f",
+        buffer: Buffer.from("Product,Price\nClay,unknown\n"),
+      },
+    ],
+    {
+      client: {
+        responses: {
+          parse: async () => {
+            calls++;
+            return { output_parsed: mapping, usage: { total_tokens: 1 } };
+          },
+        },
+      },
+    },
+  );
+  assert.equal(calls, 2);
+  assert.equal(result.dataset.records[0].label, "Clay");
+  assert.ok(result.dataset.issues.some((i) => i.code === "invalid-number"));
 });

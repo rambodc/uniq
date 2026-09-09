@@ -13,6 +13,7 @@ vi.mock("./api", () => ({
   getSources: vi.fn(),
   saveWell: vi.fn(),
   cancelImport: vi.fn(),
+  generateGeometry: vi.fn(),
 }));
 vi.mock("./WellScene", () => ({
   default: () => <div data-testid="scene">3D scene</div>,
@@ -114,7 +115,6 @@ const sample: Dataset = {
     reports: 1,
     branches: 1,
   },
-  allocations: [],
 };
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
@@ -169,25 +169,63 @@ const click = async (selector: string) => {
   await act(async () => button!.click());
 };
 describe("FluidLab workspace", () => {
-  it("keeps Chat and the workspace mounted when scrolling returns a promise", async () => {
+  it("opens Costs with three tabs and loads existing 3D only on demand", async () => {
+    await render();
+    expect(host.textContent).toContain("20.00");
+    expect(
+      Array.from(
+        host.querySelectorAll('nav[aria-label="FluidLab sections"] button'),
+      ).map((b) => b.textContent),
+    ).toEqual(["Costs", "Mud", "Chat"]);
+    expect(host.querySelector('[data-testid="scene"]')).toBeNull();
+    const view = Array.from(host.querySelectorAll("button")).find(
+      (b) => b.textContent === "View well",
+    );
+    await act(async () => view!.click());
+    expect(host.querySelector('[data-testid="scene"]')).toBeTruthy();
+  });
+  it("keeps Chat mounted when scrollIntoView returns a promise and sends the selected scope", async () => {
     HTMLElement.prototype.scrollIntoView = vi
       .fn()
       .mockReturnValue(Promise.resolve());
+    vi.mocked(api.askChat).mockResolvedValue({
+      id: "m",
+      question: "cost",
+      answer: "10.00",
+      citations: ["source"],
+      highlights: [],
+      version: "v1",
+      createdAt: "2025-09-01",
+    });
     await render();
-    await click('button[aria-label="AI chat"]');
+    const report = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="Report"]',
+    )!;
+    await act(async () => {
+      report.value = "Report 1";
+      report.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await click('button[aria-label="Chat"]');
     expect(host.textContent).toContain("Ask the data.");
-    await click('button[aria-label="Overview"]');
-    expect(host.querySelector('[data-testid="scene"]')).toBeTruthy();
+    await click(".fl-prompts button");
+    expect(api.askChat).toHaveBeenCalledWith(
+      sample.well,
+      expect.any(String),
+      "Report 1",
+      null,
+    );
+    await click(".fl-message .fl-inline button");
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Products!C2",
+    );
   });
-  it("allows cancelling a processing import and explains fresh restart", async () => {
+  it("allows cancelling an active import without disabling the tabs", async () => {
     const job = {
       id: "job",
       wellId: "well",
       status: "processing",
-      stage: "notes",
-      message: "Interpreting a report",
+      stage: "mapping",
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       files: [],
       attempts: 1,
     };
@@ -197,72 +235,27 @@ describe("FluidLab workspace", () => {
     });
     vi.mocked(api.cancelImport).mockResolvedValue({});
     await render();
-    expect(host.textContent).toContain("Safe to leave this page");
+    await click('button[aria-label="Mud"]');
+    expect(host.textContent).toContain("Mud & reports");
     const cancel = Array.from(host.querySelectorAll("button")).find(
       (b) => b.textContent === "Cancel import",
     );
-    expect(cancel).toBeTruthy();
-    vi.mocked(api.getHistory).mockResolvedValue({
-      versions: [],
-      imports: [{ ...job, status: "cancelled" }],
-    });
     await act(async () => cancel!.click());
     expect(api.cancelImport).toHaveBeenCalledWith("job");
-    expect(host.textContent).toContain("To start fresh: delete this well");
+    expect(host.textContent).toContain("delete and upload again");
   });
-  it("opens a saved well and synchronizes report and inventory selections", async () => {
-    await render();
-    expect(host.textContent).toContain("Test well");
-    expect(host.textContent).toContain("20.00");
-    await click('button[aria-label="Inventory"]');
-    expect(host.textContent).toContain("Product balances");
-    await click(".fl-timeline-reports button");
-    expect(host.querySelector(".fl-active-filters")?.textContent).toContain(
-      "Report 1",
-    );
-    await click(".fl-card-title");
-    expect(host.querySelector(".fl-inspector")?.textContent).toContain("Clay");
-  });
-  it("opens cited source cells from an AI answer", async () => {
-    vi.mocked(api.askChat).mockResolvedValue({
-      id: "message",
-      question: "Costs?",
-      answer: "Product cost is 10.00.",
-      citations: ["source"],
-      highlights: [],
-      version: "v1",
-      createdAt: "2025-09-01",
+  it("does not generate geometry merely by opening a new well view", async () => {
+    vi.mocked(api.getWell).mockResolvedValue({
+      ...sample,
+      geometry: [],
+      next: null,
     });
     await render();
-    await click('button[aria-label="AI chat"]');
-    await click(".fl-prompts button");
-    expect(api.askChat).toHaveBeenCalled();
-    expect(host.textContent).toContain("Product cost is 10.00.");
-    await click(".fl-message .fl-inline button");
-    expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
-      "Products!C2",
+    const view = Array.from(host.querySelectorAll("button")).find(
+      (b) => b.textContent === "View well",
     );
-    expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
-      "2.50",
-    );
-  });
-  it("keeps geometry autosave active after switching away from the editor", async () => {
-    await render();
-    vi.useFakeTimers();
-    await click('button[aria-label="Well editor"]');
-    const add = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Add branch"),
-    );
-    await act(async () => add!.click());
-    await click('button[aria-label="Overview"]');
-    await act(async () => vi.advanceTimersByTimeAsync(1100));
-    expect(api.saveWell).toHaveBeenCalledWith(
-      sample.well,
-      expect.objectContaining({
-        geometry: expect.arrayContaining([
-          expect.objectContaining({ label: "Branch 2" }),
-        ]),
-      }),
-    );
+    await act(async () => view!.click());
+    expect(api.generateGeometry).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Generate detailed 3D");
   });
 });

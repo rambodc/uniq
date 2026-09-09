@@ -70,14 +70,6 @@ export interface Summary {
   reports: number;
   branches: number;
 }
-export interface Allocation {
-  report: string;
-  branch: string | null;
-  currency: string;
-  length: number;
-  cost: string;
-  status: string;
-}
 export interface Well {
   id: string;
   name: string;
@@ -96,9 +88,9 @@ export interface Dataset {
   issues: Issue[];
   coverage: { mapped: number; populated: number };
   summary: Summary;
-  allocations: Allocation[];
 }
 export interface ImportJob {
+  kind?: "import" | "geometry";
   updatedAt?: string;
   id: string;
   wellId: string;
@@ -229,38 +221,6 @@ export function download(url: string, name: string) {
   a.click();
   if (url.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export function validateBranches(branches: Branch[]) {
-  const ids = new Set(branches.map((b) => b.id));
-  if (ids.size !== branches.length) return "Duplicate branches.";
-  for (const b of branches) {
-    if (
-      !b.label.trim() ||
-      !Number.isFinite(b.startM) ||
-      !Number.isFinite(b.endM) ||
-      b.startM < 0 ||
-      b.endM <= b.startM ||
-      !Number.isFinite(b.diameterMm) ||
-      b.diameterMm <= 0 ||
-      !Number.isFinite(b.inclination) ||
-      b.inclination < 0 ||
-      b.inclination > 180 ||
-      !Number.isFinite(b.azimuth)
-    )
-      return "Check branch lengths, diameters, and directions.";
-    let p = branches.find((p) => p.id === b.parent);
-    if (b.parent && !p) return "Choose an existing parent.";
-    if (p && (b.startM < p.startM || b.startM > p.endM))
-      return "Kickoff must fall within the parent branch.";
-    const seen = new Set([b.id]);
-    while (p) {
-      if (seen.has(p.id)) return "Branches cannot form a parent cycle.";
-      seen.add(p.id);
-      p = branches.find((x) => x.id === p?.parent);
-    }
-  }
-  return null;
-}
-
 export const compatiblePackage = (
   a: DataRecord | undefined,
   b: DataRecord | undefined,
@@ -286,3 +246,69 @@ export const currencyFor = (r: DataRecord | undefined, field: string) =>
   (/^[A-Z]{3}$/.test(r?.facts[field]?.unit || "")
     ? r!.facts[field].unit
     : null);
+
+export function scopedCosts(
+  data: Dataset,
+  report: string | null,
+  product: string | null,
+) {
+  const groups = new Map<
+    string,
+    { currency: string; products: Decimal; services: Decimal }
+  >();
+  let unpriced = 0;
+  const group = (currency: string | null) => {
+    const k = currency || data.currency || "unspecified";
+    if (!groups.has(k))
+      groups.set(k, {
+        currency: k,
+        products: new Decimal(0),
+        services: new Decimal(0),
+      });
+    return groups.get(k)!;
+  };
+  for (const r of data.records.filter(
+    (r) =>
+      r.kind === "usage" &&
+      (!report || r.report === report) &&
+      (!product || r.product === product),
+  )) {
+    const p = data.records.find(
+        (p) => p.kind === "product" && p.label === r.product,
+      ),
+      price =
+        value(r, "unitPrice") ??
+        (compatiblePackage(r, p) ? value(p, "unitPrice") : null),
+      q = value(r, "quantity"),
+      cost = value(r, "cost");
+    if (cost === null && (price === null || q === null)) {
+      unpriced++;
+      continue;
+    }
+    const g = group(
+      currencyFor(r, "cost") ||
+        currencyFor(r, "unitPrice") ||
+        currencyFor(p, "unitPrice"),
+    );
+    g.products = g.products.plus(
+      cost !== null ? new Decimal(cost) : new Decimal(q!).times(price!),
+    );
+  }
+  if (!product)
+    for (const r of data.records.filter(
+      (r) => r.kind === "report" && (!report || r.label === report),
+    ))
+      if (value(r, "serviceCost") !== null) {
+        const g = group(currencyFor(r, "serviceCost"));
+        g.services = g.services.plus(value(r, "serviceCost")!);
+      }
+  return {
+    unpriced,
+    groups: [...groups.values()].map((g) => ({
+      currency: g.currency,
+      productCost: g.products.toFixed(2),
+      serviceCost: g.services.toFixed(2),
+      totalCost: g.products.plus(g.services).toFixed(2),
+    })),
+  };
+}

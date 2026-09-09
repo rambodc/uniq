@@ -39,7 +39,7 @@ class SceneBoundary extends Component<
     return this.state.failed ? (
       <div className="fl-scene-fallback">
         <strong>3D view unavailable</strong>
-        <p>Your data, charts, editor, and AI chat remain available.</p>
+        <p>Your costs, mud data, and chat remain available.</p>
       </div>
     ) : (
       this.props.children
@@ -347,20 +347,6 @@ function World(props: SceneProps) {
           if (mode === "losses") {
             const ratio = (numeric(r, "lossesM3") ?? 0) / lossMax;
             color = `hsl(${165 - ratio * 140},65%,55%)`;
-          }
-          if (mode === "cost") {
-            const cost = data.allocations
-              .filter(
-                (a) =>
-                  a.branch === sourceLabel &&
-                  a.currency ===
-                    (data.currency ||
-                      data.summary.currencies[0]?.currency ||
-                      "unspecified") &&
-                  (!report || a.report === report),
-              )
-              .reduce((s, a) => s + Number(a.cost), 0);
-            color = `hsl(${170 - Math.min(1, cost / 15000) * 145},70%,55%)`;
           }
           if (mode === "product" && product) {
             const reports = new Set(

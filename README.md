@@ -119,18 +119,22 @@ Storage CORS and cross-service rule permissions are configured by the Rules GitH
 
 Initial project setup requires enabling `cloudscheduler.googleapis.com`, granting `roles/cloudscheduler.admin` to `github-deployer@uniqenergy-de71c.iam.gserviceaccount.com`, and granting `roles/firebaserules.firestoreServiceAgent` to `service-357883281274@gcp-sa-firebasestorage.iam.gserviceaccount.com`. The existing deployment account cannot bootstrap these project permissions. Once provisioned, the Rules workflow verifies the existing binding without requesting IAM policy writes.
 
-## FluidLab implementation and integration checks
+## FluidLab import and analysis
 
-FluidLab reads XLSX/XLS/CSV/TSV using pinned SheetJS CE, then asks OpenAI to map sheet layouts and extract operational notes. A separate review pass checks narrative interpretations. Source references, unit checks, decimal arithmetic, deduplication, and reconciliation are enforced in code. Neither macros nor spreadsheet formulas are executed.
+FluidLab has Costs, Mud, and Chat tabs. Well selection and uploads live in the header; detailed 3D is optional. Existing datasets, original sources, accepted corrections, and version snapshots remain readable.
 
-Imports use authenticated Cloud Tasks and checkpoint their progress in private Storage. Limits are five files, 20 MiB per file, 50 MiB combined, and 100,000 populated cells. Model execution is capped at 80 requests / 800,000 tokens per attempt and three user-initiated attempts. The Functions workflow configures required APIs, runtime secret access, and task dispatch IAM. The deployment identity needs Cloud Tasks administration; initial bootstrap additionally needs Service Usage administration and IAM policy access on the runtime service account. Existing bindings are checked before writing policies. `FLUIDLAB_MODEL` can override the default `gpt-5.4`.
+The backend parses XLSX/XLS/CSV/TSV with pinned SheetJS CE. A compact workbook-wide AI request maps tables; code expands rows and columns, converts supported units, and performs decimal calculations. Each bounded batch permits one essential-mapping repair. Large inputs use at most two concurrent mapping requests. Original notes remain unchanged and are retrieved by Chat when relevant. There is no automatic per-note interpretation, second AI audit, geometry editor, or estimated branch-cost allocation.
 
-Offline tests include parser layout variants, decimal reconciliation, signed adjustments, non-overlapping estimated allocations, editor interaction, API lifecycle, and owner-only Storage rules. Live model checks are deliberately separate from CI:
+Jobs have `kind: import | geometry` (older jobs default to import). Optional geometry generation uses the selected dataset version and fails on stale revisions. Both kinds retain checkpoints, cancellation, worker ownership checks, and private Firebase task processing. The default model remains `gpt-5.4`.
+
+Uploads remain limited to five files, 20 MiB each, 50 MiB combined, and 100,000 populated cells. Unknown prices, currencies, units, and conflicting inventory values are flagged; usable data opens without a confirmation wizard.
+
+A fresh, explicitly paid benchmark (requires available API credits):
 
 ```bash
-node functions/scripts/verify-fluidlab.js /path/to/workbook.xlsx --live
+FLUIDLAB_CHECK_DIR=/tmp/fluidlab-fresh-check node functions/scripts/verify-fluidlab.js /path/to/sample.xlsx --live --sample-acceptance
 ```
 
-This explicitly paid check uses `OPENAI_API_KEY` if supplied, otherwise reads the existing Secret Manager secret without printing it. Local checkpoint/result artifacts are stored in `/tmp/fluidlab-check`. The optional `verify-fluidlab-chat.js` script runs only against local Firestore/Storage emulators and checks the real chat tool loop against that extracted dataset. No integration check deploys Firebase resources. Add `--sample-acceptance` to verify the supplied sample's 11 reports, 27 products, 33 leg losses, exact costs, discrepancy flags, and source references. `node functions/scripts/verify-fluidlab-variants.js --live` separately checks unfamiliar layouts, transposed usage, unit conversion, and instruction isolation.
+Use a new checkpoint directory for each fresh benchmark. The acceptance flag expects 11 reports, 27 products, product cost 99,787.10, services 7,000.00, and no narrative-generated branches during import. The target is under two minutes, measured rather than guaranteed. The separate variants script exercises unusual formats; the chat integration script runs only with local emulators. Never print API keys.
 
-3D coordinates are schematic unless supported by survey data. Report totals remain authoritative; branch cost allocation is explicitly estimated from documented new-drilling intervals. Missing prices, currency, package sizes, or geometry remain reviewable rather than invented.
+Production is published only by pushing `production`; GitHub Actions deploys affected components and Hosting waits for matching backend/rules changes. Do not create PR previews unless requested.

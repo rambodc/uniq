@@ -8,8 +8,6 @@ import type {
   Source,
   Version,
   ChatMessage,
-  Branch,
-  Wellbore,
 } from "./model";
 const call = async <R>(name: string, data: unknown = {}) =>
   (await httpsCallable<unknown, R>(functions, name, { timeout: 330000 })(data))
@@ -142,8 +140,6 @@ export const completeImport = (importId: string) =>
 export const saveWell = (
   well: Well,
   change: {
-    geometry?: Branch[];
-    wellbore?: Wellbore;
     currency?: string | null;
     correction?: { recordId: string; field: string; value: string };
   },
@@ -154,25 +150,35 @@ export const saveWell = (
     mutationId: crypto.randomUUID(),
     ...change,
   });
-export const restoreVersion = (well: Well, version: string) =>
-  call("restoreFluidVersion", {
-    wellId: well.id,
-    baseRevision: well.revision,
-    version,
-    mutationId: crypto.randomUUID(),
-  });
 export const getChat = async (wellId: string) =>
   (await call<{ messages: ChatMessage[] }>("getFluidChat", { wellId }))
     .messages;
-export const askChat = async (well: Well, question: string) =>
+export const askChat = async (
+  well: Well,
+  question: string,
+  report: string | null = null,
+  product: string | null = null,
+) =>
   (
     await call<{ message: ChatMessage }>("askFluidChat", {
       wellId: well.id,
       version: well.version,
       question,
+      report,
+      product,
       mutationId: crypto.randomUUID(),
     })
   ).message;
 
 export const cancelImport = (importId: string) =>
   call("cancelFluidImport", { importId });
+
+export const generateGeometry = async (well: Well) =>
+  (
+    await call<{ job: ImportJob }>("generateFluidGeometry", {
+      wellId: well.id,
+      version: well.version,
+      baseRevision: well.revision,
+      mutationId: crypto.randomUUID(),
+    })
+  ).job;

@@ -35,6 +35,7 @@ const apiKey =
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   ).trim();
 try {
+  const started = Date.now();
   const result = await extractFiles(
     [
       {
@@ -55,27 +56,13 @@ try {
   const s = summarize(result.dataset);
   if (process.argv.includes("--sample-acceptance")) {
     assert.equal(s.reports, 11);
-    assert.equal(s.branches, 33);
+    assert.equal(s.branches, 0);
     assert.equal(
       result.dataset.records.filter((r) => r.kind === "product").length,
       27,
     );
-    assert.equal(
-      result.dataset.records.filter(
-        (r) =>
-          r.kind === "branch" &&
-          r.facts.lossesM3?.value !== null &&
-          r.facts.lossesM3?.value !== undefined,
-      ).length,
-      33,
-    );
     assert.equal(s.productCost, "99787.10");
     assert.equal(s.serviceCost, "7000.00");
-    assert.ok(
-      result.dataset.issues.some(
-        (i) => i.code === "check:well-cost" && i.message.includes("25.60"),
-      ),
-    );
     assert.ok(result.dataset.issues.some((i) => i.code === "check:negative"));
     assert.ok(result.dataset.issues.some((i) => i.code === "check:balance"));
     const ids = new Set(result.dataset.sources.map((s) => s.id));
@@ -86,13 +73,14 @@ try {
           "Facts must cite retained sources",
         );
     console.log(
-      "PASS: sample counts, costs, 33 leg losses, discrepancies, and source references.",
+      "PASS: sample counts, costs, table-only import, discrepancies, and source references.",
     );
   }
 
   console.log(
     JSON.stringify(
       {
+        durationMs: Date.now() - started,
         records: result.dataset.records.length,
         products: result.dataset.records.filter((r) => r.kind === "product")
           .length,
