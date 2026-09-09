@@ -93,12 +93,24 @@ async function artifact(path, value) {
       metadata: { cacheControl: "private,no-store" },
     });
 }
-async function publish(uid, wellId, dataset, baseRevision, mutationId, reason) {
+export async function publish(
+  uid,
+  wellId,
+  dataset,
+  baseRevision,
+  mutationId,
+  reason,
+  importRun = null,
+) {
   validId(mutationId);
   const { ref } = await owned(uid, wellId),
     op = ref.collection("mutations").doc(mutationId);
   const old = await op.get();
   if (old.exists) return old.data();
+  if (importRun)
+    await db.runTransaction((tx) =>
+      assertImportRun(tx, imports(uid).doc(importRun.id), importRun.runId),
+    );
   const version = randomUUID(),
     path = `users/${uid}/fluidlab/${wellId}/versions/${version}.json`;
   await artifact(path, dataset);
@@ -115,6 +127,12 @@ async function publish(uid, wellId, dataset, baseRevision, mutationId, reason) {
   }
   await db.runTransaction(async (tx) => {
     const [w, m] = await Promise.all([tx.get(ref), tx.get(op)]);
+    if (importRun)
+      await assertImportRun(
+        tx,
+        imports(uid).doc(importRun.id),
+        importRun.runId,
+      );
     if (m.exists) return;
     if (!w.exists || w.data().status === "deleting")
       throw new HttpsError("not-found", "Well not found.");
@@ -136,6 +154,16 @@ async function publish(uid, wellId, dataset, baseRevision, mutationId, reason) {
       summary: summarize(dataset),
     });
     tx.set(op, result);
+    if (importRun)
+      tx.update(imports(uid).doc(importRun.id), {
+        status: dataset.issues.length ? "partial" : "ready",
+        stage: "complete",
+        message: `${dataset.records.length} records available`,
+        ...result,
+        ...importRun.metrics,
+        updatedAt: now(),
+        leaseUntil: 0,
+      });
   });
   return (await op.get()).data();
 }
@@ -364,7 +392,7 @@ export const retryFluidImport = wrap(async (uid, d) => {
     snap = await ref.get();
   if (!snap.exists || snap.data().owner !== uid)
     throw new HttpsError("not-found", "Import not found.");
-  if (!["failed", "partial"].includes(snap.data().status))
+  if (!["failed", "partial", "cancelled"].includes(snap.data().status))
     throw new Error("This import is not retryable.");
   if (snap.data().attempts >= 3)
     throw new Error("Retry limit reached. Create a smaller import.");
@@ -388,13 +416,20 @@ export const cancelFluidImport = wrap(async (uid, d) => {
     const [snap, lock] = await Promise.all([tx.get(ref), tx.get(root(uid))]);
     if (!snap.exists || snap.data().owner !== uid)
       throw new HttpsError("not-found", "Import not found.");
-    if (!["uploading", "queued", "cancelled"].includes(snap.data().status))
+    if (
+      !["uploading", "queued", "processing", "cancelled"].includes(
+        snap.data().status,
+      )
+    )
       throw new Error(
-        "Processing has already started. Wait for it to complete.",
+        "This import has already finished. Refresh to see the result.",
       );
     tx.update(ref, {
       status: "cancelled",
       stage: "cancelled",
+      message:
+        "Import cancelled. Resume saved progress, or delete this well and upload again to start fresh.",
+      leaseUntil: 0,
       updatedAt: now(),
     });
     if (lock.data()?.importLock === d.importId)
@@ -408,6 +443,16 @@ export const getFluidImport = wrap(async (uid, d) => {
     throw new HttpsError("not-found", "Import not found.");
   return { job: { id: snap.id, ...snap.data() } };
 });
+
+export async function assertImportRun(tx, ref, runId) {
+  const snap = await tx.get(ref);
+  if (
+    !snap.exists ||
+    snap.data().status !== "processing" ||
+    snap.data().runId !== runId
+  )
+    throw new HttpsError("cancelled", "Import cancelled or replaced.");
+}
 
 export const processFluidImport = onTaskDispatched(
   {
@@ -426,6 +471,7 @@ export const processFluidImport = onTaskDispatched(
     validId(importId);
     const ref = imports(uid).doc(importId);
     let job;
+    const runId = randomUUID();
     const acquired = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) return false;
@@ -435,6 +481,7 @@ export const processFluidImport = onTaskDispatched(
         return false;
       tx.update(ref, {
         status: "processing",
+        runId,
         leaseUntil: Date.now() + 1850000,
         attempts: (job.attempts || 0) + 1,
         updatedAt: now(),
@@ -443,6 +490,25 @@ export const processFluidImport = onTaskDispatched(
     });
     if (!acquired) return;
     const started = Date.now();
+    const controller = new AbortController();
+    const update = (fields) =>
+      db.runTransaction(async (tx) => {
+        await assertImportRun(tx, ref, runId);
+        tx.update(ref, { ...fields, updatedAt: now() });
+      });
+    const heartbeat = setInterval(() => {
+      void ref
+        .get()
+        .then((s) => {
+          if (
+            !s.exists ||
+            s.data().status !== "processing" ||
+            s.data().runId !== runId
+          )
+            controller.abort();
+        })
+        .catch(() => {});
+    }, 15000);
     try {
       const account = await db.doc(`users/${uid}`).get();
       const user = account.data();
@@ -468,22 +534,36 @@ export const processFluidImport = onTaskDispatched(
       const result = await extractFiles(files, {
         apiKey: key.value(),
         checkpoints,
+        signal: controller.signal,
         onCheckpoint: async (k, v) => {
           const path = `users/${uid}/fluidlab/${job.wellId}/imports/${importId}/checkpoints/${k}.json`;
+          await db.runTransaction((tx) => assertImportRun(tx, ref, runId));
           await artifact(path, v);
-          await ref.collection("checkpoints").doc(k).set({ path });
+          await db.runTransaction(async (tx) => {
+            await assertImportRun(tx, ref, runId);
+            tx.set(ref.collection("checkpoints").doc(k), { path });
+          });
         },
-        onProgress: async (p) => ref.update({ ...p, updatedAt: now() }),
+        onProgress: update,
       });
       const { well, dataset } = await load(uid, job.wellId);
       let merged = mergeDatasets(dataset, result.dataset);
-      const published = await publish(
+      await publish(
         uid,
         job.wellId,
         merged,
         well.revision,
         `${importId}-${(job.attempts || 0) + 1}`,
         `Import ${job.files.map((f) => f.name).join(", ")}`,
+        {
+          id: importId,
+          runId,
+          metrics: {
+            usage: result.usage,
+            durationMs: Date.now() - started,
+            coverage: result.dataset.coverage,
+          },
+        },
       );
       const named = merged.records.find(
         (r) => r.kind === "well" && r.facts.name?.value,
@@ -498,34 +578,38 @@ export const processFluidImport = onTaskDispatched(
               autoName: false,
             });
         });
-      await ref.update({
-        status: merged.issues.length ? "partial" : "ready",
-        stage: "complete",
-        message: `${result.dataset.records.length} records extracted`,
-        ...published,
-        usage: result.usage,
-        durationMs: Date.now() - started,
-        coverage: result.dataset.coverage,
-        updatedAt: now(),
-        leaseUntil: 0,
-      });
     } catch (e) {
       console.error("FluidLab import failed", {
         importId,
         type: e.name,
         code: e.code,
       });
-      await ref.update({
-        status: "failed",
-        stage: "failed",
-        message: safeError(e),
-        updatedAt: now(),
-        leaseUntil: 0,
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        if (
+          s.exists &&
+          s.data().status === "processing" &&
+          s.data().runId === runId
+        )
+          tx.update(ref, {
+            status: "failed",
+            stage: "failed",
+            message: safeError(e),
+            updatedAt: now(),
+            leaseUntil: 0,
+          });
       });
     } finally {
+      clearInterval(heartbeat);
       await db.runTransaction(async (tx) => {
-        const s = await tx.get(root(uid));
-        if (s.data()?.importLock === importId)
+        const [s, current] = await Promise.all([
+          tx.get(root(uid)),
+          tx.get(ref),
+        ]);
+        if (
+          s.data()?.importLock === importId &&
+          current.data()?.runId === runId
+        )
           tx.set(
             root(uid),
             { importLock: null, lockUntil: 0 },

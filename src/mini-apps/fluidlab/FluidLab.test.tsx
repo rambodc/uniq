@@ -12,6 +12,7 @@ vi.mock("./api", () => ({
   askChat: vi.fn(),
   getSources: vi.fn(),
   saveWell: vi.fn(),
+  cancelImport: vi.fn(),
 }));
 vi.mock("./WellScene", () => ({
   default: () => <div data-testid="scene">3D scene</div>,
@@ -168,6 +169,37 @@ const click = async (selector: string) => {
   await act(async () => button!.click());
 };
 describe("FluidLab workspace", () => {
+  it("allows cancelling a processing import and explains fresh restart", async () => {
+    const job = {
+      id: "job",
+      wellId: "well",
+      status: "processing",
+      stage: "notes",
+      message: "Interpreting a report",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      files: [],
+      attempts: 1,
+    };
+    vi.mocked(api.getHistory).mockResolvedValue({
+      versions: [],
+      imports: [job],
+    });
+    vi.mocked(api.cancelImport).mockResolvedValue({});
+    await render();
+    expect(host.textContent).toContain("Safe to leave this page");
+    const cancel = Array.from(host.querySelectorAll("button")).find(
+      (b) => b.textContent === "Cancel import",
+    );
+    expect(cancel).toBeTruthy();
+    vi.mocked(api.getHistory).mockResolvedValue({
+      versions: [],
+      imports: [{ ...job, status: "cancelled" }],
+    });
+    await act(async () => cancel!.click());
+    expect(api.cancelImport).toHaveBeenCalledWith("job");
+    expect(host.textContent).toContain("To start fresh: delete this well");
+  });
   it("opens a saved well and synchronizes report and inventory selections", async () => {
     await render();
     expect(host.textContent).toContain("Test well");

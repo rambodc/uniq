@@ -444,14 +444,17 @@ export async function structuredRequest(
   if (budget.calls >= 80 || budget.tokens >= 800000)
     throw new Error("Import processing limit reached. Retry with fewer files.");
   budget.calls++;
-  const response = await client.responses.parse({
-    model: MODEL,
-    store: false,
-    instructions,
-    input,
-    max_output_tokens: 16000,
-    text: { format: zodTextFormat(schema, name) },
-  });
+  const response = await client.responses.parse(
+    {
+      model: MODEL,
+      store: false,
+      instructions,
+      input,
+      max_output_tokens: 16000,
+      text: { format: zodTextFormat(schema, name) },
+    },
+    { signal: budget.signal },
+  );
   budget.tokens += response.usage?.total_tokens || 0;
   onUsage({ calls: budget.calls, tokens: budget.tokens });
   if (!response.output_parsed)
@@ -468,10 +471,11 @@ export async function extractFiles(
     onCheckpoint = async () => {},
     checkpoints = {},
     onProgress = async () => {},
+    signal,
   } = {},
 ) {
   const client = new OpenAI({ apiKey, maxRetries: 2, timeout: 180000 }),
-    budget = { calls: 0, tokens: 0 };
+    budget = { calls: 0, tokens: 0, signal };
   let dataset = emptyDataset();
   const sheets = [];
   for (const f of files) {
@@ -751,5 +755,8 @@ export async function extractFiles(
         "Branch layout is schematic where parentage, direction or survey stations are missing.",
       ),
     );
-  return { dataset: reconcile(dataset), usage: budget };
+  return {
+    dataset: reconcile(dataset),
+    usage: { calls: budget.calls, tokens: budget.tokens },
+  };
 }

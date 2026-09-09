@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
+import { emptyDataset } from "../apps/fluidlab/model.js";
 import { db } from "../core/firebase.js";
 import {
   createFluidWell,
@@ -11,6 +12,8 @@ import {
   deleteFluidWell,
   beginFluidImport,
   cancelFluidImport,
+  publish,
+  assertImportRun,
 } from "../apps/fluidlab/service.js";
 const enabled =
   !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.STORAGE_EMULATOR_HOST;
@@ -108,7 +111,32 @@ test(
         beginFluidImport.run(request({ ...upload, mutationId: randomUUID() })),
         /Another import/,
       );
+      const jobRef = db.doc(
+        `users/${uid}/miniApps/fluidlab/imports/${importId}`,
+      );
+      await jobRef.update({ status: "processing", runId: "old-worker" });
       await cancelFluidImport.run(request({ importId }));
+      await assert.rejects(
+        db.runTransaction((tx) => assertImportRun(tx, jobRef, "old-worker")),
+        /cancelled/,
+      );
+      await assert.rejects(
+        publish(uid, id, emptyDataset(), 3, randomUUID(), "Late worker", {
+          id: importId,
+          runId: "old-worker",
+          metrics: {},
+        }),
+        /cancelled/,
+      );
+      assert.equal(
+        (await getFluidWell.run(request({ wellId: id }))).well.revision,
+        3,
+      );
+      assert.equal(
+        (await getFluidHistory.run(request({ wellId: id }))).versions.length,
+        3,
+      );
+
       assert.equal(
         (await cancelFluidImport.run(request({ importId }))).status,
         "cancelled",

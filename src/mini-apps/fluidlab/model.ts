@@ -99,6 +99,7 @@ export interface Dataset {
   allocations: Allocation[];
 }
 export interface ImportJob {
+  updatedAt?: string;
   id: string;
   wellId: string;
   status: string;

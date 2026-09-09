@@ -642,7 +642,9 @@ export default function FluidLab({
                         {new Date(j.createdAt).toLocaleDateString()}
                       </p>
                       {j.message && <p>{j.message}</p>}
-                      {["failed", "partial"].includes(j.status) && (
+                      {["failed", "partial", "cancelled"].includes(
+                        j.status,
+                      ) && (
                         <button
                           onClick={() =>
                             void run(async () => {
@@ -651,7 +653,7 @@ export default function FluidLab({
                             })
                           }
                         >
-                          Retry extraction
+                          Resume saved progress
                         </button>
                       )}
                       {j.status === "uploading" && (
@@ -807,18 +809,35 @@ export default function FluidLab({
               {job.message ||
                 "Your files will keep processing if you leave this page."}
             </span>
-            {!uploading && ["uploading", "queued"].includes(job.status) && (
-              <button
-                onClick={() =>
-                  void run(async () => {
-                    await api.cancelImport(job.id);
-                    setJob({ ...job, status: "cancelled" });
-                    await refresh();
-                  })
-                }
-              >
-                Cancel import
-              </button>
+            {!uploading &&
+              ["uploading", "queued", "processing"].includes(job.status) && (
+                <button
+                  onClick={() =>
+                    void run(async () => {
+                      await api.cancelImport(job.id);
+                      setJob({ ...job, status: "cancelled" });
+                      await refresh();
+                    })
+                  }
+                >
+                  Cancel import
+                </button>
+              )}
+            {job.status === "processing" && (
+              <small>
+                AI interpretation can take several minutes. Safe to leave this
+                page. Last progress:{" "}
+                {job.updatedAt
+                  ? new Date(job.updatedAt).toLocaleTimeString()
+                  : "just now"}
+                .
+              </small>
+            )}
+            {job.status === "cancelled" && (
+              <small>
+                To start fresh: delete this well, then upload again. To keep
+                completed work: use Resume saved progress in import history.
+              </small>
             )}
             {job.total && (
               <small>
