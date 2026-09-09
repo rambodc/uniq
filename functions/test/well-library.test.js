@@ -6,7 +6,7 @@ import { beginUpload, completeUpload, ownedWell, renameWell, removeWell, validUp
 
 const input = { uploadId: "upload-1", name: "My well", originalName: "well.zip", sizeBytes: 50, detail: "balanced" };
 function setup(t) {
-  const records = new Map(), objects = new Map(); let failDelete = false;
+  const records = new Map(), objects = new Map(), metadataUpdates = []; let failDelete = false;
   const doc = (path) => ({ id: path.split("/").at(-1), path,
     get: async () => ({ id: path.split("/").at(-1), exists: records.has(path), data: () => records.get(path) }),
     delete: async () => records.delete(path),
@@ -18,9 +18,9 @@ function setup(t) {
   }));
   t.mock.method(storage, "bucket", () => ({ file: (path) => ({
     getMetadata: async () => { if (!objects.has(path)) throw Object.assign(new Error("missing"), { code: 404 }); return [objects.get(path)]; },
-    setMetadata: async () => {}, delete: async () => { if (failDelete) throw new Error("offline"); objects.delete(path); },
+    setMetadata: async (metadata, options) => { metadataUpdates.push({ metadata, options }); }, delete: async () => { if (failDelete) throw new Error("offline"); objects.delete(path); },
   }) }));
-  return { records, objects, failDelete: (value) => { failDelete = value; } };
+  return { records, objects, metadataUpdates, failDelete: (value) => { failDelete = value; } };
 }
 
 test("upload input enforces size, ZIP, name, detail, and safe IDs", () => {
@@ -30,7 +30,7 @@ test("upload input enforces size, ZIP, name, detail, and safe IDs", () => {
 });
 
 test("reservations and completion are idempotent; ownership is never taken from request data", async (t) => {
-  const { records, objects } = setup(t);
+  const { records, objects, metadataUpdates } = setup(t);
   const reservation = await beginUpload("owner", { ...input, owner: "victim", path: "elsewhere" });
   assert.equal(reservation.path, "users/owner/well-viewer/upload-1/original.zip");
   await beginUpload("owner", input);
@@ -40,6 +40,7 @@ test("reservations and completion are idempotent; ownership is never taken from 
   const first = await completeUpload("owner", "upload-1"), retry = await completeUpload("owner", "upload-1");
   assert.deepEqual(first, retry);
   assert.equal(first.well.generation, "7");
+  assert.deepEqual(metadataUpdates, [{ metadata: { metadata: { firebaseStorageDownloadTokens: null } }, options: { ifGenerationMatch: "7" } }]);
   await assert.rejects(ownedWell("other-admin", "upload-1"), { code: "not-found" });
   await assert.rejects(renameWell("other-admin", "upload-1", "stolen"), { code: "not-found" });
   await removeWell("other-admin", "upload-1");

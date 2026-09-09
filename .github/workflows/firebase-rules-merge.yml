@@ -2,7 +2,7 @@ name: "Production: Firebase Rules"
 on:
   push:
     branches: [production]
-    paths: ["firestore.rules", "storage.rules", "storage.cors.json", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
+    paths: ["firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-well-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
   workflow_dispatch:
 concurrency: { group: rules-production, cancel-in-progress: false }
 jobs:
@@ -26,9 +26,7 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Configure private well Storage access
-        run: |
-          gcloud projects add-iam-policy-binding uniqenergy-de71c --member="serviceAccount:service-357883281274@gcp-sa-firebasestorage.iam.gserviceaccount.com" --role="roles/firebaserules.firestoreServiceAgent" --condition=None --quiet
-          gcloud storage buckets update gs://uniqenergy-de71c.firebasestorage.app --cors-file=storage.cors.json
+        run: python3 scripts/configure-well-storage.py
       - run: npm ci
       - run: npm ci --prefix functions
       - run: npm install --global firebase-tools@14.15.2
