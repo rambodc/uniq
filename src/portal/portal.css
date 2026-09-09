@@ -371,7 +371,7 @@
   .launcher-grid {
     grid-template-columns: 1fr;
   }
-  .portal-header > div > span {
+  .portal-shell:not(.portal-launcher-shell) .portal-header > div > span {
     display: none;
   }
   .miniapp-heading {
@@ -394,7 +394,7 @@
 .portal-launcher-shell .portal-header span { color:#c5dfd6; }
 .portal-launcher-shell .launcher { width:100%; max-width:1100px; margin:auto; padding:38px 24px 28px; text-align:center; }
 .launcher-brand { display:flex; flex-direction:column; align-items:center; gap:16px; }
-.launcher-brand-symbol { width:112px; height:112px; object-fit:contain; filter:drop-shadow(0 0 22px #40ffac99); animation:portal-brand-glow 5s ease-in-out infinite; }
+.launcher-brand-symbol { width:112px; height:112px; object-fit:contain; filter:drop-shadow(0 0 22px #40ffac99); animation:portal-brand-glow 7s ease-in-out infinite; transform-origin:center; }
 .launcher-wordmark { margin:0; color:#f0fff6; font-size:30px; font-weight:750; letter-spacing:-.055em; }.launcher-wordmark>span { color:#4de493; }
 .portal-launcher-shell .launcher-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:28px 20px; max-width:960px; margin:42px auto 0; }
 .launcher-app { display:flex; flex-direction:column; align-items:center; min-width:0; padding:12px 5px; border-radius:24px; color:#f1fff7; text-decoration:none; transition:background .2s,transform .2s; }
@@ -407,7 +407,12 @@
 .launcher-app:focus-visible { outline:2px solid #6bffc2; outline-offset:5px; background:#caffdf0e; }
 .launcher-app:active .launcher-app-art { transform:scale(.96); }
 .launcher-footnote { margin:38px 0 0; color:#84ab9899; font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
-@keyframes portal-brand-glow { 0%,100% { filter:drop-shadow(0 0 15px #40ffac70); } 50% { filter:drop-shadow(0 0 32px #40ffaca6); } }
+@keyframes portal-brand-glow {
+  0%,100% { transform:scale(1); filter:drop-shadow(0 0 15px #40ffac70); }
+  35% { transform:scale(1.055); filter:drop-shadow(0 0 32px #40ffacb0); }
+  50% { transform:scale(1.015); filter:drop-shadow(0 0 20px #40ffac85); }
+  65% { transform:scale(1.04); filter:drop-shadow(0 0 28px #40ffaca0); }
+}
 @media (max-width:600px) {
   .portal-launcher-shell { background-attachment:scroll; }
   .portal-launcher-shell .launcher { padding:28px 20px; }
