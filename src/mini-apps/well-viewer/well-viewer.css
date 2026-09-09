@@ -75,3 +75,31 @@ body.well-viewer-active { overflow: hidden; overscroll-behavior: none; }
 .well-error { max-width:calc(100vw - 32px); }.well-error span { overflow-wrap:anywhere; }
 @media (min-width:721px) { .well-empty { margin-left:390px; padding-left:30px; padding-right:30px; }.well-empty h1 { font-size:clamp(25px,3vw,46px); } }
 @media (max-width:720px) { .well-library { padding:13px; }.well-library ul { max-height:38vh; } }
+
+.well-sidebar-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:9px; padding:10px; border-bottom:1px solid var(--line); background:#08232e; }
+.well-sidebar-tabs { display:flex; flex:1; gap:4px; padding:4px; border:1px solid var(--line); border-radius:12px; background:#031923; }
+.well-sidebar-tabs button { flex:1; min-height:38px; border:1px solid transparent; border-radius:8px; background:transparent; color:#8fb0ba; font-size:12px; font-weight:700; cursor:pointer; }
+.well-sidebar-tabs button[aria-selected="true"] { border-color:#3cddc16b; background:#13534f; color:#e7fff9; box-shadow:0 3px 10px #0003; }
+.well-sidebar-tabs button:focus-visible,.well-details-empty button:focus-visible { outline:2px solid #48efd3; outline-offset:2px; }
+.well-panel [role="tabpanel"][hidden] { display:none; }
+.well-library ul { max-height:none; overflow:visible; }
+.well-details-empty { padding:36px 22px; text-align:center; }
+.well-details-empty>svg { width:30px; height:30px; color:#4fe3c7; }
+.well-details-empty h2 { margin:15px 0 8px; font-size:18px; }
+.well-details-empty p { color:#96b3be; font-size:12px; line-height:1.65; }
+.well-details-empty button { margin-top:12px; padding:10px 15px; border:1px solid #43dabe; border-radius:10px; background:#12665f; color:white; cursor:pointer; }
+.well-exit-dialog { position:fixed; inset:0; width:min(480px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); margin:auto; padding:30px; overflow:auto; border:1px solid #3aa99b80; border-radius:24px; background:radial-gradient(ellipse at top left,#124443,#06232e 65%); color:#effffc; box-shadow:0 32px 100px #0009; }
+.well-exit-dialog::backdrop { background:#001017b8; backdrop-filter:blur(7px); }
+.well-exit-close { position:absolute; top:14px; right:14px; width:36px; height:36px; display:grid; place-items:center; border:1px solid #668e944d; border-radius:11px; background:#0c303a; color:#b7d3d6; cursor:pointer; }
+.well-exit-close svg { width:18px; height:18px; }
+.well-exit-icon { display:grid; place-items:center; width:52px; height:52px; margin-bottom:22px; border:1px solid #4fe3c75c; border-radius:16px; background:#1a746b45; color:#69eed6; }
+.well-exit-eyebrow { color:#71bdb3; font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+.well-exit-dialog h2 { margin:9px 0 12px; font-size:27px; letter-spacing:-.035em; }
+.well-exit-dialog p { margin:0; color:#a2bfc6; font-size:14px; line-height:1.7; }
+.well-exit-actions { display:grid; gap:10px; margin-top:26px; }
+.well-exit-actions button,.well-exit-actions a { display:flex; align-items:center; justify-content:center; gap:9px; min-height:46px; padding:12px 15px; border:1px solid #365e68; border-radius:12px; background:#0c303c; color:#d6eded; font:inherit; font-size:13px; font-weight:700; text-align:center; text-decoration:none; cursor:pointer; }
+.well-exit-actions a { border-color:#45d6bd; background:#167c70; color:white; }
+.well-exit-actions svg { width:17px; height:17px; flex-shrink:0; }
+.well-exit-dialog button:hover,.well-exit-actions a:hover { filter:brightness(1.15); }
+.well-exit-dialog button:focus-visible,.well-exit-actions a:focus-visible { outline:2px solid #68f4db; outline-offset:3px; }
+@media (max-width:430px) { .well-exit-dialog { padding:24px; }.well-exit-dialog h2 { font-size:24px; } }
