@@ -20,3 +20,11 @@ export { createFluidLabProject } from "./apps/fluidlab/create-project.js";
 export { getFluidLabProject } from "./apps/fluidlab/get-project.js";
 export { saveFluidLabProject } from "./apps/fluidlab/save-project.js";
 export { deleteFluidLabProject } from "./apps/fluidlab/delete-project.js";
+
+export { beginWellUpload } from "./apps/well-viewer/begin-upload.js";
+export { completeWellUpload } from "./apps/well-viewer/complete-upload.js";
+export { listSavedWells } from "./apps/well-viewer/list-wells.js";
+export { getSavedWell } from "./apps/well-viewer/get-well.js";
+export { renameSavedWell } from "./apps/well-viewer/rename-well.js";
+export { deleteSavedWell } from "./apps/well-viewer/delete-well.js";
+export { cleanupSavedWells } from "./apps/well-viewer/cleanup.js";

@@ -1,8 +1,23 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{object=**} {
-      allow read, write: if false;
+    function hasWellAccess(uid) {
+      let user = firestore.get(/databases/(default)/documents/users/$(uid)).data;
+      return request.auth != null && request.auth.uid == uid && user.schemaVersion == 1
+        && user.status == 'active' && user.email == request.auth.token.email
+        && (user.role == 'admin' || 'well-viewer' in user.enabledMiniApps);
     }
+    match /users/{uid}/well-viewer/{wellId}/original.zip {
+      function well() { return firestore.get(/databases/(default)/documents/users/$(uid)/miniApps/well-viewer/wells/$(wellId)).data; }
+      allow get: if request.auth != null && request.auth.uid == uid && hasWellAccess(uid)
+        && well().owner == uid && well().status == 'ready';
+      allow create: if resource == null && request.auth != null && request.auth.uid == uid && hasWellAccess(uid)
+        && well().owner == uid && well().status == 'uploading' && request.time < well().cleanupAt
+        && request.resource.size > 0 && request.resource.size <= 1000000000
+        && request.resource.size == well().sizeBytes && request.resource.contentType == 'application/zip'
+        && request.resource.metadata.owner == uid && request.resource.metadata.wellId == wellId;
+      allow list, update, delete: if false;
+    }
+    match /{object=**} { allow read, write: if false; }
   }
 }
