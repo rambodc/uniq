@@ -15,7 +15,6 @@ export default function ExitWellDialog({ onClose, onExit }: { onClose: () => voi
 
   return <dialog ref={dialog} className="well-exit-dialog" aria-labelledby="well-exit-title" aria-describedby="well-exit-description" onCancel={(event) => { event.preventDefault(); onClose(); }}>
     <button className="well-exit-close" aria-label="Close exit dialog" onClick={onClose}><X/></button>
-    <div className="well-exit-icon"><ArrowLeft/></div>
     <span className="well-exit-eyebrow">Your workspace</span>
     <h2 id="well-exit-title">Return to the portal?</h2>
     <p id="well-exit-description">Open the portal in a new tab to keep this well exactly where you left it, or exit the viewer and continue in this tab.</p>

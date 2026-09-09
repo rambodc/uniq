@@ -8,6 +8,7 @@ export interface LibraryProgress { message: string; percent: number | null }
 export function useWellLibrary(onOpen: (well: api.SavedWell, model: WellModel) => void, onDeleted: (id: string) => void) {
   const [wells, setWells] = useState<api.SavedWell[]>([]), [cursor, setCursor] = useState<api.WellCursor | null>(null), [listBusy, setListBusy] = useState(true), [listError, setListError] = useState("");
   const [progress, setProgress] = useState<LibraryProgress | null>(null), [error, setError] = useState(""), [pending, setPending] = useState<WellPackageManifest | null>(null), [busyId, setBusyId] = useState<string | null>(null), [canRetry, setCanRetry] = useState(false);
+  const [busyMessage, setBusyMessage] = useState("");
   const job = useRef<Job | null>(null), mounted = useRef(true), request = useRef(0), retry = useRef<(() => void) | null>(null);
   const callbacks = useRef({ onOpen, onDeleted }); useEffect(() => { callbacks.current = { onOpen, onDeleted }; }, [onOpen, onDeleted]);
   const current = (work: Job) => mounted.current && job.current === work && !work.controller.signal.aborted;
@@ -82,19 +83,19 @@ export function useWellLibrary(onOpen: (well: api.SavedWell, model: WellModel) =
     void run();
   };
   const rename = async (id: string, name: string) => {
-    setBusyId(id);
+    setBusyId(id); setBusyMessage("Renaming well…");
     try { const { well } = await api.renameWell(id, name); if (mounted.current) setWells((old) => old.map((item) => item.id === id ? well : item)); return true; }
     catch { if (mounted.current) setError("The well could not be renamed. Try again."); return false; }
-    finally { if (mounted.current) setBusyId(null); }
+    finally { if (mounted.current) { setBusyId(null); setBusyMessage(""); } }
   };
   const remove = async (id: string) => {
     if (job.current?.openingId === id) cancel();
-    setBusyId(id);
+    setBusyId(id); setBusyMessage("Deleting well…");
     try { await api.deleteWell(id); if (mounted.current) { setWells((old) => old.filter((item) => item.id !== id)); callbacks.current.onDeleted(id); } return true; }
     catch { if (mounted.current) setError("Deletion could not finish. Retry Delete to remove the well."); return false; }
-    finally { if (mounted.current) setBusyId(null); }
+    finally { if (mounted.current) { setBusyId(null); setBusyMessage(""); } }
   };
-  return { wells, listBusy, listError, hasMore: Boolean(cursor), progress, error, pending, busyId, canRetry, upload, open, rename, remove, cancel,
+  return { wells, listBusy, listError, hasMore: Boolean(cursor), progress, error, pending, busyId, busyMessage, canRetry, upload, open, rename, remove, cancel,
     refresh: () => { void load(); }, more: () => { if (!listBusy && cursor) void load(cursor); },
     confirmDetail: (detail: OperationalDetail) => { if (job.current) void save(job.current, detail); },
     retry: () => { setError(""); setCanRetry(false); retry.current?.(); }, dismissError: () => setError("") };

@@ -103,3 +103,26 @@ body.well-viewer-active { overflow: hidden; overscroll-behavior: none; }
 .well-exit-dialog button:hover,.well-exit-actions a:hover { filter:brightness(1.15); }
 .well-exit-dialog button:focus-visible,.well-exit-actions a:focus-visible { outline:2px solid #68f4db; outline-offset:3px; }
 @media (max-width:430px) { .well-exit-dialog { padding:24px; }.well-exit-dialog h2 { font-size:24px; } }
+
+.well-exit-dialog h2 { padding-right:12px; }
+.well-exit-dialog p b { color:#defcf3; overflow-wrap:anywhere; }
+.well-exit-actions .well-confirm-primary { border-color:#45d6bd; background:#167c70; color:white; }
+.well-task-overlay { position:absolute; inset:0; z-index:85; display:grid; place-items:center; padding:20px; background:#00151c66; pointer-events:none; }
+.well-brand-loader { width:min(320px,100%); padding:28px 26px 22px; border:1px solid #4dddc45c; border-radius:22px; background:radial-gradient(ellipse at top,#124b4c,#06232ef5 72%); color:#e5fff9; text-align:center; box-shadow:0 22px 65px #0007,0 0 45px #29e2bd12; pointer-events:auto; }
+.well-loader-emblem { position:relative; width:88px; height:96px; margin:0 auto 18px; display:grid; place-items:center; }
+.well-loader-emblem img { width:58px; height:58px; object-fit:contain; animation:well-logo-glow 2s ease-in-out infinite; filter:drop-shadow(0 0 12px #50fbd6); }
+.well-loader-emblem span { position:absolute; bottom:0; width:28px; height:28px; border:2px solid #57e6ce26; border-top-color:#83ffe5; border-right-color:#30c9ac; border-radius:50%; animation:well-loader-spin 1s linear infinite; box-shadow:0 0 12px #43e3c329; }
+.well-brand-loader p { margin:0; font-size:13px; font-weight:600; line-height:1.6; }
+.well-loader-progress { display:flex; align-items:center; gap:10px; margin-top:15px; }
+.well-loader-progress progress { width:100%; height:6px; accent-color:#53edcc; }
+.well-loader-progress span { color:#8cf4df; font-size:11px; font-variant-numeric:tabular-nums; }
+.well-brand-loader>button { margin-top:18px; padding:8px 20px; border:1px solid #588c9570; border-radius:9px; background:#0b303a; color:#bededc; cursor:pointer; }
+.well-brand-loader>button:focus-visible { outline:2px solid #68f4db; outline-offset:3px; }
+.well-brand-loader.compact { width:100%; margin-top:15px; padding:16px; box-shadow:none; background:#092c3680; }
+.well-brand-loader.compact .well-loader-emblem { width:56px; height:64px; margin-bottom:12px; }
+.well-brand-loader.compact img { width:36px; height:36px; }
+.well-brand-loader.compact .well-loader-emblem span { width:18px; height:18px; }
+.well-brand-loader.compact p { font-size:11px; }
+@keyframes well-logo-glow { 0%,100% { filter:drop-shadow(0 0 7px #50fbd688); opacity:.8; transform:scale(.96); } 50% { filter:drop-shadow(0 0 20px #50fbd6); opacity:1; transform:scale(1.04); } }
+@keyframes well-loader-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .well-loader-emblem img,.well-loader-emblem span { animation:none; } }

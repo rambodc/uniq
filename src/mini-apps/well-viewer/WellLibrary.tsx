@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileUp, Pencil, Trash2 } from "lucide-react";
 import type { useWellLibrary } from "./useWellLibrary";
+import WellLoader from "./WellLoader";
 import type { SavedWell } from "./library";
 
 type Library = ReturnType<typeof useWellLibrary>;
@@ -23,7 +24,7 @@ export default function WellLibrary({ library, selectedId, onUpload }: { library
     {library.listError && <div role="alert" className="well-library-message"><p>{library.listError}</p><button onClick={library.refresh}>Retry library</button></div>}
     {!library.listBusy && !library.listError && !library.wells.length && <p className="well-library-empty">Your saved wells will appear here. Upload an original well ZIP to begin.</p>}
     <ul aria-label="Your saved wells">{library.wells.map((well) => <WellRow key={well.id} well={well} active={well.id === selectedId} library={library}/>)}</ul>
-    {library.listBusy && <p className="well-library-message" role="status">Loading your wells…</p>}
+    {library.listBusy && <WellLoader compact message="Loading your wells…"/>}
     {library.hasMore && <button className="well-load-more" disabled={library.listBusy} onClick={library.more}>Load more wells</button>}
   </section>;
 }

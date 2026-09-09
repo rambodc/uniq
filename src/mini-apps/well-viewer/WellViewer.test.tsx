@@ -55,3 +55,27 @@ it("offers a new portal tab and only cancels viewer work when exiting in this ta
   await click('[aria-label="Back to portal"]'); await click(".well-exit-actions button");
   expect(state.cancel).toHaveBeenCalledOnce(); expect(navigate).toHaveBeenCalledWith("/portal");
 });
+
+it("only confirms replacement explicitly, allowing close and Escape to keep the well", async () => {
+  const { default: ReplaceWellDialog } = await import("./ReplaceWellDialog");
+  const close = vi.fn(), confirm = vi.fn();
+  await act(async () => root.render(<ReplaceWellDialog currentName="Current well" nextName="Next well" onClose={close} onConfirm={confirm}/>));
+  expect(container.textContent).toContain("Current well"); expect(container.textContent).toContain("Next well");
+  await click('[aria-label="Keep current well"]');
+  expect(close).toHaveBeenCalledOnce(); expect(confirm).not.toHaveBeenCalled();
+  await act(async () => { container.querySelector("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true })); });
+  expect(close).toHaveBeenCalledTimes(2); expect(confirm).not.toHaveBeenCalled();
+  await click(".well-confirm-primary"); expect(confirm).toHaveBeenCalledOnce();
+});
+
+it("shows branded progress and offers cancellation only for cancellable operations", async () => {
+  const { default: WellLoader } = await import("./WellLoader");
+  const cancel = vi.fn();
+  await act(async () => root.render(<WellLoader message="Uploading original ZIP…" percent={42} onCancel={cancel}/>));
+  expect(container.querySelector("img")!.getAttribute("src")).toBe("/brand/uniqenergy-mark-64.png");
+  expect(container.querySelector("progress")!.value).toBe(42);
+  expect(container.querySelector('[role="status"]')!.textContent).toBe("Uploading original ZIP…");
+  await click("button"); expect(cancel).toHaveBeenCalledOnce();
+  await act(async () => root.render(<WellLoader message="Deleting well…"/>));
+  expect(container.querySelector("button")).toBeNull(); expect(container.querySelector("progress")).toBeNull();
+});

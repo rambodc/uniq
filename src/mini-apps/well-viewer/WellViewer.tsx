@@ -9,6 +9,8 @@ import "./well-viewer.css";
 import { useWellLibrary } from "./useWellLibrary";
 import WellLibrary from "./WellLibrary";
 import ExitWellDialog from "./ExitWellDialog";
+import ReplaceWellDialog from "./ReplaceWellDialog";
+import WellLoader from "./WellLoader";
 
 const Scene = lazy(() => import("./WellScene"));
 const shouldIgnoreShortcut = (target: EventTarget | null) => (target as HTMLElement | null)?.closest("input, textarea, select, button, [contenteditable='true'], dialog, [role='dialog'], [role='slider'], .well-panel");
@@ -16,6 +18,7 @@ const nearestStation = (leg: SurveyLeg, md: number) => leg.stations.reduce((best
 
 export default function WellViewer({ navigate }: { navigate: (path: string) => void }) {
   const [sidebarTab, setSidebarTab] = useState<"library" | "details">("library");
+  const [replacement, setReplacement] = useState<{ name: string; run: () => void } | null>(null);
   const [exitOpen, setExitOpen] = useState(false);
   const [survey, setSurvey] = useState<WellModel | null>(null), [selectedLegId, setSelectedLegId] = useState(""), [selectedSectionId, setSelectedSectionId] = useState<string | null>(null), [showCasings, setShowCasings] = useState(true);
   const [detail, setDetail] = useState<OperationalDetail>("balanced"), [selectedWellId, setSelectedWellId] = useState(""), [selectedWellName, setSelectedWellName] = useState("");
@@ -31,7 +34,7 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   useEffect(() => { document.body.classList.add("well-viewer-active"); return () => document.body.classList.remove("well-viewer-active"); }, []);
   useEffect(() => { const query = matchMedia("(max-width: 720px)"), change = () => setMobile(query.matches); query.addEventListener("change", change); return () => query.removeEventListener("change", change); }, []);
   useEffect(() => { const change = () => { setVisible(!document.hidden); if (document.hidden) stop(); }; document.addEventListener("visibilitychange", change); return () => document.removeEventListener("visibilitychange", change); }, [stop]);
-  useEffect(() => { if (!mobile || !panelOpen || exitOpen) return; const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); } }; addEventListener("keydown", keydown); return () => removeEventListener("keydown", keydown); }, [mobile, panelOpen, exitOpen]);
+  useEffect(() => { if (!mobile || !panelOpen || exitOpen || replacement) return; const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); } }; addEventListener("keydown", keydown); return () => removeEventListener("keydown", keydown); }, [mobile, panelOpen, exitOpen, replacement]);
   useEffect(() => {
     const movementDirection = navigationIntensity || keyboardDepthDirection;
     if (!leg || movementDirection === 0) return;
@@ -75,6 +78,15 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   const library = useWellLibrary((well, parsed) => { stop(); setSelectedWellId(well.id); setSelectedWellName(well.name); commitWell(parsed); }, (id) => { if (id === selectedWellId) { stop(); setSelectedWellId(""); setSurvey(null); setSidebarTab("library"); } });
   const pendingPackage = library.pending;
   const selectedWell = library.wells.find((well) => well.id === selectedWellId);
+  const requestOpen = (id: string) => {
+    if (id === selectedWellId) { setSidebarTab("details"); return; }
+    if (survey) { stop(); setReplacement({ name: library.wells.find((well) => well.id === id)?.name || "the selected well", run: () => library.open(id) }); }
+    else library.open(id);
+  };
+  const requestUpload = (file: File) => {
+    const run = () => { setDetail("balanced"); library.upload(file); };
+    if (survey) { stop(); setReplacement({ name: file.name, run }); } else run();
+  };
   const chooseFile = () => input.current?.click();
   const closeMobilePanel = () => { if (!mobile || !panelOpen) return; setPanelOpen(false); requestAnimationFrame(() => panelOpener.current?.focus()); };
   const selectLeg = (id: string) => { const next = survey?.legs.find((item) => item.id === id); if (!next) return; const md = (next.startMdM + next.endMdM) / 2; setSelectedLegId(id); setSelectedSectionId(holeAtMd(survey!, id, md)?.id ?? null); setCurrentMd(md); stop(); closeMobilePanel(); };
@@ -92,9 +104,9 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
   const station = leg ? nearestStation(leg, currentMd) : null, activeHole = survey && leg ? holeAtMd(survey, leg.id, currentMd) : null, activeCasings = survey ? casingsAtMd(survey, currentMd) : [], operations = survey ? summarizeOperations(survey, currentMd) : null;
 
   return <main className="well-workspace">
-    <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-loading">Building surveyed well…</div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} navigationIntensity={navigationIntensity || keyboardDepthDirection} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Your original ZIP is saved privately to your account. Upload a well or open one from My wells.</p><button onClick={chooseFile}>Upload well ZIP</button></div>}</div>
-    <header className="well-topbar"><button aria-label="Back to portal" title="Back to portal" onClick={() => { stop(); setExitOpen(true); }}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-label-toggle" aria-label={`Labels: ${labelMode}`} title="Cycle scene labels" onClick={() => setLabelMode(nextLabelMode)}><Tags/><span><small>Label</small><b>{labelMode[0].toUpperCase() + labelMode.slice(1)}</b></span></button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setDetail("balanced"); library.upload(file); } event.target.value = ""; }}/></header>
-    {library.progress && <div className="well-status" role="status"><span>{library.progress.message}</span><progress max="100" value={library.progress.percent ?? undefined}/><button onClick={library.cancel}>Cancel</button></div>}
+    <div className="well-scene">{survey && leg ? <Suspense fallback={<div className="well-task-overlay"><WellLoader message="Building surveyed well…"/></div>}><Scene survey={survey} selectedLegId={leg.id} selectedSectionId={selectedSectionId} currentMd={currentMd} navigationIntensity={navigationIntensity || keyboardDepthDirection} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} labelMode={labelMode} reducedMotion={reducedMotion} active={visible} showCasings={showCasings} onSelectLeg={selectLeg} onSelectSection={selectSection} onManualInteraction={() => {}}/></Suspense> : <div className="well-empty"><div><FileArchive/><span>Well ZIP</span></div><h1>Build the actual well in 3D</h1><p>Import the original well package. Your original ZIP is saved privately to your account. Upload a well or open one from My wells.</p><button onClick={chooseFile}>Upload well ZIP</button></div>}</div>
+    <header className="well-topbar"><button aria-label="Back to portal" title="Back to portal" onClick={() => { stop(); setExitOpen(true); }}><ArrowLeft/></button><img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy"/><span>UniqEnergy / Well Viewer</span>{survey && <button className="well-label-toggle" aria-label={`Labels: ${labelMode}`} title="Cycle scene labels" onClick={() => setLabelMode(nextLabelMode)}><Tags/><span><small>Label</small><b>{labelMode[0].toUpperCase() + labelMode.slice(1)}</b></span></button>}<input ref={input} className="well-file-input" type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) requestUpload(file); event.target.value = ""; }}/></header>
+    {(library.progress || library.busyMessage) && <div className="well-task-overlay"><WellLoader message={library.busyMessage || library.progress!.message} percent={library.busyMessage ? null : library.progress?.percent} onCancel={library.busyMessage ? undefined : library.cancel}/></div>}
     {library.error && <div className="well-error" role="alert"><span>{library.error}</span>{library.canRetry && <button onClick={library.retry}>Retry</button>}<button onClick={library.cancel}>Dismiss</button></div>}
     {pendingPackage && !library.progress && <div className="well-import-dialog-wrap"><section className="well-import-dialog" role="dialog" aria-modal="true" aria-labelledby="well-import-title"><header><div><span>Large drilling file</span><h2 id="well-import-title">Choose operational detail</h2></div><button aria-label="Cancel import" onClick={library.cancel}><X/></button></header><p><b>{pendingPackage.csvFileName}</b> is {(pendingPackage.csvSizeBytes / 1_000_000).toFixed(1)} MB uncompressed. Every valid row will be examined; this setting controls depth resolution, not random row deletion. Peaks, counts, timestamps, averages, and latest values are retained.</p><div className="well-detail-options">{(["detailed", "balanced", "compact"] as const).map((choice) => <label key={choice} className={detail === choice ? "active" : ""}><input aria-label={`${choice} operational detail`} type="radio" name="operational-detail" value={choice} checked={detail === choice} onChange={() => setDetail(choice)}/><span><b>{choice[0].toUpperCase() + choice.slice(1)}</b><small>{choice === "detailed" ? "0.25 m bands · maximum depth detail" : choice === "balanced" ? "0.5 m bands · recommended" : "1.0 m bands · smallest memory use"}</small></span></label>)}</div><footer><button className="secondary" onClick={library.cancel}>Cancel</button><button onClick={() => library.confirmDetail(detail)}>Upload well</button></footer></section></div>}
     {mobile && <button ref={panelOpener} className="well-panel-opener" aria-controls="well-inspector" aria-expanded={panelOpen} onClick={() => { setPanelOpen(true); requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".well-panel-close")?.focus()); }}><PanelLeftOpen/><span>{sidebarTab === "library" ? "My Wells" : "Well info"}</span></button>}
@@ -112,7 +124,7 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
         {mobile && <button className="well-panel-close" aria-label="Close wells sidebar" onClick={closeMobilePanel}><X/></button>}
       </div>
       <div id="well-library-panel" role="tabpanel" aria-labelledby="well-tab-library" hidden={sidebarTab !== "library"}>
-        <WellLibrary library={library} selectedId={selectedWellId} onUpload={chooseFile}/>
+        <WellLibrary library={{ ...library, open: requestOpen }} selectedId={selectedWellId} onUpload={chooseFile}/>
       </div>
       <div id="well-details-panel" role="tabpanel" aria-labelledby="well-tab-details" hidden={sidebarTab !== "details"}>
       {!survey && <div className="well-details-empty"><Layers3/><h2>No well open yet</h2><p>Select a saved well or upload a ZIP in My Wells to see its survey and drilling details.</p><button onClick={() => { setSidebarTab("library"); document.getElementById("well-tab-library")?.focus(); }}>Go to My Wells</button></div>}
@@ -136,6 +148,7 @@ export default function WellViewer({ navigate }: { navigate: (path: string) => v
       <button onClick={() => { stop(); setFitSignal((value) => value + 1); }}><Maximize2/><span>Fit Well</span></button>
       <span className="well-key-hint" aria-hidden="true">↑↓ Zoom · ←→ Depth · Shift 4×</span>
     </div>}
+    {replacement && <ReplaceWellDialog currentName={selectedWell?.name || selectedWellName || survey?.name || "your current well"} nextName={replacement.name} onClose={() => setReplacement(null)} onConfirm={() => { const run = replacement.run; setReplacement(null); run(); }}/>}
     {exitOpen && <ExitWellDialog onClose={() => setExitOpen(false)} onExit={() => { library.cancel(); navigate("/portal"); }}/> }
   </main>;
 }
