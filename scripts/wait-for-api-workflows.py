@@ -7,7 +7,14 @@ import time
 if os.environ.get("GITHUB_ACTIONS") != "true":
     raise SystemExit("This coordination runs only in GitHub Actions.")
 sha = os.environ["GITHUB_SHA"]
-paths = subprocess.check_output(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha], text=True).splitlines()
+with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as event_file:
+    event = json.load(event_file)
+before = event.get("before")
+if before and before != "0" * 40:
+    command = ["git", "diff", "--name-only", before, sha]
+else:
+    command = ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha]
+paths = subprocess.check_output(command, text=True).splitlines()
 wanted = []
 if any(p.startswith("functions/") or p in ("scripts/configure-fluidlab-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml") for p in paths):
     wanted.append("Production: Firebase Functions")
