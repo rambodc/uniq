@@ -111,7 +111,7 @@ export default function WellScene({ survey, selectedLegId, selectedSectionId, cu
   const extent = useMemo(() => Math.max(new THREE.Box3().setFromPoints(allPoints).getSize(new THREE.Vector3()).length(), 10), [allPoints]);
   const root = survey.legs.find((leg) => !leg.parentId) ?? survey.legs[0];
   const activeHole = survey.holeSections[selected.id]?.find((section) => currentMd >= section.startMdM && currentMd <= section.endMdM);
-  return <Canvas frameloop={active ? "always" : "demand"} camera={{ fov: 42 }} gl={{ antialias: true, alpha: false }}>
+  return <Canvas frameloop={active ? "always" : "never"} camera={{ fov: 42 }} gl={{ antialias: true, alpha: false }}>
     <color attach="background" args={["#03131d"]}/><fog attach="fog" args={["#03131d", extent * 3, extent * 15]}/>
     <ambientLight intensity={1.2}/><directionalLight position={[500, 800, 700]} intensity={2}/>
     <gridHelper args={[Math.max(extent * 8, 1000), 100, "#197681", "#0b4650"]}/>
@@ -119,7 +119,7 @@ export default function WellScene({ survey, selectedLegId, selectedSectionId, cu
     {showCasings && root && survey.casings.map((casing) => <CasingTube key={casing.id} leg={root} casing={casing}/>)}
     {showCasings && root && survey.casings.map((casing) => <Label key={`shoe-${casing.id}`} position={vector(pointAtLegMd(root, Math.min(root.endMdM, casing.bottomMdM)))} mode={labelMode} category="casing" selected={root.id === selected.id} sceneExtent={extent} currentMd={currentMd} labelMd={casing.bottomMdM} legSpan={root.endMdM - root.startMdM}>{casing.category} shoe · MD {casing.bottomMdM.toFixed(0)} m</Label>)}
     <Label position={vector(pointAtLegMd(selected, currentMd))} mode={labelMode} category="current" selected sceneExtent={extent} currentMd={currentMd} labelMd={currentMd} legSpan={selected.endMdM - selected.startMdM} active>MD {currentMd.toFixed(1)} m · {activeHole?.diameterMm.toFixed(0) ?? "—"} mm</Label>
-    <OrbitControls makeDefault enableDamping={!reducedMotion} enablePan enableRotate enableZoom minDistance={Math.max(0.006, (survey.holeSections[selected.id]?.find((section) => currentMd >= section.startMdM && currentMd <= section.endMdM)?.diameterMm ?? 159) / 10000)} maxDistance={Math.max(extent * 50, 10000)} minPolarAngle={0} maxPolarAngle={Math.PI}/>
+    <OrbitControls enabled={active} makeDefault enableDamping={!reducedMotion} enablePan enableRotate enableZoom minDistance={Math.max(0.006, (survey.holeSections[selected.id]?.find((section) => currentMd >= section.startMdM && currentMd <= section.endMdM)?.diameterMm ?? 159) / 10000)} maxDistance={Math.max(extent * 50, 10000)} minPolarAngle={0} maxPolarAngle={Math.PI}/>
     <CameraController survey={survey} leg={selected} currentMd={currentMd} navigationIntensity={navigationIntensity} fitSignal={fitSignal} navigationFocusSignal={navigationFocusSignal} keyboardZoomDirection={keyboardZoomDirection} keyboardAccelerated={keyboardAccelerated} activeDiameterMm={activeHole?.diameterMm ?? 159} reducedMotion={reducedMotion} onInteraction={onManualInteraction}/>
   </Canvas>;
 }

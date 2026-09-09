@@ -72,10 +72,32 @@ it("shows branded progress and offers cancellation only for cancellable operatio
   const { default: WellLoader } = await import("./WellLoader");
   const cancel = vi.fn();
   await act(async () => root.render(<WellLoader message="Uploading original ZIP…" percent={42} onCancel={cancel}/>));
-  expect(container.querySelector("img")!.getAttribute("src")).toBe("/brand/uniqenergy-mark-64.png");
+  expect(container.querySelector("img")!.getAttribute("src")).toBe("/brand/uniqenergy-mark-256.png");
   expect(container.querySelector("progress")!.value).toBe(42);
   expect(container.querySelector('[role="status"]')!.textContent).toBe("Uploading original ZIP…");
   await click("button"); expect(cancel).toHaveBeenCalledOnce();
   await act(async () => root.render(<WellLoader message="Deleting well…"/>));
   expect(container.querySelector("button")).toBeNull(); expect(container.querySelector("progress")).toBeNull();
+});
+
+it("keeps non-cancellable loading modal open on Escape and restores focus on completion", async () => {
+  const { default: WellLoadingOverlay } = await import("./WellLoadingOverlay");
+  const trigger = document.createElement("button"); document.body.append(trigger); trigger.focus();
+  await act(async () => root.render(<WellLoadingOverlay message="Deleting well…"/>));
+  const dialog = container.querySelector("dialog")!;
+  expect(dialog.open).toBe(true); expect(document.activeElement).toBe(dialog);
+  const escape = new Event("cancel", { cancelable: true });
+  await act(async () => { dialog.dispatchEvent(escape); });
+  expect(escape.defaultPrevented).toBe(true); expect(dialog.open).toBe(true);
+  await act(async () => root.render(null));
+  expect(document.activeElement).toBe(trigger); trigger.remove();
+});
+
+it("allows Escape to cancel a transfer without dismissing unrelated work", async () => {
+  const { default: WellLoadingOverlay } = await import("./WellLoadingOverlay");
+  const cancel = vi.fn();
+  await act(async () => root.render(<WellLoadingOverlay message="Downloading original ZIP…" percent={25} onCancel={cancel}/>));
+  await act(async () => { container.querySelector("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true })); });
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(container.querySelector("progress")!.value).toBe(25);
 });

@@ -70,80 +70,7 @@
 .portal-header svg {
   width: 18px;
 }
-.launcher {
-  max-width: 1180px;
-  margin: auto;
-  padding: clamp(54px, 8vw, 110px) 24px;
-}
-.launcher-heading span,
-.miniapp-eyebrow {
-  color: var(--portal-accent);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 12px;
-  font-weight: 700;
-}
-.launcher-heading h1 {
-  font-size: clamp(42px, 7vw, 78px);
-  margin: 12px 0 10px;
-  letter-spacing: -0.05em;
-}
-.launcher-heading p {
-  color: var(--portal-muted);
-  font-size: 18px;
-}
-.launcher-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  margin-top: 48px;
-}
-.launcher-card {
-  min-height: 220px;
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.055),
-    rgba(255, 255, 255, 0.018)
-  );
-  border: 1px solid var(--portal-line);
-  border-radius: 22px;
-  padding: 28px;
-  color: inherit;
-  text-decoration: none;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 22px;
-  transition: 0.2s ease;
-}
-.launcher-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(53, 223, 189, 0.5);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
-}
-.launcher-card > svg {
-  width: 42px;
-  height: 42px;
-  color: var(--portal-accent);
-}
-.launcher-card span {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.launcher-card b {
-  font-size: 23px;
-}
-.launcher-card small {
-  color: var(--portal-muted);
-  font-size: 15px;
-  line-height: 1.55;
-}
-.launcher-card em {
-  grid-column: 2;
-  color: var(--portal-accent);
-  font-style: normal;
-  font-weight: 700;
-}
+.miniapp-eyebrow { color:var(--portal-accent); text-transform:uppercase; letter-spacing:.16em; font-size:12px; font-weight:700; }
 .miniapp-page {
   max-width: 1180px;
   margin: auto;
@@ -460,3 +387,40 @@
   .access-editor { display: flex; align-items: stretch; }
   .access-editor select { width: 100%; }
 }
+
+.portal-launcher-shell { min-height:100dvh; background:linear-gradient(180deg,#001b18a8,#001611b8),url('/portal-art/background.webp') center/cover fixed,#031d17; position:relative; isolation:isolate; }
+.portal-launcher-shell .portal-header { background:#00241c40; border-bottom-color:#9affd014; backdrop-filter:blur(16px); height:70px; }
+.portal-launcher-shell .portal-header>div:last-child { max-width:65%; overflow-wrap:anywhere; text-align:right; }
+.portal-launcher-shell .portal-header span { color:#c5dfd6; }
+.portal-launcher-shell .launcher { width:100%; max-width:1100px; margin:auto; padding:38px 24px 28px; text-align:center; }
+.launcher-brand { display:flex; flex-direction:column; align-items:center; gap:16px; }
+.launcher-brand-symbol { width:112px; height:112px; object-fit:contain; filter:drop-shadow(0 0 22px #40ffac99); animation:portal-brand-glow 5s ease-in-out infinite; }
+.launcher-wordmark { color:#f0fff6; font-size:30px; font-weight:750; letter-spacing:-.055em; }.launcher-wordmark>span { color:#4de493; }
+.portal-launcher-shell .launcher-heading { margin-top:30px; }
+.portal-launcher-shell .launcher-heading>span { color:#71dfb5; font-size:10px; letter-spacing:.2em; text-transform:uppercase; font-weight:700; }
+.portal-launcher-shell .launcher-heading h1 { margin:10px 0; color:#effff6; font-size:clamp(25px,3vw,38px); font-weight:600; letter-spacing:-.045em; }
+.portal-launcher-shell .launcher-heading p { margin:0; color:#a5c9bb; font-size:14px; }
+.portal-launcher-shell .launcher-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:28px 20px; max-width:960px; margin:42px auto 0; }
+.launcher-app { display:flex; flex-direction:column; align-items:center; min-width:0; padding:12px 5px; border-radius:24px; color:#f1fff7; text-decoration:none; transition:background .2s,transform .2s; }
+.launcher-app-art { display:block; width:128px; height:128px; border-radius:29px; overflow:hidden; box-shadow:0 16px 26px #0006,0 1px 0 #ffffff66 inset; border:1px solid #ffffff36; transition:transform .2s,box-shadow .2s; background:#10473d; }
+.launcher-app-art img { display:block; width:100%; height:100%; object-fit:cover; }
+.launcher-app>b { margin-top:16px; font-size:15px; font-weight:650; letter-spacing:.01em; }
+.launcher-app>small { margin-top:7px; color:#a8c8bb; font-size:11px; line-height:1.55; max-width:170px; }
+.launcher-app:hover { background:#caffdf09; transform:translateY(-3px); }
+.launcher-app:hover .launcher-app-art { box-shadow:0 20px 32px #0008,0 0 22px #5fffb51f; transform:scale(1.035); }
+.launcher-app:focus-visible { outline:2px solid #6bffc2; outline-offset:5px; background:#caffdf0e; }
+.launcher-app:active .launcher-app-art { transform:scale(.96); }
+.launcher-footnote { margin:38px 0 0; color:#84ab9899; font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+@keyframes portal-brand-glow { 0%,100% { filter:drop-shadow(0 0 15px #40ffac70); } 50% { filter:drop-shadow(0 0 32px #40ffaca6); } }
+@media (max-width:600px) {
+  .portal-launcher-shell { background-attachment:scroll; }
+  .portal-launcher-shell .launcher { padding:28px 20px; }
+  .launcher-brand-symbol { width:88px; height:88px; }
+  .launcher-wordmark { font-size:26px; }
+  .portal-launcher-shell .launcher-heading { margin-top:24px; }
+  .portal-launcher-shell .launcher-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 14px; margin-top:26px; }
+  .launcher-app-art { width:96px; height:96px; border-radius:23px; }
+  .launcher-app>b { font-size:14px; margin-top:12px; }
+  .launcher-app>small { font-size:10px; }
+}
+@media (prefers-reduced-motion:reduce) { .launcher-brand-symbol { animation:none; }.launcher-app,.launcher-app-art { transition:none; } }
