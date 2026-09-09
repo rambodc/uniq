@@ -395,11 +395,7 @@
 .portal-launcher-shell .launcher { width:100%; max-width:1100px; margin:auto; padding:38px 24px 28px; text-align:center; }
 .launcher-brand { display:flex; flex-direction:column; align-items:center; gap:16px; }
 .launcher-brand-symbol { width:112px; height:112px; object-fit:contain; filter:drop-shadow(0 0 22px #40ffac99); animation:portal-brand-glow 5s ease-in-out infinite; }
-.launcher-wordmark { color:#f0fff6; font-size:30px; font-weight:750; letter-spacing:-.055em; }.launcher-wordmark>span { color:#4de493; }
-.portal-launcher-shell .launcher-heading { margin-top:30px; }
-.portal-launcher-shell .launcher-heading>span { color:#71dfb5; font-size:10px; letter-spacing:.2em; text-transform:uppercase; font-weight:700; }
-.portal-launcher-shell .launcher-heading h1 { margin:10px 0; color:#effff6; font-size:clamp(25px,3vw,38px); font-weight:600; letter-spacing:-.045em; }
-.portal-launcher-shell .launcher-heading p { margin:0; color:#a5c9bb; font-size:14px; }
+.launcher-wordmark { margin:0; color:#f0fff6; font-size:30px; font-weight:750; letter-spacing:-.055em; }.launcher-wordmark>span { color:#4de493; }
 .portal-launcher-shell .launcher-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:28px 20px; max-width:960px; margin:42px auto 0; }
 .launcher-app { display:flex; flex-direction:column; align-items:center; min-width:0; padding:12px 5px; border-radius:24px; color:#f1fff7; text-decoration:none; transition:background .2s,transform .2s; }
 .launcher-app-art { display:block; width:128px; height:128px; border-radius:29px; overflow:hidden; box-shadow:0 16px 26px #0006,0 1px 0 #ffffff66 inset; border:1px solid #ffffff36; transition:transform .2s,box-shadow .2s; background:#10473d; }
@@ -417,7 +413,6 @@
   .portal-launcher-shell .launcher { padding:28px 20px; }
   .launcher-brand-symbol { width:88px; height:88px; }
   .launcher-wordmark { font-size:26px; }
-  .portal-launcher-shell .launcher-heading { margin-top:24px; }
   .portal-launcher-shell .launcher-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 14px; margin-top:26px; }
   .launcher-app-art { width:96px; height:96px; border-radius:23px; }
   .launcher-app>b { font-size:14px; margin-top:12px; }
