@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
 import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
 const app = initializeApp({
@@ -16,13 +17,16 @@ export const auth = getAuth(app);
 export const authReady = setPersistence(auth, browserLocalPersistence)
   .catch((error) => console.warn("Firebase auth persistence unavailable", error))
   .then(() => auth.authStateReady());
+export let appCheck: AppCheck | undefined;
 const appCheckKey = import.meta.env.VITE_APPCHECK_SITE_KEY;
 if (appCheckKey && typeof window !== "undefined") {
   try {
-    initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(appCheckKey), isTokenAutoRefreshEnabled: true });
+    appCheck = initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(appCheckKey), isTokenAutoRefreshEnabled: true });
   } catch (error) {
     console.warn("Firebase App Check initialization skipped", error);
   }
 }
 
 export const functions = getFunctions(app, "us-central1");
+
+export const wellStorage = getStorage(app);

@@ -167,7 +167,7 @@ test("enterprise clients call only version-one callable interfaces", async () =>
   assert.doesNotMatch(api + projects, /registerAccount\"|createProject\"|autosaveProject\"/);
 });
 
-test("mini apps use independent navigation and Well Viewer stays browser-only", async () => {
+test("mini apps use independent navigation and Well Viewer stores private ZIPs", async () => {
   const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/mini-apps/well-viewer/WellViewer.tsx"), wellScene = await read("src/mini-apps/well-viewer/WellScene.tsx"), wellStyles = await read("src/mini-apps/well-viewer/well-viewer.css");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-back-button" to="\/portal"/);
@@ -181,9 +181,9 @@ test("mini apps use independent navigation and Well Viewer stays browser-only", 
   assert.match(fluidlab, />Projects<|>Builder</);
   assert.match(fluidlab, /<div className="workspace-brand">/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
-  assert.match(well, /Import another ZIP/);
-  assert.match(well, /inspectWellPackage\(file\)/);
-  assert.match(await read("src/mini-apps/well-viewer/well-package.ts"), /manifest\.file\.stream\(\)/);
+  assert.match(well, /WellLibrary/);
+  assert.match(well, /useWellLibrary/);
+  assert.match(await read("src/mini-apps/well-viewer/zip.ts"), /file\.slice\(start, start \+ length\)/);
   assert.match(well, /navigate\("\/portal"\)/);
   assert.doesNotMatch(well, /Auto|Pause|setAuto/);
   assert.match(well, /Labels:.*labelMode/);
@@ -218,7 +218,7 @@ test("forgot-password delivery uses the protected SMTP callable", async () => {
   assert.match(handler, /passwordResetRequests/);
 });
 
-test("browser database and storage access remain fully denied", async () => {
+test("browser database access stays denied and storage is limited to private wells", async () => {
   const firestore = await read("firestore.rules"), storage = await read("storage.rules");
   assert.match(firestore, /allow read, write: if false/);
   assert.match(storage, /allow read, write: if false/);

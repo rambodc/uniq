@@ -1,4 +1,6 @@
-import { AsyncUnzipInflate, strFromU8, Unzip, UnzipPassThrough, unzipSync } from "fflate";
+import { strFromU8 } from "fflate";
+import { inspectZip, extractZipEntry, WellPackageError, type ZipEntry } from "./zip";
+export { WellPackageError } from "./zip";
 import { parseWellSurvey, type SurveyFile, type SurveyLeg } from "./survey";
 
 export interface BitRun { id: string; bitNo: string; sizeMm: number; manufacturer: string; bitType: string; serialNo: string; depthInM: number; depthOutM: number | null }
@@ -13,10 +15,9 @@ export interface OperationalImportMetadata { sourceRows: number; validObservatio
 export interface OperationalStatistic { channel: OperationalChannel; count: number; minimum: number; average: number; maximum: number; latest: number }
 export interface OperationalSummary { radiusM: number; sampleCount: number; firstTimestamp: string; lastTimestamp: string; ambiguousLeg: boolean; statistics: OperationalStatistic[] }
 export interface WellModel extends SurveyFile { packageName: string; etsFileName: string; csvFileName: string; bitRuns: BitRun[]; holeSections: Record<string, HoleSection[]>; casings: CasingString[]; operationalChannels: OperationalChannel[]; operationalBuckets: OperationalDepthBucket[]; operationalImport: OperationalImportMetadata }
-export interface WellPackageManifest { file: Blob; packageName: string; surveyFileName: string; etsFileName: string; csvFileName: string; csvSizeBytes: number; requiresDetailSelection: boolean }
+export interface WellPackageManifest { file: Blob; entries: ZipEntry[]; packageName: string; surveyFileName: string; etsFileName: string; csvFileName: string; csvSizeBytes: number; requiresDetailSelection: boolean }
 export interface WellImportProgress { phase: "extracting" | "parsing" | "building"; percent: number; message: string }
 export interface ParseWellPackageOptions { detail: OperationalDetail; signal?: AbortSignal }
-export class WellPackageError extends Error { constructor(message: string) { super(message); this.name = "WellPackageError"; } }
 
 const number = (value: string | null | undefined) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; };
 const localName = (node: Node) => (node as Element).localName || node.nodeName.split(":").at(-1) || "";
@@ -57,7 +58,7 @@ class OperationalCsvAggregator {
     if (this.remainder.length > 1_000_000 && !this.remainder.includes("\n")) throw new WellPackageError("The drilling CSV contains an unsafe line longer than 1 MB.");
     const lines = this.remainder.split("\n");
     if (final) this.remainder = ""; else this.remainder = lines.pop() ?? "";
-    for (const raw of lines) { const line = raw.replace(/\r$/, ""); if (line.trim()) this.consume(line); }
+    for (const raw of lines) { const line = raw.replace(/\r$/, ""); if (line.length > 1_000_000) throw new WellPackageError("The drilling CSV contains an unsafe line longer than 1 MB."); if (line.trim()) this.consume(line); }
   }
   private consume(line: string) {
     if (!this.headersParsed) {
@@ -155,45 +156,32 @@ function compatibleNames(survey: string, ets: string) {
   return [...a].filter((word) => word.length > 1 && b.has(word)).length >= Math.min(3, a.size);
 }
 
-type ZipEntryInfo = { name: string; originalSize: number };
 const surveyPattern = /surveys_[^/]*\.txt$/i, etsPattern = /(?:^|\/)ETS[^/]*\.xml$/i, csvPattern = /(?:^|\/)[^/]+\.csv$/i;
 
-export async function inspectWellPackage(file: File | (Blob & { name?: string })): Promise<WellPackageManifest> {
-  if (file.size > 100_000_000) throw new WellPackageError("This ZIP is larger than the 100 MB compressed package limit.");
-  const entries: ZipEntryInfo[] = [];
-  try { unzipSync(new Uint8Array(await file.arrayBuffer()), { filter: (entry) => { entries.push({ name: entry.name, originalSize: entry.originalSize }); if (entries.length > 1_000) throw new WellPackageError("This ZIP contains too many entries."); return false; } }); }
-  catch (cause) { throw cause instanceof WellPackageError ? cause : new WellPackageError("The ZIP package is malformed or unsupported."); }
+export async function inspectWellPackage(file: File | (Blob & { name?: string }), signal?: AbortSignal): Promise<WellPackageManifest> {
+  const entries = await inspectZip(file, signal);
   const surveys = entries.filter((entry) => surveyPattern.test(entry.name)), xmlFiles = entries.filter((entry) => etsPattern.test(entry.name)), csvFiles = entries.filter((entry) => csvPattern.test(entry.name));
   if (surveys.length !== 1) throw new WellPackageError(surveys.length ? "This package contains multiple survey TXT files. Import a package for one well." : "This package does not contain a surveys_*.txt file.");
   if (xmlFiles.length !== 1) throw new WellPackageError(xmlFiles.length ? "This package contains multiple ETS XML files. Import a package for one well." : "This package does not contain an ETS XML file.");
   if (csvFiles.length !== 1) throw new WellPackageError(csvFiles.length ? "This package contains multiple drilling CSV files. Import a package for one well." : "This package does not contain a drilling CSV file.");
   if (surveys[0].originalSize > 5_000_000 || xmlFiles[0].originalSize > 15_000_000) throw new WellPackageError("The survey TXT or ETS XML exceeds its safe extraction limit.");
-  if (csvFiles[0].originalSize > 250_000_000) throw new WellPackageError("The drilling CSV exceeds the 250 MB uncompressed limit.");
-  return { file, packageName: file.name || "well-package.zip", surveyFileName: surveys[0].name, etsFileName: xmlFiles[0].name, csvFileName: csvFiles[0].name, csvSizeBytes: csvFiles[0].originalSize, requiresDetailSelection: csvFiles[0].originalSize > 15_000_000 };
+  if (csvFiles[0].originalSize > 2_000_000_000) throw new WellPackageError("The drilling CSV exceeds the 2 GB uncompressed limit.");
+  return { file, entries, packageName: file.name || "well-package.zip", surveyFileName: surveys[0].name, etsFileName: xmlFiles[0].name, csvFileName: csvFiles[0].name, csvSizeBytes: csvFiles[0].originalSize, requiresDetailSelection: csvFiles[0].originalSize > 15_000_000 };
 }
 
 async function extractSelected(manifest: WellPackageManifest, options: ParseWellPackageOptions, onProgress?: (progress: WellImportProgress) => void) {
-  const textChunks = new Map<string, Uint8Array[]>(), parser = new OperationalCsvAggregator(operationalResolution(options.detail), manifest.csvSizeBytes);
-  const wanted = new Set([manifest.surveyFileName, manifest.etsFileName, manifest.csvFileName]); let compressedRead = 0, pending = 0, resolveEntries!: () => void, rejectEntries!: (error: unknown) => void;
-  const entriesDone = new Promise<void>((resolve, reject) => { resolveEntries = resolve; rejectEntries = reject; });
-  const unzip = new Unzip((entry) => {
-    if (!wanted.has(entry.name)) return;
-    pending += 1; if (entry.name !== manifest.csvFileName) textChunks.set(entry.name, []);
-    entry.ondata = (error, chunk, final) => {
-      if (error) { rejectEntries(error); return; }
-      try { if (entry.name === manifest.csvFileName) parser.push(chunk, final); else textChunks.get(entry.name)!.push(chunk); }
-      catch (cause) { rejectEntries(cause); return; }
-      if (final) { pending -= 1; if (pending === 0) resolveEntries(); }
-    };
-    entry.start();
-  });
-  unzip.register(AsyncUnzipInflate); unzip.register(UnzipPassThrough);
-  const reader = manifest.file.stream().getReader();
-  try {
-    while (true) { if (options.signal?.aborted) throw new DOMException("Import cancelled", "AbortError"); const { done, value } = await reader.read(); if (done) break; compressedRead += value.byteLength; unzip.push(value, false); onProgress?.({ phase: "extracting", percent: Math.min(90, compressedRead / manifest.file.size * 90), message: `Reading ${manifest.csvFileName}…` }); }
-    unzip.push(new Uint8Array(), true); if (pending) await entriesDone;
-  } catch (cause) { reader.cancel().catch(() => {}); throw cause; }
-  const join = (name: string) => { const chunks = textChunks.get(name); if (!chunks) throw new WellPackageError(`The expected file ${name} could not be extracted.`); const size = chunks.reduce((sum, chunk) => sum + chunk.length, 0), joined = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { joined.set(chunk, offset); offset += chunk.length; } return strFromU8(joined); };
+  const texts = new Map<string, Uint8Array[]>(), parser = new OperationalCsvAggregator(operationalResolution(options.detail), manifest.csvSizeBytes);
+  const names = [manifest.surveyFileName, manifest.etsFileName, manifest.csvFileName];
+  const selected = names.map((name) => { const entry = manifest.entries.find((item) => item.name === name); if (!entry) throw new WellPackageError("An expected ZIP entry is missing."); return entry; });
+  const total = selected.reduce((sum, entry) => sum + entry.compressedSize, 0); let completed = 0;
+  for (const entry of selected) {
+    const csv = entry.name === manifest.csvFileName, chunks: Uint8Array[] = [];
+    await extractZipEntry(manifest.file, entry, csv ? 2_000_000_000 : entry.name === manifest.surveyFileName ? 5_000_000 : 15_000_000, (chunk, final) => {
+      if (csv) parser.push(chunk, final); else chunks.push(chunk.slice());
+    }, options.signal, (read) => onProgress?.({ phase: "extracting", percent: Math.min(90, (completed + read) / Math.max(1, total) * 90), message: `Processing ${entry.name}…` }));
+    if (!csv) texts.set(entry.name, chunks); completed += entry.compressedSize;
+  }
+  const join = (name: string) => { const chunks = texts.get(name)!; const joined = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0)); let offset = 0; for (const chunk of chunks) { joined.set(chunk, offset); offset += chunk.length; } return strFromU8(joined); };
   onProgress?.({ phase: "parsing", percent: 94, message: "Combining survey and engineering records…" });
   return { surveyText: join(manifest.surveyFileName), etsText: join(manifest.etsFileName), operations: parser.finish() };
 }

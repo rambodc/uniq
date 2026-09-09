@@ -13,12 +13,12 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 - Callable backend handlers under `functions/apps/<app-id>`, with one deployed handler per file
 - Shared backend infrastructure under `functions/core` and integrations under `functions/services`
 
-`functions/index.js` is deployment-only and explicitly re-exports every handler. Browser Firestore and Storage access is denied; all application operations pass through authenticated, authorized callable Functions.
+`functions/index.js` is deployment-only and explicitly re-exports every handler. Browser Firestore access is denied. Library metadata and other application operations use authenticated callable Functions. Well ZIP transfers use owner-restricted Storage rules tied to active portal access.
 
 ## Mini apps and access
 
 - **FluidLab** — owner-private conceptual well projects
-- **Well Viewer** — permission-controlled portal mini app at `/apps/well-viewer`, combining survey, ETS, and drilling CSV data from an original well ZIP package
+- **Well Viewer** — permission-controlled portal mini app at `/apps/well-viewer`, with an owner-private saved-well library, rename/delete, and original ZIP uploads up to 1 GB
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
@@ -105,3 +105,13 @@ Production release procedure:
 4. Monitor the GitHub Actions run through completion and report its result.
 
 Do not run `npm run deploy`, `firebase deploy`, or any other local command that changes production. The npm script exists for legacy compatibility only and is not an authorized release path.
+
+## Saved well library
+
+Original ZIPs live at `users/{uid}/well-viewer/{wellId}/original.zip`; metadata lives at `users/{uid}/miniApps/well-viewer/wells/{wellId}`. Admins cannot browse other users’ wells. Processing runs in a cancellable worker; originals are downloaded and reparsed on each open, with no stored viewing copy.
+
+Upload reservations expire after 24 hours. The hourly cleanup function removes abandoned uploads and retries interrupted deletions. Upload completion checks object size and ownership metadata and removes public download tokens before marking a well ready. Standard ZIP only: at most 1,000 entries, 5 MB survey TXT, 15 MB ETS XML, 2 GB streamed CSV, 5 million CSV rows, and 100,000 depth bands.
+
+Storage CORS and cross-service rule permissions are configured by the Rules GitHub Actions workflow. Release Functions and Rules successfully before publishing a frontend that depends on new library capabilities. Rules CI runs both Storage authorization tests and the real Firestore/Storage library lifecycle test; the production worker is tested after building the site.
+
+Initial project setup requires enabling `cloudscheduler.googleapis.com`, granting `roles/cloudscheduler.admin` to `github-deployer@uniqenergy-de71c.iam.gserviceaccount.com`, and granting `roles/firebaserules.firestoreServiceAgent` to `service-357883281274@gcp-sa-firebasestorage.iam.gserviceaccount.com`. The existing deployment account cannot bootstrap these project permissions. Once provisioned, the Rules workflow verifies the existing binding without requesting IAM policy writes.
