@@ -405,7 +405,7 @@ export const retryFluidImport = wrap(async (uid, d) => {
       { importLock: d.importId, lockUntil: Date.now() + 3600000 },
       { merge: true },
     );
-    tx.update(ref, { status: "queued", updatedAt: now() });
+    tx.update(ref, { status: "queued", runId: null, updatedAt: now() });
   });
   await enqueue(uid, d.importId);
   return { status: "queued" };
@@ -427,6 +427,7 @@ export const cancelFluidImport = wrap(async (uid, d) => {
     tx.update(ref, {
       status: "cancelled",
       stage: "cancelled",
+      runId: null,
       message:
         "Import cancelled. Resume saved progress, or delete this well and upload again to start fresh.",
       leaseUntil: 0,
