@@ -153,18 +153,11 @@ test("Contact Form is managed through the portal and callable-only backend", asy
   assert.match(rules, /allow read, write: if false/);
 });
 
-test("FluidLab retains engineering behavior and autosave conflict states", async () => {
-  const source = await read("src/mini-apps/fluidlab/FluidLab.tsx");
-  for (const value of ["Sequential well builder", "Confirm Section", "beforeunload", "autosaveProject", "Cloud conflict · reload required"]) assert.match(source, new RegExp(value));
-  assert.doesNotMatch(source, /surveyStations|azimuthDeg/);
-});
-
-test("enterprise clients call only version-one callable interfaces", async () => {
-  const api = await read("src/core/api.ts"), projects = await read("src/mini-apps/fluidlab/projects.ts"), exports = await read("functions/index.js");
+test("enterprise clients keep their authorized callable interfaces", async () => {
+  const api = await read("src/core/api.ts"), fluid = await read("src/mini-apps/fluidlab/api.ts"), exports = await read("functions/index.js");
   for (const endpoint of ["getCurrentUser", "adminListUsers", "adminInviteUser", "previewInvite", "acceptInvite"]) assert.match(api, new RegExp(endpoint));
-  for (const endpoint of ["listFluidLabProjects", "saveFluidLabProject"]) assert.match(projects, new RegExp(endpoint));
-  assert.doesNotMatch(exports + projects, /assistant project history/);
-  assert.doesNotMatch(api + projects, /registerAccount\"|createProject\"|autosaveProject\"/);
+  for (const endpoint of ["listFluidWells", "beginFluidImport", "askFluidChat"]) assert.match(fluid + exports, new RegExp(endpoint));
+  assert.doesNotMatch(exports, /saveFluidLabProject/);
 });
 
 test("mini apps use independent navigation and Well Viewer stores private ZIPs", async () => {
@@ -178,7 +171,7 @@ test("mini apps use independent navigation and Well Viewer stores private ZIPs",
   assert.match(account, /<details className="account-card account-security">/);
   assert.doesNotMatch(account, /sendPasswordResetEmail|Forgot current password/);
   assert.match(account, /Sign out/);
-  assert.match(fluidlab, />Projects<|>Builder</);
+  assert.match(fluidlab, /PRIVATE WELL LIBRARY/);
   assert.match(fluidlab, /<div className="workspace-brand">/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(well, /WellLibrary/);

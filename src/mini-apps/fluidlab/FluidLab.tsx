@@ -1,882 +1,1241 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
+  type CSSProperties,
 } from "react";
-import { useReducedMotion } from "motion/react";
+import { Link } from "react-router-dom";
 import {
-  Check,
+  Activity,
   ArrowLeft,
-  ArrowUp,
-  ArrowDown,
   Box,
+  ChevronDown,
+  ChevronUp,
+  Database,
+  Download,
+  FileSpreadsheet,
+  FolderOpen,
+  Layers3,
   Maximize2,
-  Menu,
+  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
-  Pencil,
-  Plus,
-  FolderOpen,
-  Trash2,
   Pause,
   Play,
+  Plus,
+  Search,
+  Settings2,
+  Upload,
   X,
 } from "lucide-react";
+import * as api from "./api";
 import {
-  confirmSection,
-  applySectionEdit,
-  containingSection,
-  createProject as createBlank,
-  cubicMetresToBbl,
-  draftErrors,
-  editSectionErrors,
-  emptyDraft,
-  generateProject,
-  sectionTopMd,
-  sectionColors,
-  trajectoryErrors,
-  truncateFrom,
-  type SectionDraft,
-  type UnitSystem,
-  type WellProject,
-  type WellTrajectory,
-} from "./engineering";
-import { clampMd, displayDepthToMetres, metresToDisplayDepth, sectionMidpointMd, totalMd, type CameraMode } from "./camera";
-import { autosaveProject, createFluidLabProject, deleteProject, getProject, listProjects, type Project } from "./projects";
-import "./fluidlab.css";
-const Scene = lazy(() => import("./WellboreScene")),
-  toLength = (m: number, u: UnitSystem) =>
-    u === "metric" ? m : m * 3.280839895,
-  fromLength = (v: number, u: UnitSystem) =>
-    u === "metric" ? v : v / 3.280839895,
-  toDiameter = (mm: number, u: UnitSystem) => (u === "metric" ? mm : mm / 25.4),
-  fromDiameter = (v: number, u: UnitSystem) => (u === "metric" ? v : v * 25.4),
-  lunit = (u: UnitSystem) => (u === "metric" ? "m" : "ft"),
-  dunit = (u: UnitSystem) => (u === "metric" ? "mm" : "in");
-function Field({
-  label,
+  Analytics,
+  Chat,
+  Editor,
+  Empty,
+  Facts,
+  Inventory,
+  Operations,
+  Overview,
+  WellboreEditor,
+} from "./Panels";
+import WellScene from "./WellScene";
+import {
+  dateLabel,
+  money,
+  reportRecords,
   value,
-  unit,
-  onChange,
-  disabled = false,
-  optional = false,
-}: {
-  label: string;
-  value: number | null;
-  unit: string;
-  onChange: (value: number | null) => void;
-  disabled?: boolean;
-  optional?: boolean;
-}) {
-  return (
-    <label className="number-field">
-      <span>
-        {label}
-        {optional && <em> optional</em>}
-      </span>
-      <div>
-        <input
-          type="number"
-          value={value == null ? "" : Number(value.toFixed(3))}
-          min="0"
-          step="0.1"
-          disabled={disabled}
-          placeholder={optional ? "Not provided" : "Required"}
-          onChange={(event) =>
-            onChange(
-              event.target.value === "" ? null : Number(event.target.value),
-            )
-          }
-        />
-        <small>{unit}</small>
-      </div>
-    </label>
-  );
-}
-function Modal({ children }: { children: ReactNode }) {
-  return (
-    <div className="exit-overlay">
-      <section className="exit-dialog" role="dialog" aria-modal="true">
-        {children}
-      </section>
-    </div>
-  );
-}
+  validateBranches,
+  type Branch,
+  type Dataset,
+  type ImportJob,
+  type Source,
+  type Version,
+  type Well,
+} from "./model";
+import "./fluidlab.css";
+
+const tabs = [
+  { id: "wells", label: "Wells", icon: FolderOpen },
+  { id: "overview", label: "Overview", icon: Box },
+  { id: "inventory", label: "Inventory", icon: Layers3 },
+  { id: "operations", label: "Mud & operations", icon: Activity },
+  { id: "editor", label: "Well editor", icon: Settings2 },
+  { id: "chat", label: "AI chat", icon: MessageSquare },
+];
+const errorText = (e: unknown) =>
+  e instanceof Error ? e.message : "Something went wrong.";
 export default function FluidLab({
-  projectId,
+  wellId,
   navigate,
-  onDirtyChange,
-  exitRequest,
-  onConfirmBrowserExit,
 }: {
-  projectId: string;
+  wellId: string;
   navigate: (path: string) => void;
-  onDirtyChange: (dirty: boolean) => void;
-  exitRequest: number;
-  onConfirmBrowserExit: () => void;
 }) {
-  const [design, setDesign] = useState(() => createBlank()),
-    [draft, setDraft] = useState<SectionDraft>(() => emptyDraft()),
-    [draftOpen, setDraftOpen] = useState(true),
-    [trajectoryDraft, setTrajectoryDraft] = useState<WellTrajectory>({
-      enabled: false,
-      kopMdM: null,
-      endCurveMdM: null,
-    }),
-    [, setRevision] = useState(0),
-    [saveState, setSaveState] = useState<
-      "loading" | "editing" | "saving" | "saved" | "failed" | "offline" | "conflict"
-    >("loading"),
-    [loaded, setLoaded] = useState(false),
-    [savedAt, setSavedAt] = useState<Date | null>(null),
-    [collapsed, setCollapsed] = useState(false),
-    [drawerOpen, setDrawerOpen] = useState(false),
-    [cameraMode, setCameraMode] = useState<CameraMode>("follow"),
-    [manualFitSignal, setManualFitSignal] = useState(0),
-    [currentMd, setCurrentMd] = useState(0),
-    [depthInput, setDepthInput] = useState("0"),
-    [autoFollow, setAutoFollow] = useState(false),
-    [moveDirection, setMoveDirection] = useState<-1 | 0 | 1>(0),
-    [visible, setVisible] = useState(!document.hidden),
-    [notice, setNotice] = useState(""),
-    [exitOpen, setExitOpen] = useState(false),
-    [pendingPath, setPendingPath] = useState("/portal"),
-    [deleteIndex, setDeleteIndex] = useState<number | null>(null),
-    [editIndex, setEditIndex] = useState<number | null>(null),
-    [editDraft, setEditDraft] = useState<SectionDraft>(() => emptyDraft()),
-    [selectedId, setSelectedId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]), [projectsLoading, setProjectsLoading] = useState(true), [projectError, setProjectError] = useState(""), [newProjectName, setNewProjectName] = useState(""), [creatingProject, setCreatingProject] = useState(false), [panelTab, setPanelTab] = useState<"projects" | "builder">(projectId ? "builder" : "projects");
-  const reduced = Boolean(useReducedMotion()),
-    generated = useMemo(() => generateProject(design), [design]),
-    units = design.unitSystem ?? "metric",
-    unitsChosen = design.unitSystem !== null,
-    saving = useRef(false),
-    queued = useRef(false),
-    retryCount = useRef(0),
-    revisionRef = useRef(0),
-    designRef = useRef(design),
-    drawerTrigger = useRef<HTMLButtonElement>(null),
-    shiftHeld = useRef(false),
-    trajectoryDirty =
-      JSON.stringify(trajectoryDraft) !== JSON.stringify(design.trajectory),
-    draftTouched =
-      draftOpen &&
-      (draft.name !== "" ||
-        draft.endMdM != null ||
-        draft.diameterMm != null),
-    dirty =
-      ["editing", "saving", "failed", "offline", "conflict"].includes(saveState) ||
-      draftTouched ||
-      trajectoryDirty ||
-      editIndex !== null;
-  useEffect(() => { designRef.current = design; }, [design]);
-  const refreshProjects = useCallback(async () => {
-    setProjectError("");
-    try { setProjects(await listProjects()); }
-    catch { setProjectError("Projects could not be loaded."); }
-    finally { setProjectsLoading(false); }
-  }, []);
-  useEffect(() => { void refreshProjects(); }, [refreshProjects]);
+  const [wells, setWells] = useState<Well[]>([]),
+    [data, setData] = useState<Dataset | null>(null),
+    [tab, setTab] = useState("wells"),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState(""),
+    [name, setName] = useState(""),
+    [uploading, setUploading] = useState(false),
+    [progress, setProgress] = useState(0),
+    [job, setJob] = useState<ImportJob | null>(null),
+    [history, setHistory] = useState<{
+      versions: Version[];
+      imports: ImportJob[];
+    }>({ versions: [], imports: [] });
+  const [branches, setBranches] = useState<Branch[]>([]),
+    [selected, setSelected] = useState<string | null>(null),
+    [report, setReport] = useState<string | null>(null),
+    [product, setProduct] = useState<string | null>(null),
+    [highlights, setHighlights] = useState<string[]>([]);
+  const [collapsed, setCollapsed] = useState(false),
+    [width, setWidth] = useState(360),
+    [bottomOpen, setBottomOpen] = useState(true),
+    [view, setView] = useState("isometric"),
+    [mode, setMode] = useState("structure"),
+    [fit, setFit] = useState(0),
+    [capture, setCapture] = useState(0),
+    [playing, setPlaying] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false),
+    [sources, setSources] = useState<Source[]>([]),
+    [sourceQuery, setSourceQuery] = useState(""),
+    [sourceTotal, setSourceTotal] = useState(0),
+    [sourceNext, setSourceNext] = useState<number | null>(null),
+    [sourceIds, setSourceIds] = useState<string[] | undefined>(),
+    [sourceBusy, setSourceBusy] = useState(false);
+  const [geometryStatus, setGeometryStatus] = useState("Saved");
+  const sourcePanel = useRef<HTMLElement>(null);
   useEffect(() => {
-    const change = () => setVisible(!document.hidden);
-    document.addEventListener("visibilitychange", change);
-    return () => document.removeEventListener("visibilitychange", change);
-  }, []);
-  useEffect(() => { if (!visible) { setAutoFollow(false); setMoveDirection(0); } }, [visible]);
-  useEffect(() => {
-    setCurrentMd(0); setDepthInput("0"); setCameraMode("follow"); setAutoFollow(false); setMoveDirection(0);
-  }, [projectId]);
-  useEffect(() => {
-    if (!autoFollow && moveDirection === 0) return;
-    let frame = 0, previous = performance.now();
-    const tick = (now: number) => {
-      const elapsed = Math.min((now - previous) / 1000, 0.1), maximum = totalMd(design);
-      previous = now;
-      const rate = maximum * (autoFollow ? 0.02 : 0.08) * (shiftHeld.current ? 4 : 1);
-      setCurrentMd((value) => {
-        const next = clampMd(design, value + rate * elapsed * (autoFollow ? 1 : moveDirection));
-        if (autoFollow && next >= maximum) setAutoFollow(false);
-        return next;
-      });
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [autoFollow, design, moveDirection]);
-  useEffect(() => {
-    const down = (event: KeyboardEvent) => {
-      shiftHeld.current = event.shiftKey;
-      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-      if ((event.target as HTMLElement | null)?.closest("input, textarea, select, button, [contenteditable='true'], [role='dialog'], .workspace-panel")) return;
-      event.preventDefault(); setAutoFollow(false); setCameraMode("follow"); setMoveDirection(event.key === "ArrowUp" ? -1 : 1);
-    };
-    const up = (event: KeyboardEvent) => {
-      shiftHeld.current = event.shiftKey;
-      if (event.key === "ArrowUp" || event.key === "ArrowDown") setMoveDirection(0);
-    };
-    const stop = () => { shiftHeld.current = false; setMoveDirection(0); };
-    addEventListener("keydown", down); addEventListener("keyup", up); addEventListener("blur", stop);
-    return () => { removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("blur", stop); };
-  }, []);
-  useEffect(() => {
-    if (document.activeElement?.classList.contains("camera-depth-input")) return;
-    setDepthInput(metresToDisplayDepth(currentMd, units === "imperial").toFixed(1));
-  }, [currentMd, units]);
-  useEffect(() => {
-    onDirtyChange(dirty);
-  }, [dirty, onDirtyChange]);
-  useEffect(() => {
-    const leave = (event: BeforeUnloadEvent) => {
-      if (dirty) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    };
-    addEventListener("beforeunload", leave);
-    return () => removeEventListener("beforeunload", leave);
-  }, [dirty]);
-  useEffect(() => {
-    if (exitRequest) setExitOpen(true);
-  }, [exitRequest]);
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const close = (event: KeyboardEvent) => {
+    if (!sourceOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const panel = sourcePanel.current;
+    panel?.querySelector<HTMLElement>("button")?.focus();
+    const trap = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setDrawerOpen(false);
-        requestAnimationFrame(() => drawerTrigger.current?.focus());
+        setSourceOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const items = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
+        ),
+      );
+      const first = items[0],
+        last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
       }
     };
-    addEventListener("keydown", close);
-    return () => removeEventListener("keydown", close);
-  }, [drawerOpen]);
-  useEffect(() => {
-    let active = true;
-    if (!projectId) {
-      const blank = createBlank();
-      setDesign(blank); designRef.current = blank; setTrajectoryDraft(blank.trajectory); setDraft(emptyDraft()); setLoaded(false); setPanelTab("projects"); setSaveState("loading");
-      return () => { active = false; };
-    }
-    setPanelTab("builder");
-    void getProject(projectId)
-      .then((result) => {
-        if (!result) return;
-        const { project } = result;
-        if (!active) return;
-        if (project.type !== "fluidlab" || !project.data || !("sections" in project.data)) throw new Error("Unsupported project");
-        setDesign(project.data);
-        designRef.current = project.data;
-        setTrajectoryDraft(project.data.trajectory);
-        setDraft(emptyDraft());
-        setDraftOpen(project.data.sections.length === 0);
-        setSelectedId(project.data.sections.at(-1)?.id ?? null);
-        setRevision(project.revision);
-        revisionRef.current = project.revision;
-        setSaveState("saved");
-        setSavedAt(project.updatedAt ? new Date(project.updatedAt) : new Date());
-        setLoaded(true);
-      })
-      .catch(() => {
-        if (active) {
-          setNotice("This project could not be opened.");
-          setSaveState("failed");
-        }
-      });
+    document.addEventListener("keydown", trap);
     return () => {
-      active = false;
+      document.removeEventListener("keydown", trap);
+      previous?.focus();
     };
-  }, [projectId, navigate]);
-  const createProject = async () => {
-    const name = newProjectName.trim();
-    if (!name || creatingProject) return;
-    setCreatingProject(true); setProjectError("");
-    try { const project = await createFluidLabProject(name); setProjects((items) => [project, ...items]); setNewProjectName(""); navigate(`/apps/fluidlab/projects/${project.id}`); setPanelTab("builder"); }
-    catch { setProjectError("The project could not be created."); }
-    finally { setCreatingProject(false); }
-  };
-  const removeProject = async (project: Project) => {
-    if (!window.confirm(`Permanently delete “${project.name}”?`)) return;
-    try { await deleteProject(project.id); setProjects((items) => items.filter((item) => item.id !== project.id)); if (project.id === projectId) navigate("/apps/fluidlab"); }
-    catch { setProjectError("The project could not be deleted."); }
-  };
-  const updateDesign = (recipe: (next: WellProject) => void) => {
-    setDesign((current) => {
-      const next = structuredClone(current);
-      recipe(next);
-      return next;
-    });
-    setSaveState("editing");
-  };
-  const confirm = () => {
-    const errors = draftErrors(design, draft);
-    if (errors.length) {
-      setNotice(errors[0]);
-      return;
-    }
-    const next = structuredClone(design),
-      result = confirmSection(next, draft);
-    if (!result.section) return;
-    setDesign(next);
-    setSelectedId(result.section.id);
-    setDraft(emptyDraft());
-    setDraftOpen(false);
-    setSaveState("editing");
-  };
-  const applyTrajectory = () => {
-    const candidate = {
-        ...trajectoryDraft,
-        kopMdM: trajectoryDraft.enabled ? trajectoryDraft.kopMdM : null,
-        endCurveMdM: trajectoryDraft.enabled
-          ? trajectoryDraft.endCurveMdM
-          : null,
-      },
-      errors = trajectoryErrors(design, candidate);
-    if (errors.length) {
-      setNotice(errors[0]);
-      return;
-    }
-    updateDesign((next) => (next.trajectory = candidate));
-    setTrajectoryDraft(candidate);
-  };
-  const beginEdit = (index: number) => {
-    const section = design.sections[index];
-    setEditIndex(index);
-    setEditDraft({
-      name: section.name,
-      endMdM: section.endMdM,
-      diameterMm: section.diameterMm,
-      color: section.color,
-    });
-    setSelectedId(section.id);
-  };
-  const applyEdit = () => {
-    if (editIndex == null) return;
-    const errors = editSectionErrors(design, editIndex, editDraft);
-    if (errors.length) {
-      setNotice(errors[0]);
-      return;
-    }
-    const next = structuredClone(design);
-    applySectionEdit(next, editIndex, editDraft);
-    setDesign(next);
-    setSelectedId(next.sections[editIndex].id);
-    setEditIndex(null);
-    setSaveState("editing");
-  };
-  const removeFrom = () => {
-    if (deleteIndex == null) return;
-    const next = structuredClone(design),
-      result = truncateFrom(next, deleteIndex);
-    if (!result) return;
-    setDesign(next);
-    setTrajectoryDraft(next.trajectory);
-    setDraft(result.draft);
-    setDraftOpen(true);
-    setSelectedId(next.sections.at(-1)?.id ?? null);
-    setEditIndex(null);
-    setDeleteIndex(null);
-    setSaveState("editing");
-    if (result.trajectoryCleared)
-      setNotice(
-        "The applied trajectory was cleared because it exceeded the new total MD.",
-      );
-  };
-  const performAutosave = useCallback(async () => {
-    if (saving.current || saveState === "conflict") {
-      if (saving.current) queued.current = true;
-      return;
-    }
-    const snapshot = structuredClone(designRef.current);
-    if (!snapshot.name.trim()) {
-      setSaveState("failed");
-      setNotice("Enter a project name before autosaving.");
-      return;
-    }
-    saving.current = true;
-    setSaveState("saving");
-    let conflictFound = false;
-    try {
-      const saved = await autosaveProject(
-        projectId,
-        snapshot.name,
-        snapshot,
-        revisionRef.current,
-        crypto.randomUUID(),
-      );
-      revisionRef.current = saved.revision;
-      setRevision(saved.revision);
-      setSavedAt(saved.updatedAt ? new Date(saved.updatedAt) : new Date());
-      retryCount.current = 0;
-      setSaveState("saved");
-    } catch (error) {
-      const code = String((error as { code?: string }).code || "");
-      if (code.includes("aborted")) {
-        conflictFound = true;
-        setSaveState("conflict");
-      }
-      else if (/unavailable|deadline|network|internal/.test(code)) {
-        setSaveState("offline");
-        if (retryCount.current < 4) {
-          const delay = Math.min(8000, 1000 * 2 ** retryCount.current++);
-          window.setTimeout(() => setSaveState("editing"), delay);
-        } else setSaveState("failed");
-      } else setSaveState("failed");
-    } finally {
-      saving.current = false;
-      if (queued.current && !conflictFound) {
-        queued.current = false;
-        window.setTimeout(() => setSaveState("editing"), 0);
-      }
-    }
-  }, [projectId, saveState]);
+  }, [sourceOpen]);
+  const geometrySaving = useRef(false),
+    geometryFailed = useRef("");
+  const fileInput = useRef<HTMLInputElement>(null),
+    dragging = useRef(false),
+    currentWell = useRef(wellId);
   useEffect(() => {
-    if (!loaded || saveState !== "editing") return;
-    const timer = window.setTimeout(() => void performAutosave(), 1000);
-    return () => window.clearTimeout(timer);
-  }, [design, loaded, performAutosave, saveState]);
-  const kopSection = containingSection(design, trajectoryDraft.kopMdM),
-    eocSection = containingSection(design, trajectoryDraft.endCurveMdM),
-    topMd = design.sections.at(-1)?.endMdM ?? 0;
-  const closeDrawer = () => {
-    setDrawerOpen(false);
-    requestAnimationFrame(() => drawerTrigger.current?.focus());
+    currentWell.current = wellId;
+  }, [wellId]);
+  const refreshList = useCallback(
+    async () => setWells(await api.listWells()),
+    [],
+  );
+  const refresh = useCallback(async () => {
+    if (!wellId) return;
+    const [next, h] = await Promise.all([
+      api.getWell(wellId),
+      api.getHistory(wellId),
+    ]);
+    if (currentWell.current !== wellId) return;
+    setData(next);
+    setHistory(h);
+    return next;
+  }, [wellId]);
+  useEffect(() => {
+    void api
+      .listWells()
+      .then(setWells)
+      .catch((e) => setError(errorText(e)));
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve().then(async () => {
+      setData(null);
+      setSelected(null);
+      setReport(null);
+      setProduct(null);
+      setJob(null);
+      setPlaying(false);
+      setError("");
+      if (!wellId) {
+        setTab("wells");
+        return;
+      }
+      setLoading(true);
+      try {
+        const [next, h] = await Promise.all([
+          api.getWell(wellId),
+          api.getHistory(wellId),
+        ]);
+        if (!alive) return;
+        setData(next);
+        setBranches(next.geometry);
+        setHistory(h);
+        setTab(next.records.length ? "overview" : "wells");
+        setJob(
+          h.imports.find((j) =>
+            ["uploading", "queued", "processing"].includes(j.status),
+          ) ?? null,
+        );
+      } catch (e) {
+        if (alive) setError(errorText(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [wellId]);
+  useEffect(() => {
+    if (!job || !["queued", "processing"].includes(job.status)) return;
+    let alive = true;
+    const timer = setInterval(async () => {
+      try {
+        const next = await api.getImport(job.id);
+        if (!alive) return;
+        setJob(next);
+        if (["ready", "partial"].includes(next.status)) {
+          const d = await refresh();
+          if (d) {
+            setBranches(d.geometry);
+            setTab("overview");
+          }
+          await refreshList();
+        }
+      } catch (e) {
+        if (alive) setError(errorText(e));
+      }
+    }, 4000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [job, refresh, refreshList]);
+  const reports = useMemo(() => (data ? reportRecords(data) : []), [data]);
+  useEffect(() => {
+    if (!playing || !reports.length) return;
+    const timer = setInterval(
+      () =>
+        setReport(
+          (r) =>
+            reports[
+              (reports.findIndex((x) => x.label === r) + 1) % reports.length
+            ].label,
+        ),
+      1500,
+    );
+    return () => clearInterval(timer);
+  }, [playing, reports]);
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (dragging.current)
+        setWidth(Math.max(290, Math.min(600, e.clientX - 72)));
+    };
+    const up = () => {
+      dragging.current = false;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, []);
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (
+        uploading ||
+        (data && JSON.stringify(branches) !== JSON.stringify(data.geometry))
+      ) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploading, data, branches]);
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
   };
-  const moveTo = (path: string) => {
-    if (dirty) { setPendingPath(path); setExitOpen(true); }
-    else navigate(path);
+  const select = (id: string) => {
+    setSelected(id);
+    const r = data?.records.find((r) => r.id === id);
+    if (r?.kind === "product") {
+      setProduct(r.label);
+      setTab("inventory");
+    }
+    if (r?.kind === "report") setReport(r.label);
+    if (r?.report) setReport(r.report);
   };
-  const focusSection = (sectionId: string) => {
-    setSelectedId(sectionId);
-    const midpoint = sectionMidpointMd(design, sectionId);
-    if (midpoint != null) setCurrentMd(midpoint);
-    setCameraMode("follow"); setAutoFollow(false); setMoveDirection(0);
+  const sourceFetch = async (ids?: string[], query = "", offset = 0) => {
+    if (!data) return;
+    setSourceBusy(true);
+    try {
+      const result = await api.getSources(
+        data.well.id,
+        data.well.version,
+        ids,
+        query,
+        offset,
+      );
+      setSources(result.sources);
+      setSourceTotal(result.total);
+      setSourceNext(result.next);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSourceBusy(false);
+    }
   };
-  const commitDepth = () => {
-    const parsed = Number(depthInput);
-    if (!depthInput.trim() || !Number.isFinite(parsed)) { setDepthInput(metresToDisplayDepth(currentMd, units === "imperial").toFixed(1)); return; }
-    const next = clampMd(design, displayDepthToMetres(parsed, units === "imperial"));
-    setCurrentMd(next); setDepthInput(metresToDisplayDepth(next, units === "imperial").toFixed(1));
-    setCameraMode("follow"); setAutoFollow(false); setMoveDirection(0);
+  const openSources = (ids: string[]) => {
+    setSourceOpen(true);
+    setSourceQuery("");
+    const filter = ids.length ? ids : undefined;
+    setSourceIds(filter);
+    void sourceFetch(filter);
   };
-  const beginMove = (direction: -1 | 1) => { setCameraMode("follow"); setAutoFollow(false); setMoveDirection(direction); };
-  const endMove = () => setMoveDirection(0);
-  const holdButtonProps = (direction: -1 | 1) => ({
-    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); beginMove(direction); },
-    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); endMove(); },
-    onPointerCancel: endMove,
-    onLostPointerCapture: endMove,
-    onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
-    onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => { if ((event.key === " " || event.key === "Enter") && !event.repeat) { event.preventDefault(); beginMove(direction); } },
-    onKeyUp: (event: ReactKeyboardEvent<HTMLButtonElement>) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); endMove(); } },
-  });
+  useEffect(() => {
+    if (!data) return;
+    const encoded = JSON.stringify(branches);
+    if (
+      encoded === JSON.stringify(data.geometry) ||
+      encoded === geometryFailed.current
+    )
+      return;
+    const timer = setTimeout(async () => {
+      if (geometrySaving.current) return;
+      const invalid = validateBranches(branches);
+      if (invalid) {
+        setGeometryStatus(invalid);
+        return;
+      }
+      geometrySaving.current = true;
+      setGeometryStatus("Saving…");
+      try {
+        const result = await api.saveWell(data.well, { geometry: branches });
+        setData((d) =>
+          d && d.well.id === data.well.id
+            ? { ...d, geometry: branches, well: { ...d.well, ...result } }
+            : d,
+        );
+        setGeometryStatus("Saved");
+        geometryFailed.current = "";
+      } catch (e) {
+        geometryFailed.current = encoded;
+        setGeometryStatus("Not saved · reload to resolve conflict");
+        setError(errorText(e));
+      } finally {
+        geometrySaving.current = false;
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [branches, data]);
+  const correct = async (recordId: string, field: string, newValue: string) => {
+    if (!data) return;
+    try {
+      await api.saveWell(data.well, {
+        correction: { recordId, field, value: newValue },
+      });
+      await refresh();
+    } catch (e) {
+      setError(errorText(e));
+      throw e;
+    }
+  };
+  const upload = async (files: File[]) => {
+    if (!files.length) return;
+    setUploading(true);
+    setProgress(0);
+    setError("");
+    try {
+      let id = wellId;
+      if (!id) {
+        const well = await api.createWell(
+          name.trim() || files[0].name.replace(/\.[^.]+$/, ""),
+          !name.trim(),
+        );
+        id = well.id;
+        navigate(`/apps/fluidlab/wells/${id}`);
+      }
+      const started = await api.uploadFiles(id, files, setProgress, setJob);
+      setJob({ ...started, status: "queued" });
+      await refreshList();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
+  const record = data?.records.find((r) => r.id === selected);
+  const activeReport = data?.records.find(
+    (r) => r.kind === "report" && r.label === report,
+  );
+  const activeJob =
+    job && ["uploading", "queued", "processing"].includes(job.status);
   return (
     <main
-      className={`fluidlab-workspace ${collapsed ? "panel-collapsed" : ""}`}
+      className={`fl-app ${collapsed ? "fl-collapsed" : ""}`}
+      style={{ "--fl-sidebar": `${width}px` } as CSSProperties}
     >
-      <div className="workspace-scene">
-        <Suspense
-          fallback={
-            <div className="scene-loading">Building applied profile…</div>
-          }
-        >
-          <Scene
-            design={design}
-            selectedSectionId={selectedId}
-            reducedMotion={reduced}
-            active={visible}
-            cameraMode={cameraMode}
-            currentMd={currentMd}
-            manualFitSignal={manualFitSignal}
-            onContextLost={() =>
-              setNotice(
-                "The 3D context was interrupted. Reload if the scene does not recover.",
-              )
-            }
-            onSelect={focusSection}
-            onManualCameraInteraction={() => setAutoFollow(false)}
-          />
-        </Suspense>
-        {!projectId && <div className="fluidlab-empty-workspace"><FolderOpen/><h1>Choose a FluidLab project</h1><p>Open an existing project or create a new one from the Projects panel.</p></div>}
-      </div>
-      <header className="workspace-topbar compact">
-        <button className="workspace-portal-return" aria-label="Back to mini apps" title="Back to mini apps" onClick={() => moveTo("/portal")}><ArrowLeft aria-hidden="true" /></button>
+      <header className="fl-header">
+        <Link to="/portal" className="fl-back" aria-label="Back to portal">
+          <ArrowLeft size={18} />
+        </Link>
         <div className="workspace-brand">
-          <img src="/brand/uniqenergy-mark-64.png" alt="UniqEnergy" />
-          <span>UniqEnergy / FluidLab</span>
+          <div className="fl-logo">
+            <Layers3 size={20} />
+          </div>
+          <b>
+            FluidLab<span>WELL INTELLIGENCE</span>
+          </b>
+        </div>
+        <div className="fl-header-divider" />
+        <span className="fl-header-well">
+          {data?.well.name || "Your drilling story, connected."}
+        </span>
+        <div className="fl-header-actions">
+          {data && (
+            <span className="fl-version">Revision {data.well.revision}</span>
+          )}
+          <button
+            className="fl-secondary"
+            onClick={() => {
+              setTab("wells");
+              setCollapsed(false);
+              fileInput.current?.click();
+            }}
+            disabled={uploading || !!activeJob}
+          >
+            <Upload size={14} /> Import data
+          </button>
         </div>
       </header>
-      <button ref={drawerTrigger} className="mobile-menu-button" aria-label="Open FluidLab panel" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu/><b>FluidLab</b></button>
-      {drawerOpen && (
-        <button
-          className="drawer-backdrop"
-          aria-label="Close well builder"
-          onClick={closeDrawer}
-        />
-      )}
-      <aside className={`workspace-panel sequential-panel ${drawerOpen ? "drawer-open" : ""}`} aria-label="Well builder">
-        {collapsed && (
+      <nav className="fl-rail" aria-label="FluidLab sections">
+        {tabs.map((t) => (
           <button
-            className="collapsed-panel-hit"
-            aria-label="Expand well builder"
-            onClick={() => setCollapsed(false)}
-          />
-        )}
-        <div className="fluidlab-panel-tabs" role="tablist" aria-label="FluidLab workspace"><button className={panelTab === "projects" ? "active" : ""} role="tab" aria-selected={panelTab === "projects"} onClick={() => setPanelTab("projects")}><FolderOpen/>Projects</button><button className={panelTab === "builder" ? "active" : ""} role="tab" aria-selected={panelTab === "builder"} disabled={!projectId} onClick={() => setPanelTab("builder")}><Box/>Builder</button></div>
-        {panelTab === "projects" ? <div className="panel-body fluidlab-projects"><form onSubmit={(event) => { event.preventDefault(); void createProject(); }}><label><span>New project</span><input value={newProjectName} maxLength={100} placeholder="Project name" onChange={(event) => setNewProjectName(event.target.value)}/></label><button disabled={!newProjectName.trim() || creatingProject}><Plus/>{creatingProject ? "Creating…" : "Create project"}</button></form>{projectError && <p className="fluidlab-project-error">{projectError}</p>}<div className="fluidlab-project-list">{projectsLoading ? <p>Loading projects…</p> : projects.length ? projects.map((project) => <article className={project.id === projectId ? "active" : ""} key={project.id}><button onClick={() => { moveTo(`/apps/fluidlab/projects/${project.id}`); if (!dirty) setPanelTab("builder"); }}><b>{project.name}</b><small>Updated {new Date(project.updatedAt).toLocaleDateString()}</small></button><button aria-label={`Delete ${project.name}`} onClick={() => void removeProject(project)}><Trash2/></button></article>) : <div className="fluidlab-project-empty"><FolderOpen/><b>No projects yet</b><span>Create your first FluidLab project above.</span></div>}</div></div> : <>
-        <div className="panel-heading">
-          <div>
-            <span>Sequential well builder</span>
-            <strong>
-              {design.sections.length} confirmed section
-              {design.sections.length === 1 ? "" : "s"}
-            </strong>
-          </div>
-          <button onClick={() => setCollapsed((value) => !value)}>
-            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            key={t.id}
+            className={tab === t.id ? "active" : ""}
+            title={t.label}
+            aria-label={t.label}
+            disabled={t.id !== "wells" && !data}
+            onClick={() => {
+              setTab(t.id);
+              setCollapsed(false);
+            }}
+          >
+            <t.icon size={20} />
+            <span>
+              {t.id === "operations"
+                ? "Mud"
+                : t.id === "inventory"
+                  ? "Costs"
+                  : t.id === "editor"
+                    ? "Editor"
+                    : t.id === "chat"
+                      ? "Chat"
+                      : t.label}
+            </span>
           </button>
-          <button className="mobile-drawer-close" aria-label="Close well builder" onClick={closeDrawer}><X/></button>
+        ))}
+        <button
+          className="fl-rail-bottom"
+          title="Browse original data"
+          aria-label="Browse original data"
+          disabled={!data}
+          onClick={() => openSources([])}
+        >
+          <Database size={20} />
+          <span>Sources</span>
+        </button>
+      </nav>
+      <aside className="fl-sidebar">
+        <div className="fl-sidebar-heading">
+          <span>{tabs.find((t) => t.id === tab)?.label}</span>
+          <button
+            aria-label="Collapse sidebar"
+            onClick={() => setCollapsed(true)}
+          >
+            <PanelLeftClose size={17} />
+          </button>
         </div>
-        <div className="panel-body editor-content">
-          <section className="project-identity">
-            <label><span>Project name</span><input value={design.name} maxLength={100} onChange={(event) => updateDesign((next) => { next.name = event.target.value; })}/></label>
-            <div className={`autosave-state ${saveState}`}><i />
-              <span>{saveState === "loading" ? "Loading project…" : saveState === "saving" ? "Saving…" : saveState === "saved" ? `Saved${savedAt ? ` ${savedAt.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}` : ""}` : saveState === "offline" ? "Offline · retrying" : saveState === "conflict" ? "Cloud conflict · reload required" : saveState === "failed" ? "Autosave needs attention" : "Changes pending"}</span>
-              {saveState === "conflict" && <button onClick={() => location.reload()}>Reload</button>}
-            </div>
-          </section>
-          {!unitsChosen ? <section className="unit-setup"><span>Step 1</span><h2>Choose project units</h2><p>This choice is permanent for this project.</p><div><button onClick={() => updateDesign((next) => { next.unitSystem = "metric"; })}>Metric<small>metres · millimetres</small></button><button onClick={() => updateDesign((next) => { next.unitSystem = "imperial"; })}>Imperial<small>feet · inches</small></button></div></section> : <div className="locked-units"><span>Units</span><strong>{units === "metric" ? "Metric · m / mm" : "Imperial · ft / in"}</strong><small>Locked for this project</small></div>}
-          {unitsChosen && <>
-          <section className="trajectory-card">
-            <div>
-              <b>Applied trajectory</b>
-              <small>
-                {design.trajectory.enabled
-                  ? `Build ${toLength(design.trajectory.kopMdM!, units).toFixed(1)}–${toLength(design.trajectory.endCurveMdM!, units).toFixed(1)} ${lunit(units)}`
-                  : "Entire well vertical"}
-              </small>
-            </div>
-            <label className="trajectory-toggle">
-              <input
-                type="checkbox"
-                checked={trajectoryDraft.enabled}
-                onChange={(event) =>
-                  setTrajectoryDraft((current) => ({
-                    ...current,
-                    enabled: event.target.checked,
-                  }))
-                }
-              />{" "}
-              Add build to horizontal
-            </label>
-            {trajectoryDraft.enabled && (
-              <div className="trajectory-fields">
-                <Field
-                  label="KOP MD"
-                  value={
-                    trajectoryDraft.kopMdM == null
-                      ? null
-                      : toLength(trajectoryDraft.kopMdM, units)
-                  }
-                  unit={lunit(units)}
-                  onChange={(value) =>
-                    setTrajectoryDraft((current) => ({
-                      ...current,
-                      kopMdM: value == null ? null : fromLength(value, units),
-                    }))
-                  }
-                />
-                <Field
-                  label="End of Curve MD"
-                  value={
-                    trajectoryDraft.endCurveMdM == null
-                      ? null
-                      : toLength(trajectoryDraft.endCurveMdM, units)
-                  }
-                  unit={lunit(units)}
-                  onChange={(value) =>
-                    setTrajectoryDraft((current) => ({
-                      ...current,
-                      endCurveMdM:
-                        value == null ? null : fromLength(value, units),
-                    }))
-                  }
-                />
+        <div className="fl-sidebar-content">
+          {tab === "wells" ? (
+            <>
+              <div className="fl-eyebrow">PRIVATE WELL LIBRARY</div>
+              <h2>
+                From spreadsheets
+                <br />
+                to a clearer picture.
+              </h2>
+              <p className="fl-muted">
+                Bring your reports together. Explore the well, trace product
+                usage, and understand what drove the cost.
+              </p>
+              <div className="fl-upload-card">
+                <FileSpreadsheet size={30} />
+                <strong>
+                  {wellId ? "Update this well" : "Start with your data"}
+                </strong>
                 <p>
-                  KOP:{" "}
-                  {kopSection?.name ||
-                    (kopSection &&
-                      `Section ${design.sections.indexOf(kopSection) + 1}`) ||
-                    "Outside confirmed sections"}
+                  XLSX, XLS, CSV or TSV
                   <br />
-                  End of Curve:{" "}
-                  {eocSection?.name ||
-                    (eocSection &&
-                      `Section ${design.sections.indexOf(eocSection) + 1}`) ||
-                    "Outside confirmed sections"}
+                  Up to 5 files · 20 MB each
                 </p>
-              </div>
-            )}
-            <button
-              className="apply-trajectory"
-              disabled={!trajectoryDirty || !design.sections.length}
-              onClick={applyTrajectory}
-            >
-              <Check /> Apply trajectory
-            </button>
-          </section>
-          <div className="section-stack">
-            {design.sections.map((section, index) => {
-              const derived = generated.sections[index],
-                top = sectionTopMd(design, index);
-              return (
-                <article
-                  className={`locked-section ${selectedId === section.id ? "selected" : ""}`}
-                  key={section.id}
+                <button
+                  className="fl-primary"
+                  disabled={uploading || !!activeJob}
+                  onClick={() => fileInput.current?.click()}
                 >
-                  <header>
-                    <span style={{ background: section.color, color: "#03131d" }}>{index + 1}</span>
-                    <button
-                      className="locked-section-select"
-                      onClick={() => focusSection(section.id)}
-                    >
-                      <b>{section.name || `Section ${index + 1}`}</b>
-                      <small>Confirmed and locked</small>
-                    </button>
-                    <div className="locked-section-actions">
-                      <button title="Edit section" onClick={() => beginEdit(index)}><Pencil /></button>
-                      <button title="Delete this section and everything below" onClick={() => setDeleteIndex(index)}><Trash2 /></button>
-                    </div>
-                  </header>
-                  <dl>
-                    <div>
-                      <dt>Top MD</dt>
-                      <dd>
-                        {toLength(top, units).toFixed(1)} {lunit(units)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Bottom MD</dt>
-                      <dd>
-                        {toLength(section.endMdM, units).toFixed(1)}{" "}
-                        {lunit(units)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Bit size</dt>
-                      <dd>
-                        {toDiameter(section.diameterMm, units).toFixed(2)}{" "}
-                        {dunit(units)}
-                      </dd>
-                    </div>
-                    <div><dt>Color</dt><dd><i className="section-color-dot" style={{background:section.color}}/>{section.color.toUpperCase()}</dd></div>
-                    <div>
-                      <dt>Capacity</dt>
-                      <dd>
-                        {derived &&
-                          (units === "metric"
-                            ? `${derived.capacityM3.toFixed(2)} m³`
-                            : `${cubicMetresToBbl(derived.capacityM3).toFixed(2)} bbl`)}
-                      </dd>
-                    </div>
-                  </dl>
-                  {editIndex === index && (
-                    <fieldset className="section-edit-form">
-                      <legend>Edit Section {index + 1}</legend>
-                      <label className="text-field"><span>Name <em>optional</em></span><input value={editDraft.name} maxLength={80} onChange={(event) => setEditDraft((current) => ({ ...current, name: event.target.value }))}/></label>
-                      <div className="draft-grid">
-                        <Field label="Top MD" value={toLength(top, units)} unit={lunit(units)} disabled onChange={() => {}} />
-                        <Field label="Bottom MD" value={editDraft.endMdM == null ? null : toLength(editDraft.endMdM, units)} unit={lunit(units)} onChange={(value) => setEditDraft((current) => ({ ...current, endMdM: value == null ? null : fromLength(value, units) }))}/>
-                        <Field label="Bit size" value={editDraft.diameterMm == null ? null : toDiameter(editDraft.diameterMm, units)} unit={dunit(units)} onChange={(value) => setEditDraft((current) => ({ ...current, diameterMm: value == null ? null : fromDiameter(value, units) }))}/>
-                      </div>
-                      <div className="color-picker"><span>Section color</span><div>{sectionColors.map((color) => <button key={color} type="button" aria-label={`Choose ${color}`} aria-pressed={editDraft.color === color} className={editDraft.color === color ? "active" : ""} style={{background:color}} onClick={() => setEditDraft((current) => ({...current,color}))}/>) }<label title="Custom color"><input type="color" value={editDraft.color} onChange={(event) => setEditDraft((current) => ({...current,color:event.target.value}))}/><span>Custom</span></label></div></div>
-                      {editSectionErrors(design, index, editDraft).length > 0 && <p className="draft-error">{editSectionErrors(design, index, editDraft)[0]}</p>}
-                      <div className="draft-actions"><button onClick={() => setEditIndex(null)}>Cancel</button><button className="confirm-section" onClick={applyEdit}><Check /> Apply Changes</button></div>
-                    </fieldset>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-          {draftOpen ? (
-            <fieldset className="draft-section">
-              <legend>
-                <span>{design.sections.length + 1}</span>
-                <b>Section {design.sections.length + 1} draft</b>
-              </legend>
-              <label className="text-field">
-                <span>
-                  Name <em>optional</em>
-                </span>
-                <input
-                  value={draft.name}
-                  maxLength={80}
-                  placeholder={`Section ${design.sections.length + 1}`}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <div className="draft-grid">
-                <Field
-                  label="Top MD"
-                  value={toLength(topMd, units)}
-                  unit={lunit(units)}
-                  disabled
-                  onChange={() => {}}
-                />
-                <Field
-                  label="Bottom MD"
-                  value={
-                    draft.endMdM == null ? null : toLength(draft.endMdM, units)
-                  }
-                  unit={lunit(units)}
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      endMdM: value == null ? null : fromLength(value, units),
-                    }))
-                  }
-                />
-                <Field
-                  label="Bit size"
-                  value={
-                    draft.diameterMm == null
-                      ? null
-                      : toDiameter(draft.diameterMm, units)
-                  }
-                  unit={dunit(units)}
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      diameterMm:
-                        value == null ? null : fromDiameter(value, units),
-                    }))
-                  }
-                />
-              </div>
-              <div className="color-picker"><span>Section color</span><div>{sectionColors.map((color) => <button key={color} type="button" aria-label={`Choose ${color}`} aria-pressed={draft.color === color} className={draft.color === color ? "active" : ""} style={{background:color}} onClick={() => setDraft((current) => ({...current,color}))}/>) }<label title="Custom color"><input type="color" value={draft.color} onChange={(event) => setDraft((current) => ({...current,color:event.target.value}))}/><span>Custom</span></label></div></div>
-              {draftErrors(design, draft).length > 0 && draftTouched && (
-                <p className="draft-error">{draftErrors(design, draft)[0]}</p>
-              )}
-              <div className="draft-actions">
-                {design.sections.length > 0 && (
+                  <Upload size={15} />
+                  {uploading
+                    ? `Uploading ${progress}%`
+                    : wellId
+                      ? "Upload updated reports"
+                      : "Choose spreadsheets"}
+                </button>
+                {wellId && (
                   <button
-                    onClick={() => {
-                      setDraft(emptyDraft());
-                      setDraftOpen(false);
-                    }}
+                    className="fl-text-button"
+                    onClick={() => navigate("/apps/fluidlab")}
                   >
-                    Discard draft
+                    Create a different well
                   </button>
                 )}
-                <button className="confirm-section" onClick={confirm}>
-                  <Check /> Confirm Section
+              </div>
+              <form
+                className="fl-create-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    const well = await api.createWell(name);
+                    setName("");
+                    await refreshList();
+                    navigate(`/apps/fluidlab/wells/${well.id}`);
+                  });
+                }}
+              >
+                <input
+                  aria-label="New well name"
+                  placeholder="Or create an empty well…"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={150}
+                />
+                <button
+                  aria-label="Create well"
+                  disabled={busy || !name.trim()}
+                >
+                  <Plus size={18} />
+                </button>
+              </form>
+              <div className="fl-search">
+                <Search size={15} />
+                <input
+                  aria-label="Search wells"
+                  placeholder="Search your wells"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="fl-well-list">
+                {wells
+                  .filter((w) =>
+                    w.name.toLowerCase().includes(search.toLowerCase()),
+                  )
+                  .map((w) => (
+                    <button
+                      key={w.id}
+                      className={wellId === w.id ? "active" : ""}
+                      onClick={() => navigate(`/apps/fluidlab/wells/${w.id}`)}
+                    >
+                      <span>
+                        <FolderOpen size={16} />
+                        <b>{w.name}</b>
+                      </span>
+                      <small>
+                        {w.status} ·{" "}
+                        {new Date(w.updatedAt).toLocaleDateString()}
+                      </small>
+                      {w.summary?.totalCost && (
+                        <strong>{money(w.summary.totalCost)}</strong>
+                      )}
+                    </button>
+                  ))}
+              </div>
+              {data && (
+                <>
+                  <div className="fl-inline">
+                    <button
+                      className="fl-text-button"
+                      onClick={() => {
+                        const next = window.prompt("Well name", data.well.name);
+                        if (next)
+                          void run(async () => {
+                            await api.renameWell(data.well, next);
+                            await refresh();
+                            await refreshList();
+                          });
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className="fl-text-button fl-amber"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Delete ${data.well.name}, its imports, and conversations?`,
+                          )
+                        )
+                          void run(async () => {
+                            await api.deleteWell(wellId);
+                            await refreshList();
+                            navigate("/apps/fluidlab");
+                          });
+                      }}
+                    >
+                      Delete well
+                    </button>
+                  </div>
+                  <h3>Import history</h3>
+                  {history.imports.map((j) => (
+                    <div className="fl-card" key={j.id}>
+                      <b>{j.files.map((f) => f.name).join(", ")}</b>
+                      <p className="fl-muted">
+                        {j.status} ·{" "}
+                        {new Date(j.createdAt).toLocaleDateString()}
+                      </p>
+                      {j.message && <p>{j.message}</p>}
+                      {["failed", "partial"].includes(j.status) && (
+                        <button
+                          onClick={() =>
+                            void run(async () => {
+                              await api.retryImport(j.id);
+                              setJob({ ...j, status: "queued" });
+                            })
+                          }
+                        >
+                          Retry extraction
+                        </button>
+                      )}
+                      {j.status === "uploading" && (
+                        <button
+                          onClick={() =>
+                            void run(async () => {
+                              await api.completeImport(j.id);
+                              setJob({ ...j, status: "queued" });
+                            })
+                          }
+                        >
+                          Resume processing uploaded files
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <details>
+                    <summary>
+                      Dataset versions · {history.versions.length}
+                    </summary>
+                    {history.versions.map((v) => (
+                      <div className="fl-version-row" key={v.id}>
+                        <span>
+                          r{v.revision} · {v.reason}
+                          <small>
+                            {new Date(v.createdAt).toLocaleString()}
+                          </small>
+                        </span>
+                        <button
+                          disabled={busy || v.id === data.well.version}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                "Restore this dataset version? This creates a new version.",
+                              )
+                            )
+                              void run(async () => {
+                                await api.restoreVersion(data.well, v.id);
+                                const d = await refresh();
+                                if (d) setBranches(d.geometry);
+                              });
+                          }}
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    ))}
+                  </details>
+                </>
+              )}
+            </>
+          ) : data ? (
+            tab === "overview" ? (
+              <Overview data={data} select={select} openSources={openSources} />
+            ) : tab === "inventory" ? (
+              <Inventory
+                data={data}
+                product={product}
+                report={report}
+                onProduct={setProduct}
+                select={select}
+                openSources={openSources}
+              />
+            ) : tab === "operations" ? (
+              <Operations data={data} report={report} select={select} />
+            ) : tab === "editor" ? (
+              <>
+                <Editor
+                  key={data.well.id}
+                  data={data}
+                  branches={branches}
+                  onChange={(next) => {
+                    setBranches(next);
+                    setGeometryStatus("Unsaved");
+                  }}
+                  status={geometryStatus}
+                  selected={selected}
+                  select={setSelected}
+                />
+                <WellboreEditor
+                  key={data.well.id + "-main"}
+                  data={data}
+                  onSave={async (wellbore) => {
+                    await api.saveWell(data.well, { wellbore });
+                    await refresh();
+                  }}
+                />
+              </>
+            ) : (
+              <Chat
+                key={data.well.id}
+                data={data}
+                openSources={openSources}
+                highlight={(ids) => {
+                  setHighlights(ids);
+                  if (ids[0]) select(ids[0]);
+                  setFit((f) => f + 1);
+                }}
+              />
+            )
+          ) : null}
+        </div>
+        <button
+          className="fl-resizer"
+          aria-label="Resize sidebar"
+          onPointerDown={() => {
+            dragging.current = true;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") setWidth((w) => Math.max(290, w - 20));
+            if (e.key === "ArrowRight") setWidth((w) => Math.min(600, w + 20));
+          }}
+        />
+      </aside>
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        accept=".xlsx,.xls,.csv,.tsv"
+        hidden
+        onChange={(e) => void upload(Array.from(e.target.files || []))}
+      />
+      <section className="fl-workspace">
+        {collapsed && (
+          <button
+            className="fl-expand"
+            aria-label="Expand sidebar"
+            onClick={() => setCollapsed(false)}
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+        )}
+        {error && (
+          <div className="fl-toast fl-error" role="alert">
+            {error}
+            <button aria-label="Dismiss error" onClick={() => setError("")}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        {job && (
+          <div
+            className={`fl-job ${job.status === "failed" ? "fl-error" : ""}`}
+            role="status"
+          >
+            <span className={activeJob ? "fl-pulse" : ""} />
+            <b>
+              {job.status === "partial"
+                ? "Imported · review findings"
+                : job.status}
+            </b>
+            <span>
+              {job.message ||
+                "Your files will keep processing if you leave this page."}
+            </span>
+            {!uploading && ["uploading", "queued"].includes(job.status) && (
+              <button
+                onClick={() =>
+                  void run(async () => {
+                    await api.cancelImport(job.id);
+                    setJob({ ...job, status: "cancelled" });
+                    await refresh();
+                  })
+                }
+              >
+                Cancel import
+              </button>
+            )}
+            {job.total && (
+              <small>
+                {job.completed}/{job.total} sheets
+              </small>
+            )}
+            {!["queued", "processing", "uploading"].includes(job.status) && (
+              <button
+                aria-label="Dismiss import status"
+                onClick={() => setJob(null)}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
+        {loading ? (
+          <div className="fl-loading">
+            <div className="fl-spinner" />
+            Opening well…
+          </div>
+        ) : data && data.records.length ? (
+          <>
+            <div className="fl-viewport">
+              <WellScene
+                data={data}
+                branches={branches}
+                selected={selected}
+                highlights={highlights}
+                select={select}
+                mode={mode}
+                report={report}
+                product={product}
+                view={view}
+                fit={fit}
+                capture={capture}
+              />
+              <div className="fl-scene-heading">
+                <span className="fl-eyebrow">
+                  {mode === "cost"
+                    ? "ESTIMATED COST ALLOCATION"
+                    : mode === "losses"
+                      ? "REPORTED FLUID LOSSES"
+                      : mode === "product"
+                        ? "PRODUCT · REPORT ASSOCIATIONS"
+                        : "EDITABLE WELL RECONSTRUCTION"}
+                </span>
+                <h1>{report || "Whole well"}</h1>
+                <p>
+                  {branches.length} branches · schematic where survey data is
+                  missing
+                </p>
+              </div>
+              <div className="fl-scene-tools">
+                <select
+                  aria-label="Well visualization"
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value)}
+                >
+                  <option value="structure">Well structure</option>
+                  <option value="losses">Fluid losses</option>
+                  <option value="cost">Estimated costs</option>
+                  <option value="product">Selected product</option>
+                </select>
+                <select
+                  aria-label="Camera view"
+                  value={view}
+                  onChange={(e) => setView(e.target.value)}
+                >
+                  <option value="isometric">Isometric</option>
+                  <option value="top">Top</option>
+                  <option value="side">Side</option>
+                </select>
+                <button
+                  title="Fit well"
+                  aria-label="Fit well"
+                  onClick={() => setFit((f) => f + 1)}
+                >
+                  <Maximize2 size={16} />
+                </button>
+                <button
+                  title="Export PNG"
+                  aria-label="Export PNG"
+                  onClick={() => setCapture((c) => c + 1)}
+                >
+                  <Download size={16} />
                 </button>
               </div>
-            </fieldset>
-          ) : (
+              <div className="fl-legend">
+                <span>
+                  <i />{" "}
+                  {mode === "cost"
+                    ? "Estimated · not measured usage"
+                    : mode === "losses"
+                      ? "Teal → amber: lower → higher losses"
+                      : "Documented legs · inferred spatial layout"}
+                </span>
+                <small>Diameter exaggerated for visibility</small>
+              </div>
+              {(report || product) && (
+                <div className="fl-active-filters">
+                  {report && (
+                    <button onClick={() => setReport(null)}>
+                      {report}
+                      <X size={12} />
+                    </button>
+                  )}
+                  {product && (
+                    <button onClick={() => setProduct(null)}>
+                      {product}
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              )}
+              {activeReport && (
+                <div className="fl-report-overlay">
+                  <small>{dateLabel(value(activeReport, "createdDate"))}</small>
+                  <b>{value(activeReport, "activity")}</b>
+                  <span>
+                    MD {value(activeReport, "mdM") ?? "—"} m · TVD{" "}
+                    {value(activeReport, "tvdM") ?? "—"} m
+                  </span>
+                  <button
+                    className="fl-text-button"
+                    onClick={() => setSelected(activeReport.id)}
+                  >
+                    Report details
+                  </button>
+                </div>
+              )}
+              {record && tab !== "editor" && !sourceOpen && (
+                <aside className="fl-inspector">
+                  <div className="fl-sidebar-heading">
+                    <span>{record.label}</span>
+                    <button
+                      aria-label="Close details"
+                      onClick={() => setSelected(null)}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                  <Facts
+                    record={record}
+                    openSources={openSources}
+                    correct={correct}
+                  />
+                </aside>
+              )}
+            </div>
+            <div className="fl-timeline">
+              <button
+                aria-label={playing ? "Pause timeline" : "Play timeline"}
+                onClick={() => setPlaying((p) => !p)}
+              >
+                {playing ? <Pause size={15} /> : <Play size={15} />}
+              </button>
+              <button
+                className={!report ? "active" : ""}
+                onClick={() => {
+                  setReport(null);
+                  setPlaying(false);
+                }}
+              >
+                All
+              </button>
+              <div className="fl-timeline-reports">
+                {reports.map((r) => (
+                  <button
+                    key={r.id}
+                    title={`${r.label} · ${dateLabel(value(r, "createdDate"))}`}
+                    className={report === r.label ? "active" : ""}
+                    onClick={() => setReport(r.label)}
+                  >
+                    <i />
+                    <span>{r.label.replace("Report ", "R")}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                aria-label={bottomOpen ? "Collapse charts" : "Expand charts"}
+                onClick={() => setBottomOpen((o) => !o)}
+              >
+                {bottomOpen ? (
+                  <ChevronDown size={17} />
+                ) : (
+                  <ChevronUp size={17} />
+                )}
+              </button>
+            </div>
+            {bottomOpen && (
+              <section className="fl-analytics">
+                <Analytics
+                  data={data}
+                  reports={reports}
+                  report={report}
+                  product={product}
+                  onReport={setReport}
+                  onProduct={setProduct}
+                />
+              </section>
+            )}
+          </>
+        ) : (
+          <div className="fl-welcome">
+            <div className="fl-orbit">
+              <div />
+              <div />
+              <Layers3 size={48} />
+            </div>
+            <span className="fl-eyebrow">
+              A NEW PERSPECTIVE ON DRILLING FLUIDS
+            </span>
+            <h1>
+              Your well has a story.
+              <br />
+              <em>See the whole picture.</em>
+            </h1>
+            <p>
+              Turn field reports into an interactive well.
+              <br />
+              Follow every product, understand every cost,
+              <br />
+              and ask better questions of your data.
+            </p>
             <button
-              className="add-row"
-              onClick={() => {
-                setDraft(emptyDraft());
-                setDraftOpen(true);
+              className="fl-primary"
+              disabled={uploading || !!activeJob}
+              onClick={() => fileInput.current?.click()}
+            >
+              <Upload size={16} />{" "}
+              {wellId
+                ? "Import reports for this well"
+                : "Upload your first well"}
+            </button>
+            <div className="fl-welcome-features">
+              <span>
+                <Box size={16} />
+                3D reconstruction
+              </span>
+              <span>
+                <Activity size={16} />
+                Cost intelligence
+              </span>
+              <span>
+                <MessageSquare size={16} />
+                AI analyst
+              </span>
+            </div>
+          </div>
+        )}
+      </section>
+      {sourceOpen && (
+        <div className="fl-source-overlay">
+          <section
+            ref={sourcePanel}
+            className="fl-source-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Source data and import review"
+          >
+            <div className="fl-sidebar-heading">
+              <span>Source data & import review</span>
+              <button
+                aria-label="Close source viewer"
+                onClick={() => setSourceOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form
+              className="fl-source-search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setSourceIds(undefined);
+                void sourceFetch(undefined, sourceQuery);
               }}
             >
-              <Plus /> Add Next Section
-            </button>
-          )}
-          {design.sections.length > 0 && (
-            <section className="total-capacity">
-              <span>Total MD</span>
-              <strong>
-                {toLength(design.sections.at(-1)!.endMdM, units).toFixed(1)}{" "}
-                {lunit(units)}
-              </strong>
-              <span>Confirmed sections</span><strong>{design.sections.length}</strong>
-              <span>Horizontal displacement</span>
-              <strong>
-                {toLength(generated.totalHorizontalM, units).toFixed(1)}{" "}
-                {lunit(units)}
-              </strong>
-              <span>Open-hole capacity</span>
-              <strong>
-                {units === "metric"
-                  ? `${generated.totalCapacityM3.toFixed(2)} m³`
-                  : `${cubicMetresToBbl(generated.totalCapacityM3).toFixed(2)} bbl`}
-              </strong>
-            </section>
-          )}
-          <p className="concept-disclaimer">
-            Construction sections control MD and bit size. Only applied KOP/EOC
-            values control the visual trajectory.
-          </p>
-          </>}
+              <Search size={16} />
+              <input
+                aria-label="Search source cells"
+                placeholder="Search sheet names, values, or cell addresses"
+                value={sourceQuery}
+                onChange={(e) => setSourceQuery(e.target.value)}
+              />
+              <button>Search all</button>
+            </form>
+            <div className="fl-source-content">
+              {sourceBusy ? (
+                <Empty title="Loading source cells…" />
+              ) : (
+                <>
+                  <p className="fl-muted">
+                    {sourceTotal} matching cells · originals are retained
+                    unchanged
+                  </p>
+                  {sources.map((s) => (
+                    <article className="fl-source-cell" key={s.id}>
+                      <div>
+                        <b>
+                          {s.sheet}!{s.cell}
+                        </b>
+                        <small>{s.file}</small>
+                      </div>
+                      <pre>{s.display}</pre>
+                      {s.formula && (
+                        <small>
+                          Source formula (not executed): {s.formula}
+                        </small>
+                      )}
+                    </article>
+                  ))}
+                  {sourceNext !== null && (
+                    <button
+                      className="fl-secondary"
+                      onClick={() =>
+                        void sourceFetch(sourceIds, sourceQuery, sourceNext)
+                      }
+                    >
+                      Next 100 cells
+                    </button>
+                  )}
+                </>
+              )}
+              <h3>Import review · {data?.issues.length || 0} findings</h3>
+              {data?.issues.map((i) => (
+                <article className="fl-issue" key={i.id}>
+                  <small>{i.code}</small>
+                  <p>{i.message}</p>
+                  {i.candidate && (
+                    <p>
+                      Incoming: {i.candidate.value} {i.candidate.unit}
+                      <br />
+                      Retained: {i.accepted?.value} {i.accepted?.unit}
+                    </p>
+                  )}
+                  <div className="fl-inline">
+                    {i.sources.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setSourceIds(i.sources);
+                          void sourceFetch(i.sources);
+                        }}
+                      >
+                        View evidence
+                      </button>
+                    )}
+                    {i.recordId && i.field && i.candidate && (
+                      <button
+                        onClick={() =>
+                          void run(() =>
+                            correct(
+                              i.recordId!,
+                              i.field!,
+                              i.candidate!.value ?? "",
+                            ),
+                          )
+                        }
+                      >
+                        Accept incoming value
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+              {data && (
+                <form
+                  className="fl-field"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const currency =
+                      new FormData(e.currentTarget)
+                        .get("currency")
+                        ?.toString()
+                        .trim()
+                        .toUpperCase() || null;
+                    void run(async () => {
+                      await api.saveWell(data.well, { currency });
+                      await refresh();
+                    });
+                  }}
+                >
+                  <label htmlFor="fl-currency">
+                    Confirm currency for amounts without a currency
+                  </label>
+                  <div className="fl-inline">
+                    <input
+                      id="fl-currency"
+                      name="currency"
+                      maxLength={3}
+                      defaultValue={data.currency || ""}
+                      placeholder="e.g. CAD"
+                    />
+                    <button>Save</button>
+                  </div>
+                  <small>Explicit source currencies remain unchanged.</small>
+                </form>
+              )}
+            </div>
+          </section>
         </div>
-        </>}
-      </aside>
-      <div className="camera-toolbar">
-        <button className="camera-hold-button" aria-label="Move toward surface" title="Hold to move toward surface (Arrow Up)" {...holdButtonProps(-1)}><ArrowUp/><span>Shallower</span></button>
-        <label className="camera-depth"><span>MD</span><input className="camera-depth-input" inputMode="decimal" value={depthInput} onChange={(event) => setDepthInput(event.target.value)} onBlur={commitDepth} onKeyDown={(event) => { if (event.key === "Enter") { commitDepth(); event.currentTarget.blur(); } }}/><small>{lunit(units)}</small></label>
-        <button className="camera-hold-button" aria-label="Move toward total depth" title="Hold to move toward total depth (Arrow Down)" {...holdButtonProps(1)}><ArrowDown/><span>Deeper</span></button>
-        <button className={autoFollow ? "active" : ""} onClick={() => { setMoveDirection(0); setCameraMode("follow"); setAutoFollow((value) => !value); }}>{autoFollow ? <Pause/> : <Play/>}<span>{autoFollow ? "Pause" : "Auto"}</span></button>
-        <button className={cameraMode === "manual" ? "active" : ""} title="Fit the complete well and control the camera" onClick={() => { setMoveDirection(0); setAutoFollow(false); setCameraMode("manual"); setManualFitSignal((value) => value + 1); }}><Maximize2/><span>Manual</span></button>
-      </div>
-      {notice && (
-        <button className="workspace-notice" onClick={() => setNotice("")}>
-          {notice}
-        </button>
       )}
-      {deleteIndex != null && (
-        <Modal>
-          <h2>Delete Section {deleteIndex + 1} and everything below?</h2>
-          <p>
-            This removes {design.sections.length - deleteIndex} confirmed
-            section{design.sections.length - deleteIndex === 1 ? "" : "s"}.
-            Section {deleteIndex + 1} will return as an editable draft.
-            {design.trajectory.enabled &&
-            design.trajectory.endCurveMdM! >
-              (deleteIndex ? design.sections[deleteIndex - 1].endMdM : 0)
-              ? " The applied trajectory will also be cleared."
-              : ""}
-          </p>
-          <div>
-            <button onClick={() => setDeleteIndex(null)}>Cancel</button>
-            <button className="danger" onClick={removeFrom}>
-              Delete from here
-            </button>
-          </div>
-        </Modal>
-      )}
-      {exitOpen && (
-        <Modal>
-          <h2>Leave this design?</h2>
-          <p>Unsaved changes and section drafts will be lost.</p>
-          <div>
-            <button onClick={() => setExitOpen(false)}>Keep editing</button>
-            <button
-              className="danger"
-              onClick={() => {
-                onDirtyChange(false);
-                if (exitRequest) onConfirmBrowserExit();
-                else navigate(pendingPath);
-              }}
-            >
-              Leave without saving
-            </button>
-          </div>
-        </Modal>
-      )}
+      <footer className="fl-status">
+        <span>
+          <i /> PRIVATE WORKSPACE
+        </span>
+        <span>
+          {data
+            ? `${data.records.length} records · ${data.coverage.populated} source cells`
+            : "AI-assisted extraction · source-backed analysis"}
+        </span>
+        <span>
+          {data?.summary.currencies.some((c) => c.currency === "unspecified")
+            ? "Currency unconfirmed"
+            : "UniqEnergy"}
+        </span>
+      </footer>
     </main>
   );
 }

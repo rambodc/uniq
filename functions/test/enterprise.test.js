@@ -3,7 +3,6 @@ import test from "node:test";
 import { normalizeMiniApps, publicUser } from "../core/auth.js";
 import { validContactInquiry } from "../apps/contact/validation.js";
 import { filterContactInquiries, publicContactInquiry, validContactAction, validContactListRequest } from "../apps/contact/inbox.js";
-import { validFluidLabData } from "../apps/fluidlab/validation.js";
 
 test("enterprise users expose only normalized version-one access data", () => {
   assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "contact-form", "fluidlab"]), ["fluidlab", "contact-form"]);
@@ -21,13 +20,6 @@ test("contact inbox validates filters and treats legacy records as active", () =
   assert.equal(active.archived, false);
   assert.deepEqual(filterContactInquiries([active, archived], validContactListRequest({ archiveState: "active", inquiryType: "all", query: "rig" })), { inquiries: [active], counts: { all: 1, operations: 1, general: 0, careers: 0 }, nextCursor: null, total: 1 });
   assert.equal(filterContactInquiries([active, archived], validContactListRequest({ archiveState: "archived" })).inquiries[0].id, "two");
-});
-
-test("FluidLab validation accepts sequential version-one measured-depth data", () => {
-  const data = { version: 1, name: "Well", unitSystem: "metric", sections: [{ id: "surface", name: "Surface", endMdM: 1000, diameterMm: 311, color: "#35dfbd", visible: true }], trajectory: { enabled: false, kopMdM: null, endCurveMdM: null } };
-  assert.deepEqual(validFluidLabData(data), data);
-  assert.throws(() => validFluidLabData({ ...data, sections: [...data.sections, { ...data.sections[0], id: "bad", endMdM: 900 }] }), /malformed/);
-  assert.throws(() => validFluidLabData({ ...data, version: 2 }), /version-one/);
 });
 
 test("contact inquiries normalize valid public submissions and reject honeypots", () => {

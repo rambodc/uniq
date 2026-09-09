@@ -2,7 +2,7 @@ name: "Production: Firebase Functions"
 on:
   push:
     branches: [production]
-    paths: ["functions/**", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
+    paths: ["functions/**", "scripts/configure-fluidlab-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
   workflow_dispatch:
 concurrency: { group: functions-production, cancel-in-progress: false }
 jobs:
@@ -22,9 +22,14 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure FluidLab APIs and secret access
+        run: python3 scripts/configure-fluidlab-cloud.py
       - run: npm ci --prefix functions
       - run: find functions -path 'functions/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
       - run: npm run lint --prefix functions
       - run: env -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE -u GOOGLE_GHA_CREDS_PATH npm test --prefix functions
       - run: npm install --global firebase-tools@14.15.2
       - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
+      - name: Configure FluidLab task dispatch
+        run: python3 scripts/configure-fluidlab-cloud.py --after-deploy

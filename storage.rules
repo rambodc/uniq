@@ -18,6 +18,25 @@ service firebase.storage {
         && request.resource.metadata.owner == uid && request.resource.metadata.wellId == wellId;
       allow list, update, delete: if false;
     }
+    function hasFluidAccess(uid) {
+      let user = firestore.get(/databases/(default)/documents/users/$(uid)).data;
+      return request.auth != null && request.auth.uid == uid && user.schemaVersion == 1
+        && user.status == 'active' && user.email == request.auth.token.email
+        && (user.role == 'admin' || 'fluidlab' in user.enabledMiniApps);
+    }
+    match /users/{uid}/fluidlab/{wellId}/imports/{importId}/{fileId} {
+      function job() { return firestore.get(/databases/(default)/documents/users/$(uid)/miniApps/fluidlab/imports/$(importId)).data; }
+      function reservation() { return job().files[int(fileId)]; }
+      allow create: if request.auth != null && hasFluidAccess(uid) && resource == null
+        && fileId.matches('^[0-4]$') && int(fileId) < job().files.size()
+        && job().owner == uid && job().wellId == wellId && job().status == 'uploading'
+        && request.time < job().expiresAt
+        && request.resource.size > 0 && request.resource.size <= 20971520
+        && request.resource.size == reservation().size
+        && request.resource.contentType == 'application/octet-stream'
+        && request.resource.metadata.importId == importId && request.resource.metadata.wellId == wellId;
+      allow read, update, delete: if false;
+    }
     match /{object=**} { allow read, write: if false; }
   }
 }
