@@ -790,11 +790,10 @@ export function Chat({
       alive = false;
     };
   }, [data.well.id]);
-  useEffect(
-    () =>
-      bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
-    [messages, busy],
-  );
+  useEffect(() => {
+    // Scroll APIs can return a promise; effects may only return a cleanup function.
+    bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [messages, busy]);
   const ask = async (text: string) => {
     if (busy || !text.trim()) return;
     setBusy(true);

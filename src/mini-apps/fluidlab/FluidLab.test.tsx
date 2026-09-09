@@ -169,6 +169,16 @@ const click = async (selector: string) => {
   await act(async () => button!.click());
 };
 describe("FluidLab workspace", () => {
+  it("keeps Chat and the workspace mounted when scrolling returns a promise", async () => {
+    HTMLElement.prototype.scrollIntoView = vi
+      .fn()
+      .mockReturnValue(Promise.resolve());
+    await render();
+    await click('button[aria-label="AI chat"]');
+    expect(host.textContent).toContain("Ask the data.");
+    await click('button[aria-label="Overview"]');
+    expect(host.querySelector('[data-testid="scene"]')).toBeTruthy();
+  });
   it("allows cancelling a processing import and explains fresh restart", async () => {
     const job = {
       id: "job",
