@@ -90,6 +90,10 @@ export interface Dataset {
   summary: Summary;
 }
 export interface ImportJob {
+  geometryJobId?: string;
+  sourceImportId?: string;
+  version?: string;
+  baseRevision?: number;
   kind?: "import" | "geometry";
   updatedAt?: string;
   id: string;

@@ -14,6 +14,8 @@ vi.mock("./api", () => ({
   saveWell: vi.fn(),
   cancelImport: vi.fn(),
   generateGeometry: vi.fn(),
+  getImport: vi.fn(),
+  retryImport: vi.fn(),
 }));
 vi.mock("./WellScene", () => ({
   default: () => <div data-testid="scene">3D scene</div>,
@@ -169,7 +171,7 @@ const click = async (selector: string) => {
   await act(async () => button!.click());
 };
 describe("FluidLab workspace", () => {
-  it("opens Costs with three tabs and loads existing 3D only on demand", async () => {
+  it("opens existing 3D immediately and preserves its node across tabs and sidebar collapse", async () => {
     await render();
     expect(host.textContent).toContain("20.00");
     expect(
@@ -177,12 +179,35 @@ describe("FluidLab workspace", () => {
         host.querySelectorAll('nav[aria-label="FluidLab sections"] button'),
       ).map((b) => b.textContent),
     ).toEqual(["Costs", "Mud", "Chat"]);
-    expect(host.querySelector('[data-testid="scene"]')).toBeNull();
-    const view = Array.from(host.querySelectorAll("button")).find(
-      (b) => b.textContent === "View well",
-    );
-    await act(async () => view!.click());
-    expect(host.querySelector('[data-testid="scene"]')).toBeTruthy();
+    const scene = host.querySelector('[data-testid="scene"]');
+    expect(scene).toBeTruthy();
+    await click('button[aria-label="Mud"]');
+    await click('button[aria-label="Chat"]');
+    await click('button[aria-label="Collapse information"]');
+    expect(
+      host.querySelector("#fl-sidebar-content")?.hasAttribute("hidden"),
+    ).toBe(true);
+    expect(host.querySelector('[data-testid="scene"]')).toBe(scene);
+    await click('button[aria-label="Expand information"]');
+    expect(api.generateGeometry).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Schematic well view");
+  });
+  it("resizes the sidebar with keyboard within its limits", async () => {
+    await render();
+    const handle = host.querySelector('[role="separator"]')!;
+    const key = (key: string) =>
+      act(async () => {
+        handle.dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true }),
+        );
+      });
+    expect(handle.getAttribute("aria-valuenow")).toBe("400");
+    await key("End");
+    await key("ArrowRight");
+    expect(handle.getAttribute("aria-valuenow")).toBe("560");
+    await key("Home");
+    await key("ArrowLeft");
+    expect(handle.getAttribute("aria-valuenow")).toBe("320");
   });
   it("keeps Chat mounted when scrollIntoView returns a promise and sends the selected scope", async () => {
     HTMLElement.prototype.scrollIntoView = vi
@@ -233,7 +258,13 @@ describe("FluidLab workspace", () => {
       versions: [],
       imports: [job],
     });
-    vi.mocked(api.cancelImport).mockResolvedValue({});
+    vi.mocked(api.cancelImport).mockImplementation(async () => {
+      vi.mocked(api.getHistory).mockResolvedValue({
+        versions: [],
+        imports: [{ ...job, status: "cancelled" }],
+      });
+      return {};
+    });
     await render();
     await click('button[aria-label="Mud"]');
     expect(host.textContent).toContain("Mud & reports");
@@ -244,18 +275,63 @@ describe("FluidLab workspace", () => {
     expect(api.cancelImport).toHaveBeenCalledWith("job");
     expect(host.textContent).toContain("delete and upload again");
   });
-  it("does not generate geometry merely by opening a new well view", async () => {
+  it("does not generate geometry merely by opening a well without a saved view", async () => {
     vi.mocked(api.getWell).mockResolvedValue({
       ...sample,
       geometry: [],
       next: null,
     });
     await render();
-    const view = Array.from(host.querySelectorAll("button")).find(
-      (b) => b.textContent === "View well",
-    );
-    await act(async () => view!.click());
     expect(api.generateGeometry).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("Generate detailed 3D");
+    expect(host.textContent).toContain("Generate 3D well");
+    expect(host.textContent).toContain("20.00");
+  });
+  it("follows the linked geometry job after import without blocking data", async () => {
+    vi.useFakeTimers();
+    const importing = {
+      id: "import",
+      wellId: "well",
+      status: "processing",
+      stage: "mapping",
+      files: [],
+      attempts: 1,
+      createdAt: "",
+    };
+    const geometry = {
+      ...importing,
+      id: "geometry",
+      kind: "geometry" as const,
+      status: "queued",
+      stage: "queued",
+      sourceImportId: "import",
+    };
+    vi.mocked(api.getHistory)
+      .mockResolvedValueOnce({ versions: [], imports: [importing] })
+      .mockResolvedValue({
+        versions: [],
+        imports: [
+          geometry,
+          { ...importing, status: "ready", geometryJobId: "geometry" },
+        ],
+      });
+    vi.mocked(api.getWell).mockResolvedValue({
+      ...sample,
+      geometry: [],
+      next: null,
+    });
+    vi.mocked(api.getImport).mockResolvedValue({
+      ...importing,
+      status: "ready",
+      geometryJobId: "geometry",
+    });
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(host.textContent).toContain("Your well is taking shape.");
+    expect(host.textContent).toContain("20.00");
+    await click('button[aria-label="Chat"]');
+    expect(host.textContent).toContain("Ask the data.");
+    expect(api.generateGeometry).not.toHaveBeenCalled();
   });
 });

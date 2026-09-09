@@ -16,6 +16,8 @@ import {
   assertImportRun,
   generateFluidGeometry,
   chatTool,
+  dispatchLinkedGeometry,
+  retryFluidImport,
 } from "../apps/fluidlab/service.js";
 const enabled =
   !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.STORAGE_EMULATOR_HOST;
@@ -264,3 +266,135 @@ test("chat retrieves original report notes and unmapped sources without modifyin
     /existing report/,
   );
 });
+
+test(
+  "emulator: import publishes data and a durable geometry handoff exactly once",
+  { skip: !enabled },
+  async () => {
+    await db
+      .doc(`users/${uid}`)
+      .set({
+        schemaVersion: 1,
+        email: `${uid}@example.com`,
+        status: "active",
+        role: "admin",
+      });
+    const id = randomUUID(),
+      importId = randomUUID(),
+      runId = randomUUID();
+    const base = db.doc(`users/${uid}/miniApps/fluidlab`);
+    const jobRef = base.collection("imports").doc(importId);
+    try {
+      await createFluidWell.run(
+        request({ name: "Automatic geometry", mutationId: id }),
+      );
+      await base.set({ importLock: importId, lockUntil: Date.now() + 3600000 });
+      await jobRef.set({
+        owner: uid,
+        wellId: id,
+        kind: "import",
+        status: "processing",
+        runId,
+        files: [],
+      });
+      const dataset = emptyDataset();
+      const mutation = randomUUID();
+      const args = [
+        uid,
+        id,
+        dataset,
+        0,
+        mutation,
+        "Import",
+        { id: importId, runId, metrics: {}, autoGeometry: true },
+      ];
+      const result = await publish(...args);
+      assert.ok(result.geometryJobId);
+      assert.equal(
+        (await getFluidWell.run(request({ wellId: id }))).well.version,
+        result.version,
+      );
+      const childRef = base.collection("imports").doc(result.geometryJobId);
+      const child = (await childRef.get()).data();
+      assert.equal(child.status, "queued");
+      assert.equal(child.version, result.version);
+      assert.equal(child.baseRevision, 1);
+      assert.equal(child.sourceImportId, importId);
+      assert.equal((await base.get()).data().importLock, result.geometryJobId);
+      assert.equal(
+        (await jobRef.get()).data().geometryJobId,
+        result.geometryJobId,
+      );
+      assert.deepEqual(await publish(...args), result);
+      assert.equal((await base.collection("imports").get()).size, 2);
+      await assert.rejects(
+        dispatchLinkedGeometry(uid, importId, async () => {
+          throw new Error("Queue temporarily down");
+        }),
+        /Queue temporarily down/,
+      );
+      const dispatched = [];
+      await dispatchLinkedGeometry(uid, importId, async (...args) => {
+        dispatched.push(args);
+      });
+      assert.deepEqual(dispatched, [[uid, result.geometryJobId]]);
+      // A worker already running, cancelled, or failed must not be dispatched again.
+      for (const status of ["processing", "failed", "cancelled"]) {
+        await childRef.update({ status });
+        await dispatchLinkedGeometry(uid, importId, async () => {
+          assert.fail("Duplicate dispatch");
+        });
+      }
+      await childRef.update({ status: "queued" });
+      await cancelFluidImport.run(request({ importId: result.geometryJobId }));
+      assert.equal((await base.get()).data().importLock, null);
+      await assert.rejects(
+        db.runTransaction((tx) => assertImportRun(tx, childRef, "old")),
+        /cancelled/,
+      );
+      // Correction while geometry is stopped makes its snapshot stale.
+      await saveFluidWell.run(
+        request({
+          wellId: id,
+          baseRevision: 1,
+          mutationId: randomUUID(),
+          currency: "USD",
+        }),
+      );
+      await assert.rejects(
+        retryFluidImport.run(request({ importId: result.geometryJobId })),
+        /dataset changed/,
+      );
+      // A subsequent import retaining existing geometry never starts automatic AI work.
+      const secondId = randomUUID();
+      await base.set({ importLock: secondId, lockUntil: Date.now() + 3600000 });
+      await base
+        .collection("imports")
+        .doc(secondId)
+        .set({
+          owner: uid,
+          wellId: id,
+          status: "processing",
+          runId,
+          files: [],
+        });
+      const saved = { ...dataset, geometry: [{ id: "existing" }] };
+      const second = await publish(
+        uid,
+        id,
+        saved,
+        2,
+        randomUUID(),
+        "Later import",
+        { id: secondId, runId, metrics: {}, autoGeometry: true },
+      );
+      assert.equal(second.geometryJobId, undefined);
+      assert.equal(
+        (await getFluidWell.run(request({ wellId: id }))).geometry[0].id,
+        "existing",
+      );
+    } finally {
+      await db.recursiveDelete(db.doc(`users/${uid}`));
+    }
+  },
+);

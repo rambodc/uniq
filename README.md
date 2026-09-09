@@ -17,7 +17,7 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 
 ## Mini apps and access
 
-- **FluidLab** — owner-private spreadsheet imports, editable 3D wells, inventory/cost analysis, source review, and AI chat at `/apps/fluidlab/wells/:wellId`
+- **FluidLab** — owner-private spreadsheet imports, saved schematic 3D wells, inventory/cost analysis, source review, and AI chat at `/apps/fluidlab/wells/:wellId`
 - **Well Viewer** — permission-controlled portal mini app at `/apps/well-viewer`, with an owner-private saved-well library, rename/delete, and original ZIP uploads up to 1 GB
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
@@ -121,11 +121,11 @@ Initial project setup requires enabling `cloudscheduler.googleapis.com`, grantin
 
 ## FluidLab import and analysis
 
-FluidLab has Costs, Mud, and Chat tabs. Well selection and uploads live in the header; detailed 3D is optional. Existing datasets, original sources, accepted corrections, and version snapshots remain readable.
+FluidLab opens a persistent 3D workspace with Costs, Mud, and Chat in a resizable overlay sidebar (a bottom sheet on mobile). Well selection and uploads live in the header. Existing datasets, original sources, accepted corrections, and version snapshots remain readable.
 
-The backend parses XLSX/XLS/CSV/TSV with pinned SheetJS CE. A compact workbook-wide AI request maps tables; code expands rows and columns, converts supported units, and performs decimal calculations. Each bounded batch permits one essential-mapping repair. Large inputs use at most two concurrent mapping requests. Original notes remain unchanged and are retrieved by Chat when relevant. There is no automatic per-note interpretation, second AI audit, geometry editor, or estimated branch-cost allocation.
+The backend parses XLSX/XLS/CSV/TSV with pinned SheetJS CE. A compact workbook-wide AI request maps tables; code expands rows and columns, converts supported units, and performs decimal calculations. Each bounded batch permits one essential-mapping repair. Large inputs use at most two concurrent mapping requests. Original notes remain unchanged and are retrieved by Chat when relevant. Table import does not interpret narratives. There is no second AI audit, geometry editor, or estimated branch-cost allocation.
 
-Jobs have `kind: import | geometry` (older jobs default to import). Optional geometry generation uses the selected dataset version and fails on stale revisions. Both kinds retain checkpoints, cancellation, worker ownership checks, and private Firebase task processing. The default model remains `gpt-5.4`.
+Jobs have `kind: import | geometry` (older jobs default to import). After a successful import without existing geometry, publication atomically creates a linked geometry job and transfers the user lock. The completed import acts as a durable dispatch outbox: task redelivery dispatches its queued child rather than rerunning extraction. Data is available before generation. Existing geometry is reused until the user chooses Update 3D from reports. Opening a well never triggers AI generation. Geometry uses the selected dataset version and fails on stale revisions. Both kinds retain checkpoints, cancellation, worker ownership checks, and private Firebase task processing. The default model remains `gpt-5.4`.
 
 Uploads remain limited to five files, 20 MiB each, 50 MiB combined, and 100,000 populated cells. Unknown prices, currencies, units, and conflicting inventory values are flagged; usable data opens without a confirmation wizard.
 

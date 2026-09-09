@@ -225,7 +225,7 @@ function Controls({
   capture: number;
   bounds: Vector3[];
 }) {
-  const { camera, gl } = useThree(),
+  const { camera, gl, size } = useThree(),
     controls = useRef<OrbitControlType>(null);
   const center = useMemo(
     () =>
@@ -249,12 +249,18 @@ function Controls({
           : new Vector3(1, 0.8, 1.2);
     camera.position
       .copy(center)
-      .add(delta.normalize().multiplyScalar(radius * 2.8));
+      .add(
+        delta
+          .normalize()
+          .multiplyScalar(
+            radius * 2.8 * Math.max(1, size.height / Math.max(1, size.width)),
+          ),
+      );
     camera.lookAt(center);
     camera.updateProjectionMatrix();
     controls.current?.target.copy(center);
     controls.current?.update();
-  }, [camera, center, radius, view, fit]);
+  }, [camera, center, radius, view, fit, size.height, size.width]);
   useEffect(() => {
     if (capture)
       download(gl.domElement.toDataURL("image/png"), "fluidlab-well.png");
@@ -289,7 +295,6 @@ function World(props: SceneProps) {
   );
   return (
     <>
-      <color attach="background" args={["#10191d"]} />
       <ambientLight intensity={1.2} />
       <directionalLight position={[500, 1000, 600]} intensity={2} />
       <Grid

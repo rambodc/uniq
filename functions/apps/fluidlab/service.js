@@ -114,7 +114,15 @@ export async function publish(
   const version = randomUUID(),
     path = `users/${uid}/fluidlab/${wellId}/versions/${version}.json`;
   await artifact(path, dataset);
-  const result = { version, revision: baseRevision + 1 };
+  const geometryJobId =
+    importRun?.autoGeometry && !dataset.geometry.length
+      ? `geometry-${version}`
+      : null;
+  const result = {
+    version,
+    revision: baseRevision + 1,
+    ...(geometryJobId ? { geometryJobId } : {}),
+  };
   // The snapshot is authoritative; normalized records are indexed separately for inspection.
   for (let i = 0; i < dataset.records.length; i += 400) {
     const batch = db.batch();
@@ -126,7 +134,11 @@ export async function publish(
     await batch.commit();
   }
   await db.runTransaction(async (tx) => {
-    const [w, m] = await Promise.all([tx.get(ref), tx.get(op)]);
+    const [w, m, lock] = await Promise.all([
+      tx.get(ref),
+      tx.get(op),
+      tx.get(root(uid)),
+    ]);
     if (importRun)
       await assertImportRun(
         tx,
@@ -141,6 +153,30 @@ export async function publish(
         "aborted",
         "This well changed. Reload before saving.",
       );
+    if (geometryJobId) {
+      if (lock.data()?.importLock !== importRun.id)
+        throw new HttpsError("aborted", "Import ownership changed.");
+      tx.create(imports(uid).doc(geometryJobId), {
+        owner: uid,
+        wellId,
+        kind: "geometry",
+        sourceImportId: importRun.id,
+        version,
+        baseRevision: result.revision,
+        files: [],
+        status: "queued",
+        stage: "queued",
+        attempts: 0,
+        message: "Data ready. Preparing your 3D well…",
+        createdAt: now(),
+        updatedAt: now(),
+      });
+      tx.set(
+        root(uid),
+        { importLock: geometryJobId, lockUntil: Date.now() + 3600000 },
+        { merge: true },
+      );
+    }
     tx.set(ref.collection("versions").doc(version), {
       path,
       createdAt: now(),
@@ -406,6 +442,20 @@ async function enqueue(uid, id) {
     .taskQueue(`locations/${REGION}/functions/processFluidImport`)
     .enqueue({ uid, importId: id }, { dispatchDeadlineSeconds: 1800 });
 }
+// The completed import is the durable outbox. A task redelivery after a crash
+// dispatches its linked job instead of repeating extraction or publication.
+export async function dispatchLinkedGeometry(
+  uid,
+  importId,
+  dispatch = enqueue,
+) {
+  const snap = await imports(uid).doc(importId).get();
+  const job = snap.data();
+  if (!job?.geometryJobId || !["ready", "partial"].includes(job.status)) return;
+  const geometry = await imports(uid).doc(job.geometryJobId).get();
+  if (geometry.data()?.status === "queued")
+    await dispatch(uid, job.geometryJobId);
+}
 export const completeFluidImport = wrap(async (uid, d) => {
   const ref = imports(uid).doc(validId(d.importId)),
     snap = await ref.get();
@@ -441,6 +491,17 @@ export const retryFluidImport = wrap(async (uid, d) => {
     throw new HttpsError("not-found", "Import not found.");
   if (!["failed", "partial", "cancelled"].includes(snap.data().status))
     throw new Error("This import is not retryable.");
+  if (snap.data().kind === "geometry") {
+    const { data: well } = await owned(uid, snap.data().wellId);
+    if (
+      well.version !== snap.data().version ||
+      well.revision !== snap.data().baseRevision
+    )
+      throw new HttpsError(
+        "aborted",
+        "The dataset changed. Use Generate 3D well or Update 3D from reports to start from current data.",
+      );
+  }
   if (snap.data().attempts >= 3)
     throw new Error("Retry limit reached. Create a smaller import.");
   await db.runTransaction(async (tx) => {
@@ -536,7 +597,10 @@ export const processFluidImport = onTaskDispatched(
       });
       return true;
     });
-    if (!acquired) return;
+    if (!acquired) {
+      await dispatchLinkedGeometry(uid, importId);
+      return;
+    }
     const started = Date.now();
     const controller = new AbortController();
     const update = (fields) =>
@@ -619,11 +683,12 @@ export const processFluidImport = onTaskDispatched(
         well.revision,
         `${importId}-${(job.attempts || 0) + 1}`,
         geometry
-          ? "Optional 3D generation"
+          ? "3D well generation"
           : `Import ${job.files.map((f) => f.name).join(", ")}`,
         {
           id: importId,
           runId,
+          autoGeometry: !geometry,
           metrics: {
             usage: result.usage,
             durationMs: Date.now() - started,
@@ -683,6 +748,7 @@ export const processFluidImport = onTaskDispatched(
           );
       });
     }
+    await dispatchLinkedGeometry(uid, importId);
   },
 );
 
