@@ -123,7 +123,7 @@ Initial project setup requires enabling `cloudscheduler.googleapis.com`, grantin
 
 FluidLab reads XLSX/XLS/CSV/TSV using pinned SheetJS CE, then asks OpenAI to map sheet layouts and extract operational notes. A separate review pass checks narrative interpretations. Source references, unit checks, decimal arithmetic, deduplication, and reconciliation are enforced in code. Neither macros nor spreadsheet formulas are executed.
 
-Imports use authenticated Cloud Tasks and checkpoint their progress in private Storage. Limits are five files, 20 MiB per file, 50 MiB combined, and 100,000 populated cells. Model execution is capped at 80 requests / 800,000 tokens per attempt and three user-initiated attempts. The Functions workflow configures required APIs, runtime secret access, and task dispatch IAM. `FLUIDLAB_MODEL` can override the default `gpt-5.4`.
+Imports use authenticated Cloud Tasks and checkpoint their progress in private Storage. Limits are five files, 20 MiB per file, 50 MiB combined, and 100,000 populated cells. Model execution is capped at 80 requests / 800,000 tokens per attempt and three user-initiated attempts. The Functions workflow configures required APIs, runtime secret access, and task dispatch IAM. The deployment identity needs Cloud Tasks administration; initial bootstrap additionally needs Service Usage administration and IAM policy access on the runtime service account. Existing bindings are checked before writing policies. `FLUIDLAB_MODEL` can override the default `gpt-5.4`.
 
 Offline tests include parser layout variants, decimal reconciliation, signed adjustments, non-overlapping estimated allocations, editor interaction, API lifecycle, and owner-only Storage rules. Live model checks are deliberately separate from CI:
 

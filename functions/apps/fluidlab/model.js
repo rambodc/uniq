@@ -427,6 +427,13 @@ export function mergeDatasets(previous, incoming) {
         ];
     }
   }
+  const acceptedIds = new Set(previous.records.map((r) => r.id));
+  const geometryIds = new Set(next.geometry.map((b) => b.id));
+  for (const b of incoming.geometry || [])
+    if (!acceptedIds.has(b.id) && !geometryIds.has(b.id))
+      next.geometry.push(structuredClone(b));
+  if (!next.wellbore && incoming.wellbore)
+    next.wellbore = structuredClone(incoming.wellbore);
   next.records = [...byId.values()];
   next.sources = [
     ...new Map(

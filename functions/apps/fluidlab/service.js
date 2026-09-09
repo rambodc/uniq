@@ -477,8 +477,6 @@ export const processFluidImport = onTaskDispatched(
       });
       const { well, dataset } = await load(uid, job.wellId);
       let merged = mergeDatasets(dataset, result.dataset);
-      if (!dataset.geometry.length) merged.geometry = result.dataset.geometry;
-      if (!dataset.wellbore) merged.wellbore = result.dataset.wellbore;
       const published = await publish(
         uid,
         job.wellId,

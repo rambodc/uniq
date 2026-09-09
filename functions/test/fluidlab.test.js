@@ -305,3 +305,22 @@ test("header-derived currency stays separate from numeric costs and retains unit
   assert.equal(result.records[0].facts.mdM.originalUnit, "ft");
   assert.equal(result.records[0].facts.mdM.originalValue, "100");
 });
+
+test("updates add newly documented branches without reviving manually removed branches", () => {
+  const before = fixture();
+  const removed = record("branch", "Leg 1", { startM: 0, endM: 100 });
+  before.records.push(removed);
+  before.geometry = [];
+  const incoming = fixture();
+  const added = record("branch", "Leg 2", { startM: 100, endM: 300 });
+  incoming.records.push(removed, added);
+  incoming.geometry = [
+    { id: removed.id, label: removed.label },
+    { id: added.id, label: added.label },
+  ];
+  const updated = mergeDatasets(before, incoming);
+  assert.deepEqual(
+    updated.geometry.map((b) => b.label),
+    ["Leg 2"],
+  );
+});
