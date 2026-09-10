@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { assertFails, assertSucceeds, initializeTestEnvironment } from "@firebase/rules-unit-testing";
@@ -100,4 +101,24 @@ test("shared Pason ZIP rules: exact reservation owner, active attachment reads, 
  await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),"fluidWells/pason-well"),{status:"ready",pason:{id:"first"}});});
  await assertSucceeds(getBytes(ref(client(other),path)));await assertFails(getBytes(ref(client(denied),path)));await assertFails(send(owner));await assertFails(deleteObject(ref(client(other),path)));await assertFails(listAll(ref(client(other),"fluidlab/pason-well/pason")));
  await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),"fluidWells/pason-well"),{status:"ready",pason:{id:"replacement"}});});await assertFails(getBytes(ref(client(owner),path)));
+});
+
+test("Pason Storage permissions stay within the production two-document lookup budget",async()=>{
+  const rules=await readFile(new URL("../storage.rules",import.meta.url),"utf8");
+  const helpers=new Map([...rules.matchAll(/function (\w+)\([^)]*\)\s*\{([\s\S]*?)\}/g)].map(m=>[m[1],m[2]]));
+  const pason=rules.slice(rules.indexOf("match /fluidlab/{wellId}/pason/"));
+  for(const action of ["get","create"]){
+    const expression=pason.match(new RegExp("allow "+action+": if([\\s\\S]*?);"))[1];
+    const paths=new Set(),visited=new Set();
+    const visit=body=>{for(const m of body.matchAll(/firestore\.get\(([\s\S]*?)\)\.data/g))paths.add(m[1]);for(const m of body.matchAll(/\b(\w+)\(/g)){if(helpers.has(m[1])&&!visited.has(m[1])){visited.add(m[1]);visit(helpers.get(m[1]));}}};
+    visit(expression);assert.ok(paths.size>0&&paths.size<=2,`${action} reads ${paths.size} distinct Firestore documents; Storage permits at most 2`);
+  }
+});
+
+test("cancelled and expired Pason reservations deny bytes even while the well exists",async()=>{
+ const owner="pason-cancel-owner";await seedFluid(owner);
+ for(const [id,status,expiresAt]of [["cancelled","cancelled",Timestamp.fromMillis(Date.now()+60000)],["expired","uploading",Timestamp.fromMillis(0)]]){
+  await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),"fluidWells/pason-cancel"),{status:"ready"});await setDoc(doc(c.firestore(),`fluidWells/pason-cancel/pasonUploads/${id}`),{owner,status,sizeBytes:3,expiresAt});});
+  await assertFails(uploadBytes(ref(client(owner),`fluidlab/pason-cancel/pason/${id}/original.zip`),new Uint8Array(3),{contentType:"application/zip",customMetadata:{owner,wellId:"pason-cancel"}}));
+ }
 });

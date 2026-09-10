@@ -42,8 +42,10 @@ service firebase.storage {
       function reservation() { return firestore.get(/databases/(default)/documents/fluidWells/$(wellId)/pasonUploads/$(uploadId)).data; }
       allow get: if request.auth != null && hasFluidAccess(request.auth.uid)
         && well().status != 'deleting' && well().pason.id == uploadId;
+      // Storage permits two Firestore documents per evaluation: user and reservation.
+      // The server revokes reservations before deleting a well or its artifacts.
       allow create: if request.auth != null && hasFluidAccess(request.auth.uid) && resource == null
-        && well().status != 'deleting' && reservation().status == 'uploading'
+        && reservation().status == 'uploading'
         && reservation().owner == request.auth.uid && request.time < reservation().expiresAt
         && request.resource.size > 0 && request.resource.size <= 1000000000
         && request.resource.size == reservation().sizeBytes && request.resource.contentType == 'application/zip'
