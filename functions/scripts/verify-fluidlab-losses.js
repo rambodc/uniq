@@ -19,7 +19,7 @@ const apiKey = execFileSync(
 ).trim();
 const d = emptyDataset(),
   raw =
-    "Report R1, 2026-09-01: Daily downhole losses were 8 m3 at 500 m MD. Cumulative downhole losses to date were 30 m3. The downhole loss rate was 2 m3/h. Surface transfer losses today were 3 m3. An additional loss of 4 was mentioned without a unit or classification.";
+    "Report R1, 2026-09-01: Laboratory API fluid loss was 6 mL in 30 minutes; this is a filtration test, not operational fluid loss. Daily downhole losses were 8 m3 at 500 m MD. Cumulative downhole losses to date were 30 m3. The downhole loss rate was 2 m3/h. Surface transfer losses today were 3 m3. An additional loss of 4 was mentioned without a unit or classification.";
 d.sources = [
   {
     id: "a".repeat(32),
@@ -54,6 +54,7 @@ d.records = [
 const result = await analyzeLosses(d, { apiKey });
 const entries = lossEntries(result.dataset);
 assert.equal(result.usage.calls, 1);
+assert.ok(!entries.some((e) => e.amount === 6));
 assert.ok(
   entries.some(
     (e) =>
