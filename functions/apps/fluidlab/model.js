@@ -21,7 +21,8 @@ export const Fact = z.object({
   status: z.enum(["reported", "interpreted", "edited"]),
 });
 export const emptyDataset = () => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
+  reviews: {},
   records: [],
   issues: [],
   sources: [],
@@ -61,7 +62,10 @@ export function issue(
   extra = {},
 ) {
   return {
-    id: idFor(code, message, recordId),
+    id: idFor(code, message, recordId, JSON.stringify(extra)),
+    priority:
+      code === "conflict" || /price|currency|cost/.test(code) ? "high" : "low",
+    status: "unresolved",
     code,
     message,
     sources,
@@ -213,7 +217,21 @@ export function reconcile(dataset) {
       );
   return {
     ...dataset,
-    issues: [...new Map(issues.map((i) => [i.id, i])).values()],
+    issues: [...new Map(issues.map((i) => [i.id, i])).values()].map((i) => {
+      const r = records.find((r) => r.id === i.recordId);
+      const fingerprint = idFor(
+        i.id,
+        JSON.stringify(r?.facts || {}),
+        JSON.stringify(i.candidate || null),
+        dataset.currency,
+      );
+      return {
+        ...i,
+        fingerprint,
+        status: "unresolved",
+        ...(dataset.reviews?.[fingerprint] || {}),
+      };
+    }),
   };
 }
 

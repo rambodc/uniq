@@ -15,7 +15,7 @@
       ]
     },
     {
-      "collectionGroup": "imports",
+      "collectionGroup": "fluidImports",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -34,20 +34,6 @@
       "collectionGroup": "wells",
       "fieldPath": "cleanupAt",
       "indexes": [
-        {
-          "order": "ASCENDING",
-          "queryScope": "COLLECTION_GROUP"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "imports",
-      "fieldPath": "status",
-      "indexes": [
-        {
-          "order": "ASCENDING",
-          "queryScope": "COLLECTION"
-        },
         {
           "order": "ASCENDING",
           "queryScope": "COLLECTION_GROUP"

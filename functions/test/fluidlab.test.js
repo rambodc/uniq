@@ -373,7 +373,7 @@ test("optional geometry uses only cited numeric leg data and leaves report data 
       raw: "Leg 1 from 100m-200m, losses 5m3. " + "Source context. ".repeat(20),
     },
   ];
-  const key = idFor("geometry-v1", "n");
+  const key = idFor("geometry-v2", "n");
   const result = await generateGeometry(d, {
     apiKey: "offline",
     checkpoints: {

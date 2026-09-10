@@ -97,7 +97,12 @@ export function branchPaths(
     );
     const fraction = parent
       ? (b.startM - parent.startM) / (parent.endM - parent.startM)
-      : b.startM / baseEnd;
+      : numeric(
+            data.records.find((r) => r.id === b.id),
+            "startM",
+          ) === null
+        ? 1
+        : b.startM / baseEnd;
     const start = parentCurve.getPoint(Math.max(0, Math.min(1, fraction)));
     let points: Point[];
     if (survey.length >= 2 && b.status !== "edited") {
@@ -383,7 +388,7 @@ function World(props: SceneProps) {
               {(b.id === selected || branches.length <= 12 || highlighted) && (
                 <Html position={p[p.length - 1]} center>
                   <button
-                    className="fl-scene-label"
+                    className={`fl-scene-label fl-leg-label${b.id === selected ? " fl-selected" : ""}`}
                     onClick={() => select(b.id)}
                   >
                     {b.label}

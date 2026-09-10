@@ -12,6 +12,7 @@ jobs:
     permissions: { id-token: write, contents: read }
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: functions/package-lock.json }
       - name: Validate deployment identity
@@ -30,6 +31,27 @@ jobs:
       - run: npm run lint --prefix functions
       - run: env -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE -u GOOGLE_GHA_CREDS_PATH npm test --prefix functions
       - run: npm install --global firebase-tools@14.15.2
-      - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
+      - name: Select affected functions
+        id: affected
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          python3 - <<'PYCODE'
+          import os, re, subprocess
+          before = os.environ.get("BEFORE_SHA", "")
+          target = "functions"
+          if before and set(before) != {"0"}:
+              paths = subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines()
+              runtime = [p for p in paths if p.startswith("functions/") and not p.startswith(("functions/test/", "functions/scripts/"))]
+              if runtime and all(p.startswith("functions/apps/fluidlab/") for p in runtime):
+                  with open("functions/index.js") as source:
+                      exports = re.findall(r'export \{([^}]+)\} from "\./apps/fluidlab/service\.js"', source.read())
+                  target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
+                  if not target:
+                      raise SystemExit("No FluidLab exports found")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("target=" + target + "\n")
+          PYCODE
+      - run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
       - name: Configure FluidLab task dispatch
         run: python3 scripts/configure-fluidlab-cloud.py --after-deploy

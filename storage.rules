@@ -24,12 +24,12 @@ service firebase.storage {
         && user.status == 'active' && user.email == request.auth.token.email
         && (user.role == 'admin' || 'fluidlab' in user.enabledMiniApps);
     }
-    match /users/{uid}/fluidlab/{wellId}/imports/{importId}/{fileId} {
-      function job() { return firestore.get(/databases/(default)/documents/users/$(uid)/miniApps/fluidlab/imports/$(importId)).data; }
+    match /fluidlab/{wellId}/imports/{importId}/{fileId} {
+      function job() { return firestore.get(/databases/(default)/documents/fluidImports/$(importId)).data; }
       function reservation() { return job().files[int(fileId)]; }
-      allow create: if request.auth != null && hasFluidAccess(uid) && resource == null
+      allow create: if request.auth != null && hasFluidAccess(request.auth.uid) && resource == null
         && fileId.matches('^[0-4]$') && int(fileId) < job().files.size()
-        && job().owner == uid && job().wellId == wellId && job().status == 'uploading'
+        && job().owner == request.auth.uid && job().wellId == wellId && job().status == 'uploading'
         && request.time < job().expiresAt
         && request.resource.size > 0 && request.resource.size <= 20971520
         && request.resource.size == reservation().size

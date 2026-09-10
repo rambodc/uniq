@@ -26,6 +26,9 @@ const tableSchema = z.object({
     "usage",
     "movement",
     "measurement",
+    "branch",
+    "equipment",
+    "survey",
   ]),
   orientation: z.enum(["rows", "columns"]),
   indices: z.array(z.number().int()),
@@ -166,6 +169,15 @@ const makeFact = (source, field, unit) => ({
   status: "reported",
 });
 const numericFields = new Set([
+  "legCount",
+  "inclination",
+  "azimuth",
+  "density",
+  "funnelViscosity",
+  "plasticViscosity",
+  "yieldPoint",
+  "ph",
+  "fluidLoss",
   "totalCost",
   "unitPrice",
   "cost",
@@ -637,6 +649,9 @@ export async function extractFiles(
           "usage",
           "movement",
           "measurement",
+          "branch",
+          "equipment",
+          "survey",
         ].includes(r.kind),
       );
       expanded.issues.push(
@@ -653,8 +668,14 @@ export async function extractFiles(
     ).size,
   };
   if (!dataset.records.length)
-    throw new Error(
-      "No usable tables found. Original cells are retained; check headings and retry.",
+    dataset.issues.push(
+      issue(
+        "mapping:empty",
+        "No structured tables found. Original cells are available to chat; add well dimensions in Problems to create a schematic.",
+        [],
+        null,
+        { priority: "high" },
+      ),
     );
   return {
     dataset: reconcile(dataset),

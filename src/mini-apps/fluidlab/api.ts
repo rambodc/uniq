@@ -3,6 +3,7 @@ import { ref, uploadBytesResumable } from "firebase/storage";
 import { functions, wellStorage } from "../../core/firebase";
 import type {
   Dataset,
+  WellChange,
   Well,
   ImportJob,
   Source,
@@ -137,13 +138,7 @@ export async function uploadFiles(
 }
 export const completeImport = (importId: string) =>
   call("completeFluidImport", { importId });
-export const saveWell = (
-  well: Well,
-  change: {
-    currency?: string | null;
-    correction?: { recordId: string; field: string; value: string };
-  },
-) =>
+export const saveWell = (well: Well, change: WellChange) =>
   call<{ version: string; revision: number }>("saveFluidWell", {
     wellId: well.id,
     baseRevision: well.revision,

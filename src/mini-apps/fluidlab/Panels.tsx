@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import Decimal from "decimal.js";
-import { ChevronRight, Send } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronRight,
+  FlaskConical,
+  Droplets,
+  CalendarDays,
+} from "lucide-react";
 import { askChat, getChat } from "./api";
 import {
   compatiblePackage,
-  currencyFor,
   exportCsv,
   money,
   numeric,
@@ -16,90 +21,431 @@ import {
   type DataRecord,
   type Dataset,
 } from "./model";
+
+const measurements = [
+  "density",
+  "funnelViscosity",
+  "plasticViscosity",
+  "yieldPoint",
+  "ph",
+  "fluidLoss",
+  "totalLossesM3",
+];
 export function Facts({
   record,
   openSources,
-  correct,
 }: {
   record: DataRecord;
   openSources: (ids: string[]) => void;
-  correct?: (recordId: string, field: string, value: string) => Promise<void>;
 }) {
-  const [editing, setEditing] = useState<string | null>(null),
-    [draft, setDraft] = useState("");
   return (
-    <div className="fl-facts">
+    <details className="fl-card">
+      <summary>All values & evidence</summary>
       {Object.entries(record.facts)
-        .filter(([, f]) => f.value !== null && f.value !== "")
+        .filter(([, f]) => f.value !== null)
         .map(([key, f]) => (
           <div className="fl-fact" key={key}>
             <div>
-              <span>{pretty(key)}</span>
-              {f.originalUnit && f.originalUnit !== f.unit && (
-                <small>
-                  Source: {f.originalValue} {f.originalUnit}
-                </small>
-              )}
-              <small className={f.status === "reported" ? "" : "fl-amber"}>
-                {f.status}
-              </small>
+              <small>{pretty(key)}</small>
+              <strong>
+                {f.value} {f.unit}
+              </strong>
             </div>
-            {editing === key ? (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  await correct?.(record.id, key, draft);
-                  setEditing(null);
-                }}
-              >
-                <input
-                  aria-label={`Correct ${pretty(key)}`}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                />
-                <button type="submit">Save</button>
-                <button type="button" onClick={() => setEditing(null)}>
-                  Cancel
-                </button>
-              </form>
-            ) : (
-              <>
-                <p>
-                  {f.value}
-                  {f.unit && <small> {f.unit}</small>}
-                </p>
-                <div className="fl-inline">
-                  <button
-                    className="fl-text-button"
-                    onClick={() => openSources(f.sources)}
-                  >
-                    Source
-                  </button>
-                  {correct && (
-                    <button
-                      className="fl-text-button"
-                      onClick={() => {
-                        setEditing(key);
-                        setDraft(f.value ?? "");
-                      }}
-                    >
-                      Correct
-                    </button>
-                  )}
-                </div>
-              </>
+            {f.sources.length > 0 && (
+              <button onClick={() => openSources(f.sources)}>Evidence</button>
             )}
           </div>
         ))}
+    </details>
+  );
+}
+function Stats({
+  data,
+  report = null,
+  product = null,
+}: {
+  data: Dataset;
+  report?: string | null;
+  product?: string | null;
+}) {
+  const totals = scopedCosts(data, report, product);
+  return (
+    <>
+      {totals.groups.map((g) => (
+        <div className="fl-total" key={g.currency}>
+          <small>
+            {g.currency === "unspecified"
+              ? "Spend · currency unconfirmed"
+              : `Spend · ${g.currency}`}
+          </small>
+          <strong>{money(g.totalCost)}</strong>
+          <div className="fl-inline">
+            <span>Products {money(g.productCost)}</span>
+            {!product && <span>Services {money(g.serviceCost)}</span>}
+          </div>
+          {totals.unpriced > 0 && <small>Known spend</small>}
+        </div>
+      ))}
+      {!totals.groups.length && (
+        <p className="fl-muted">No priced entries yet.</p>
+      )}
+    </>
+  );
+}
+function productRecords(data: Dataset) {
+  const list = data.records.filter((r) => r.kind === "product");
+  const labels = new Set(list.map((r) => r.label));
+  for (const r of data.records.filter((r) => r.kind === "usage" && r.product))
+    if (!labels.has(r.product!)) {
+      list.push({
+        ...r,
+        id: `product:${r.product}`,
+        kind: "product",
+        label: r.product!,
+        facts: {},
+      });
+      labels.add(r.product!);
+    }
+  return list;
+}
+export function Costs({
+  data,
+  report,
+  onReport,
+  select,
+}: {
+  data: Dataset;
+  report: string | null;
+  onReport: (label: string | null) => void;
+  select: (r: DataRecord) => void;
+}) {
+  return (
+    <>
+      <div className="fl-section-title">
+        <FlaskConical />
+        <div>
+          <small>YOUR FLUID PROGRAM</small>
+          <h1>Costs & products</h1>
+        </div>
+      </div>
+      <label className="fl-filter">
+        Report
+        <select
+          aria-label="Cost report"
+          value={report || ""}
+          onChange={(e) => onReport(e.target.value || null)}
+        >
+          <option value="">Whole well</option>
+          {reportRecords(data).map((r) => (
+            <option key={r.id}>{r.label}</option>
+          ))}
+        </select>
+      </label>
+      <Stats data={data} report={report} />
+      <h2>
+        Products <small>{productRecords(data).length} in this well</small>
+      </h2>
+      <div className="fl-list">
+        {productRecords(data).map((r) => {
+          const spend = scopedCosts(data, report, r.label).groups;
+          return (
+            <button
+              className="fl-list-card"
+              key={r.id}
+              onClick={() => select(r)}
+            >
+              <span className="fl-icon">
+                <FlaskConical size={22} />
+              </span>
+              <span className="fl-card-copy">
+                <strong>{r.label}</strong>
+                <small>{value(r, "package") || "Drilling fluid product"}</small>
+                {spend.map((g) => (
+                  <b key={g.currency}>{money(g.productCost, g.currency)}</b>
+                ))}
+              </span>
+              <ChevronRight size={17} />
+            </button>
+          );
+        })}
+      </div>
+      {!productRecords(data).length && (
+        <p className="fl-muted">
+          Products will appear when found in your reports.
+        </p>
+      )}
+    </>
+  );
+}
+export function ProductDetail({
+  data,
+  record,
+  report,
+  openSources,
+}: {
+  data: Dataset;
+  record: DataRecord;
+  report: string | null;
+  openSources: (ids: string[]) => void;
+}) {
+  const rows = data.records.filter(
+    (r) =>
+      (r.kind === "usage" || r.kind === "movement") &&
+      r.product === record.label &&
+      (!report || r.report === report),
+  );
+  const used = rows
+    .filter(
+      (r) =>
+        r.kind === "usage" &&
+        compatiblePackage(r, record) &&
+        value(r, "quantity") !== null,
+    )
+    .reduce((n, r) => n.plus(value(r, "quantity")!), new Decimal(0));
+  const chart = reportRecords(data).flatMap((r) =>
+    scopedCosts(data, r.label, record.label).groups.map((g) => ({
+      label: r.label,
+      currency: g.currency,
+      value: Number(g.productCost),
+    })),
+  );
+  return (
+    <>
+      <span className="fl-hero-icon">
+        <FlaskConical size={32} />
+      </span>
+      <h1>{record.label}</h1>
+      <p className="fl-muted">
+        {value(record, "package") || "Product overview"}
+      </p>
+      <Stats data={data} report={report} product={record.label} />
+      <div className="fl-metrics">
+        {[
+          [
+            "Used",
+            value(record, "totalUsed") ??
+              (rows.some(
+                (r) =>
+                  r.kind === "usage" &&
+                  compatiblePackage(r, record) &&
+                  value(r, "quantity") !== null,
+              )
+                ? used.toString()
+                : null),
+          ],
+          ["Received", value(record, "totalReceived")],
+          ["Remaining", value(record, "totalRemaining")],
+          ["Unit price", value(record, "unitPrice")],
+        ].map(([label, v]) => (
+          <div key={label}>
+            <small>{label}</small>
+            <strong>{v ?? "—"}</strong>
+            <small>
+              {label === "Unit price"
+                ? record.facts.unitPrice?.unit
+                : value(record, "package")}
+            </small>
+          </div>
+        ))}
+      </div>
+      <h2>Spend by report</h2>
+      {[...new Set(chart.map((r) => r.currency))].map((c) => (
+        <div key={c}>
+          <small>{c === "unspecified" ? "Currency unconfirmed" : c}</small>
+          <Bars entries={chart.filter((r) => r.currency === c)} />
+        </div>
+      ))}
+      <Facts record={record} openSources={openSources} />
+      <details className="fl-card">
+        <summary>Usage & inventory ledger</summary>
+        <button
+          onClick={() =>
+            exportCsv(
+              `${record.label}.csv`,
+              ["Report", "Type", "Quantity", "Cost"],
+              rows.map((r) => [
+                r.report,
+                r.kind,
+                value(r, "quantity"),
+                value(r, "cost"),
+              ]),
+            )
+          }
+        >
+          Download CSV
+        </button>
+        {rows.map((r) => (
+          <div key={r.id} className="fl-fact">
+            <span>
+              {r.report || r.label}
+              <small>{pretty(r.kind)}</small>
+            </span>
+            <strong>
+              {value(r, "quantity") ?? "—"} {value(r, "package")}
+            </strong>
+          </div>
+        ))}
+      </details>
+    </>
+  );
+}
+function Bars({ entries }: { entries: { label: string; value: number }[] }) {
+  const max = Math.max(1, ...entries.map((r) => Math.abs(r.value)));
+  return (
+    <div className="fl-bars">
+      {entries.map((r, i) => (
+        <div className="fl-bar-row" key={`${r.label}:${i}`}>
+          <span>{r.label}</span>
+          <b>
+            {r.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          </b>
+          <i style={{ width: `${(Math.abs(r.value) / max) * 100}%` }} />
+        </div>
+      ))}
     </div>
   );
 }
-
+export function Mud({
+  data,
+  select,
+}: {
+  data: Dataset;
+  select: (r: DataRecord) => void;
+}) {
+  const reports = reportRecords(data);
+  return (
+    <>
+      <div className="fl-section-title">
+        <Droplets />
+        <div>
+          <small>DAILY WELL PICTURE</small>
+          <h1>Mud & reports</h1>
+        </div>
+      </div>
+      <p className="fl-muted">
+        {reports.length} reports · select one to explore
+      </p>
+      <div className="fl-list">
+        {reports.map((r) => (
+          <button
+            className="fl-list-card fl-report-card"
+            key={r.id}
+            onClick={() => select(r)}
+          >
+            <span className="fl-icon">
+              <CalendarDays size={21} />
+            </span>
+            <span className="fl-card-copy">
+              <strong>{r.label}</strong>
+              <small>
+                {value(r, "createdDate") ||
+                  value(r, "date") ||
+                  "Date not stated"}
+                {value(r, "mdM") !== null && ` · ${value(r, "mdM")} m MD`}
+              </small>
+              <span className="fl-report-chips">
+                {measurements
+                  .filter((f) => value(r, f) !== null)
+                  .slice(0, 3)
+                  .map((f) => (
+                    <span key={f}>
+                      <small>{pretty(f)}</small>
+                      <b>
+                        {value(r, f)} {r.facts[f].unit}
+                      </b>
+                    </span>
+                  ))}
+              </span>
+            </span>
+            <ChevronRight size={17} />
+          </button>
+        ))}
+      </div>
+      {!reports.length && (
+        <p className="fl-muted">No mud reports have been mapped yet.</p>
+      )}
+    </>
+  );
+}
+export function ReportDetail({
+  data,
+  record,
+  openSources,
+}: {
+  data: Dataset;
+  record: DataRecord;
+  openSources: (ids: string[]) => void;
+}) {
+  const [field, setField] = useState("density");
+  const reports = reportRecords(data).filter((r) => numeric(r, field) !== null);
+  const units = [
+    ...new Set(reports.map((r) => r.facts[field]?.unit || "Unit not stated")),
+  ];
+  return (
+    <>
+      <span className="fl-hero-icon">
+        <Droplets size={32} />
+      </span>
+      <h1>{record.label}</h1>
+      <p className="fl-muted">
+        {value(record, "createdDate") ||
+          value(record, "date") ||
+          "Report overview"}
+      </p>
+      <div className="fl-metrics">
+        {["mdM", ...measurements]
+          .filter((f) => value(record, f) !== null)
+          .map((f) => (
+            <div key={f}>
+              <small>{pretty(f)}</small>
+              <strong>{value(record, f)}</strong>
+              <small>{record.facts[f].unit}</small>
+            </div>
+          ))}
+      </div>
+      <h2>Across reports</h2>
+      <label>
+        Property
+        <select value={field} onChange={(e) => setField(e.target.value)}>
+          {measurements.map((f) => (
+            <option key={f} value={f}>
+              {pretty(f)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {units.map((unit) => (
+        <div key={unit}>
+          <small>{unit}</small>
+          <Bars
+            entries={reports
+              .filter(
+                (r) => (r.facts[field].unit || "Unit not stated") === unit,
+              )
+              .map((r) => ({ label: r.label, value: numeric(r, field)! }))}
+          />
+        </div>
+      ))}
+      {["activitySummary", "recommendation"]
+        .filter((f) => value(record, f))
+        .map((f) => (
+          <section key={f} className="fl-card">
+            <h2>
+              {f === "activitySummary"
+                ? "Report notes"
+                : "Reported recommendations"}
+            </h2>
+            <p className="fl-note">{value(record, f)}</p>
+          </section>
+        ))}
+      <Facts record={record} openSources={openSources} />
+    </>
+  );
+}
 const prompts = [
-  "Which products contributed most to the cost?",
-  "Which legs recorded the greatest losses?",
-  "Does the remaining inventory reconcile?",
-  "What changed during the highest-cost reporting period?",
+  "What stands out about this well?",
+  "Which products drive the cost?",
+  "How did the mud change?",
 ];
 export function Chat({
   data,
@@ -107,23 +453,29 @@ export function Chat({
   highlight,
   report,
   product,
+  visible = true,
 }: {
   data: Dataset;
   report: string | null;
   product: string | null;
   openSources: (ids: string[]) => void;
   highlight: (ids: string[]) => void;
+  visible?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]),
     [question, setQuestion] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const bottom = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null),
+    textarea = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     let alive = true;
     getChat(data.well.id)
       .then((m) => {
-        if (alive) setMessages(m);
+        if (alive)
+          setMessages((current) => [
+            ...new Map([...m, ...current].map((x) => [x.id, x])).values(),
+          ]);
       })
       .catch((e) => {
         if (alive) setError(e.message);
@@ -133,17 +485,17 @@ export function Chat({
     };
   }, [data.well.id]);
   useEffect(() => {
-    // Scroll APIs can return a promise; effects may only return a cleanup function.
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [messages, busy]);
+    if (visible)
+      bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [messages, busy, visible]);
   const ask = async (text: string) => {
     if (busy || !text.trim()) return;
     setBusy(true);
     setError("");
     setQuestion("");
     try {
-      const message = await askChat(data.well, text, report, product);
-      setMessages((m) => [...m, message]);
+      const m = await askChat(data.well, text, report, product);
+      setMessages((prev) => [...prev, m]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Chat failed");
       setQuestion(text);
@@ -153,76 +505,65 @@ export function Chat({
   };
   return (
     <div className="fl-chat">
-      <div className="fl-eyebrow">YOUR WELL ANALYST</div>
-      <h2>Ask the data.</h2>
-      <p className="fl-scope">
-        {report || "Whole well"} · {product || "All products"}
-      </p>
-      <p className="fl-muted">
-        Answers use this well’s records and calculations. Evidence opens
-        directly in the source viewer.
-      </p>
-      {messages.length === 0 && (
-        <div className="fl-prompts">
-          {prompts.map((p) => (
-            <button key={p} onClick={() => void ask(p)}>
-              {p}
-              <ChevronRight size={15} />
-            </button>
-          ))}
-        </div>
-      )}
-      {messages.map((m) => (
-        <article className="fl-message" key={m.id}>
-          <div className="fl-question">{m.question}</div>
-          <div className="fl-answer">
-            {m.answer.split(/(\[[a-f0-9]{32}\])/g).map((part, index) => {
-              const match = part.match(/^\[([a-f0-9]{32})\]$/);
-              if (!match) return <span key={index}>{part}</span>;
-              const citation = m.citations.indexOf(match[1]);
-              return citation >= 0 ? (
-                <button
-                  key={index}
-                  className="fl-citation"
-                  disabled={m.version !== data.well.version}
-                  aria-label={`Open source ${citation + 1}`}
-                  onClick={() => openSources([match[1]])}
-                >
-                  [{citation + 1}]
-                </button>
-              ) : null;
-            })}
-          </div>
-          {m.version !== data.well.version && (
-            <small className="fl-amber">
-              Answer from an earlier dataset version
-            </small>
-          )}
-          <div className="fl-inline">
-            {m.citations.length > 0 && m.version === data.well.version && (
-              <button onClick={() => openSources(m.citations)}>
-                Sources · {m.citations.length}
+      <div className="fl-chat-feed">
+        <small>YOUR WELL ANALYST</small>
+        <h1>Ask the data.</h1>
+        <p className="fl-muted">
+          {report || "Whole well"} · {product || "All products"}
+        </p>
+        {!messages.length && (
+          <div className="fl-prompts">
+            {prompts.map((p) => (
+              <button
+                key={p}
+                disabled={busy || !data.well.version}
+                onClick={() => void ask(p)}
+              >
+                {p}
+                <ChevronRight size={16} />
               </button>
-            )}
-            {m.highlights.length > 0 && m.version === data.well.version && (
-              <button onClick={() => highlight(m.highlights)}>
-                Show in well
-              </button>
-            )}
+            ))}
           </div>
-        </article>
-      ))}
-      {busy && (
-        <div className="fl-thinking">
-          <i /> Examining your reports…
-        </div>
-      )}
-      {error && (
-        <div className="fl-error" role="alert">
-          {error}
-        </div>
-      )}
-      <div ref={bottom} />
+        )}
+        {messages.map((m) => (
+          <article className="fl-message" key={m.id}>
+            <div className="fl-question">{m.question}</div>
+            <div className="fl-answer">
+              {m.answer.replace(/\[[a-f0-9]{32}\]/g, "")}
+            </div>
+            {m.version !== data.well.version ? (
+              <small>Earlier well version</small>
+            ) : (
+              <div className="fl-inline">
+                {m.citations.length > 0 && (
+                  <details>
+                    <summary>Supporting details</summary>
+                    <button onClick={() => openSources(m.citations)}>
+                      View evidence
+                    </button>
+                  </details>
+                )}
+                {m.highlights.length > 0 && (
+                  <button onClick={() => highlight(m.highlights)}>
+                    Show in well
+                  </button>
+                )}
+              </div>
+            )}
+          </article>
+        ))}
+        {busy && (
+          <div className="fl-thinking" role="status">
+            Looking through your well…
+          </div>
+        )}
+        {error && (
+          <p className="fl-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div ref={bottom} />
+      </div>
       <form
         className="fl-chat-form"
         onSubmit={(e) => {
@@ -231,358 +572,35 @@ export function Chat({
         }}
       >
         <textarea
+          ref={textarea}
           aria-label="Ask about this well"
-          placeholder="Ask about costs, products, or the well…"
+          placeholder="Ask about your well…"
           value={question}
           maxLength={4000}
-          onChange={(e) => setQuestion(e.target.value)}
-          rows={3}
+          rows={1}
+          onChange={(e) => {
+            setQuestion(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              void ask(question);
+            }
+          }}
         />
         <button
           aria-label="Send question"
           disabled={busy || !question.trim() || !data.well.version}
         >
-          <Send size={17} />
+          <ArrowUp size={20} />
         </button>
       </form>
     </div>
-  );
-}
-
-export function Costs({
-  data,
-  report,
-  product,
-  select,
-  onReport,
-}: {
-  data: Dataset;
-  report: string | null;
-  product: string | null;
-  select: (id: string) => void;
-  onReport: (r: string | null) => void;
-}) {
-  const [ledger, setLedger] = useState(false);
-  const totals = scopedCosts(data, report, product);
-  const products = data.records.filter(
-    (r) => r.kind === "product" && (!product || r.label === product),
-  );
-  const rows = data.records.filter(
-    (r) =>
-      (r.kind === "usage" || r.kind === "movement") &&
-      (!report || r.report === report) &&
-      (!product || r.product === product),
-  );
-  const usage = (p: DataRecord) =>
-    data.records
-      .filter(
-        (r) =>
-          r.kind === "usage" &&
-          r.product === p.label &&
-          compatiblePackage(r, p) &&
-          (!report || r.report === report),
-      )
-      .reduce((s, r) => s.plus(value(r, "quantity") || 0), new Decimal(0));
-  const chart = reportRecords(data).flatMap((r) =>
-    scopedCosts(data, r.label, product).groups.map((g) => ({ r, g })),
-  );
-  const chartCurrencies = [...new Set(chart.map((x) => x.g.currency))];
-  return (
-    <>
-      <h1>Costs & inventory</h1>
-      <p className="fl-muted">
-        {report || "Whole well"} · {product || "All products"}
-      </p>
-      {totals.groups.map((g) => (
-        <div className="fl-stats" key={g.currency}>
-          <div>
-            <small>
-              Product cost ·{" "}
-              {g.currency === "unspecified"
-                ? "currency unconfirmed"
-                : g.currency}
-            </small>
-            <strong>{money(g.productCost)}</strong>
-          </div>
-          {!product && (
-            <div>
-              <small>Services</small>
-              <strong>{money(g.serviceCost)}</strong>
-            </div>
-          )}
-          <div>
-            <small>
-              {totals.unpriced ? "Known total · incomplete" : "Combined total"}
-            </small>
-            <strong>{money(g.totalCost)}</strong>
-          </div>
-        </div>
-      ))}
-      {totals.unpriced > 0 && (
-        <p className="fl-amber">
-          {totals.unpriced} usage entries have no usable price and are excluded
-          from totals.
-        </p>
-      )}
-      {!totals.groups.length && (
-        <p className="fl-muted">No priced entries in this selection.</p>
-      )}
-      <details className="fl-card">
-        <summary>Spend by report</summary>
-        {chartCurrencies.map((currency) => {
-          const entries = chart.filter((x) => x.g.currency === currency),
-            max = Math.max(
-              1,
-              ...entries.map((x) => Math.abs(Number(x.g.totalCost))),
-            );
-          return (
-            <section key={currency}>
-              <h3>
-                {currency === "unspecified" ? "Currency unconfirmed" : currency}
-              </h3>
-              <div className="fl-bars">
-                {entries.map(({ r, g }) => (
-                  <button key={r.id} onClick={() => onReport(r.label)}>
-                    <span>{r.label}</span>
-                    <span
-                      className="fl-bar"
-                      style={{
-                        width: `${Math.max(1, (Math.abs(Number(g.totalCost)) / max) * 60)}%`,
-                      }}
-                    />
-                    <b>{money(g.totalCost)}</b>
-                  </button>
-                ))}
-              </div>
-            </section>
-          );
-        })}
-      </details>
-      <div className="fl-toolbar">
-        <button aria-pressed={!ledger} onClick={() => setLedger(false)}>
-          Products
-        </button>
-        <button aria-pressed={ledger} onClick={() => setLedger(true)}>
-          Usage & movements
-        </button>
-        <button
-          onClick={() =>
-            exportCsv(
-              "fluidlab-costs.csv",
-              [
-                "Product",
-                "Report",
-                "Quantity",
-                "Package",
-                "Price",
-                "Source cost",
-              ],
-              (ledger ? rows : products).map((r) => [
-                r.product || r.label,
-                r.report,
-                value(r, "quantity") ?? value(r, "totalUsed"),
-                value(r, "package"),
-                value(r, "unitPrice"),
-                value(r, "cost") ?? value(r, "totalCost"),
-              ]),
-            )
-          }
-        >
-          Download CSV
-        </button>
-      </div>
-      <div className="fl-table-wrap">
-        <table>
-          <thead>
-            {ledger ? (
-              <tr>
-                <th>Product / entry</th>
-                <th>Report / type</th>
-                <th>Signed quantity</th>
-                <th>Price</th>
-              </tr>
-            ) : (
-              <tr>
-                <th>Product</th>
-                <th>Package</th>
-                <th>{report ? "Report usage" : "Usage"}</th>
-                <th>Unit price</th>
-                <th>Received / returned</th>
-                <th>Reported remaining</th>
-                <th>Calculated remaining</th>
-                <th>Source cost · whole well</th>
-              </tr>
-            )}
-          </thead>
-          <tbody>
-            {(ledger ? rows : products).map((r) => {
-              const received = numeric(r, "totalReceived"),
-                returned = numeric(r, "totalReturned"),
-                allUsed = data.records
-                  .filter(
-                    (u) =>
-                      u.kind === "usage" &&
-                      u.product === r.label &&
-                      compatiblePackage(u, r),
-                  )
-                  .reduce(
-                    (s, u) => s.plus(value(u, "quantity") || 0),
-                    new Decimal(0),
-                  );
-              return ledger ? (
-                <tr key={r.id}>
-                  <td>
-                    <button onClick={() => select(r.id)}>
-                      {r.product || r.label}
-                    </button>
-                  </td>
-                  <td>{r.report || value(r, "type") || "Unspecified"}</td>
-                  <td>
-                    {value(r, "quantity") ?? "—"} {value(r, "package")}
-                  </td>
-                  <td>
-                    {money(value(r, "unitPrice"), currencyFor(r, "unitPrice"))}
-                  </td>
-                </tr>
-              ) : (
-                <tr key={r.id}>
-                  <td>
-                    <button onClick={() => select(r.id)}>{r.label}</button>
-                  </td>
-                  <td>{value(r, "package") || "Unknown"}</td>
-                  <td>{usage(r).toString()}</td>
-                  <td>
-                    <button onClick={() => select(r.id)}>
-                      {money(
-                        value(r, "unitPrice"),
-                        currencyFor(r, "unitPrice"),
-                      )}
-                    </button>
-                  </td>
-                  <td>
-                    {received ?? "—"} / {returned ?? "—"}
-                  </td>
-                  <td>{value(r, "totalRemaining") ?? "—"}</td>
-                  <td>
-                    {received !== null && returned !== null
-                      ? new Decimal(value(r, "openingStock") || 0)
-                          .plus(received)
-                          .minus(returned)
-                          .minus(allUsed)
-                          .toString()
-                      : "—"}
-                    {value(r, "openingStock") === null && (
-                      <small>Assumes zero opening stock</small>
-                    )}
-                  </td>
-                  <td>{money(value(r, "totalCost"))}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="fl-muted">
-        Balances and source product totals cover the whole well. Report
-        selection filters usage and calculated spend. Click a product or price
-        for original values and corrections.
-      </p>
-    </>
-  );
-}
-export function Mud({
-  data,
-  report,
-  select,
-  onReport,
-}: {
-  data: Dataset;
-  report: string | null;
-  select: (id: string) => void;
-  onReport: (r: string | null) => void;
-}) {
-  const [field, setField] = useState("density"),
-    reports = reportRecords(data);
-  const fields = [
-    "density",
-    "funnelViscosity",
-    "plasticViscosity",
-    "yieldPoint",
-    "ph",
-    "fluidLoss",
-    "totalLossesM3",
-  ];
-  const units = [
-    ...new Set(reports.map((r) => r.facts[field]?.unit || "Unit not stated")),
-  ];
-  return (
-    <>
-      <h1>Mud & reports</h1>
-      <label>
-        Property{" "}
-        <select value={field} onChange={(e) => setField(e.target.value)}>
-          {fields.map((f) => (
-            <option key={f} value={f}>
-              {pretty(f)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {units.map((unit) => {
-        const entries = reports.filter(
-            (r) => (r.facts[field]?.unit || "Unit not stated") === unit,
-          ),
-          max = Math.max(
-            1,
-            ...entries.map((r) => Math.abs(numeric(r, field) || 0)),
-          );
-        return (
-          <section key={unit}>
-            <h3>{unit}</h3>
-            <div className="fl-bars">
-              {entries.map((r) => (
-                <button key={r.id} onClick={() => onReport(r.label)}>
-                  <span>{r.label}</span>
-                  <span
-                    className="fl-bar"
-                    style={{
-                      width: `${(Math.abs(numeric(r, field) || 0) / max) * 60}%`,
-                    }}
-                  />
-                  <b>{value(r, field) ?? "—"}</b>
-                </button>
-              ))}
-            </div>
-          </section>
-        );
-      })}
-      {reports
-        .filter((r) => !report || r.label === report)
-        .map((r) => (
-          <article className="fl-card" key={r.id}>
-            <div className="fl-toolbar">
-              <h2>{r.label}</h2>
-              <button onClick={() => select(r.id)}>Values & sources</button>
-            </div>
-            <p className="fl-muted">
-              {value(r, "createdDate") || value(r, "date") || "Date not stated"}{" "}
-              · MD {value(r, "mdM") ?? "—"} m
-            </p>
-            {["activitySummary", "recommendation"].map(
-              (f) =>
-                value(r, f) && (
-                  <section key={f}>
-                    <h3>
-                      {f === "recommendation"
-                        ? "Recommendations in the original report"
-                        : "Original report notes"}
-                    </h3>
-                    <p className="fl-note">{value(r, f)}</p>
-                  </section>
-                ),
-            )}
-          </article>
-        ))}
-    </>
   );
 }

@@ -23,13 +23,9 @@ const { dataset } = JSON.parse(
 const uid = "fluid-live-check",
   wellId = "sample",
   version = "initial",
-  path = `users/${uid}/fluidlab/${wellId}/versions/${version}.json`;
+  path = `fluidlab/${wellId}/versions/${version}.json`;
 const user = db.doc(`users/${uid}`),
-  well = user
-    .collection("miniApps")
-    .doc("fluidlab")
-    .collection("wells")
-    .doc(wellId);
+  well = db.collection("fluidWells").doc(wellId);
 await user.set({
   schemaVersion: 1,
   email: "fluid-live-check@example.com",
@@ -77,6 +73,7 @@ try {
     })(),
   );
 } finally {
+  await db.recursiveDelete(well);
   await db.recursiveDelete(user);
-  await storage.bucket().deleteFiles({ prefix: `users/${uid}/fluidlab/` });
+  await storage.bucket().deleteFiles({ prefix: `fluidlab/${wellId}/` });
 }

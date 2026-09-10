@@ -18,6 +18,9 @@ import {
   chatTool,
   dispatchLinkedGeometry,
   retryFluidImport,
+  listFluidWells,
+  getFluidChat,
+  renameFluidWell,
 } from "../apps/fluidlab/service.js";
 const enabled =
   !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.STORAGE_EMULATOR_HOST;
@@ -27,7 +30,7 @@ const request = (data = {}, user = uid) => ({
   data,
 });
 test(
-  "emulator: FluidLab snapshots, optimistic concurrency, restore, and cross-user isolation",
+  "emulator: FluidLab snapshots, optimistic concurrency, restore, and shared access",
   { skip: !enabled },
   async () => {
     await db.doc(`users/${uid}`).set({
@@ -67,7 +70,7 @@ test(
       };
       await assert.rejects(
         saveFluidWell.run(request({ ...change, geometry: [b] })),
-        /no longer supported/,
+        /value corrections/,
       );
       const first = await publish(
         uid,
@@ -137,9 +140,20 @@ test(
         beginFluidImport.run(request({ ...upload, mutationId: randomUUID() })),
         /Another import/,
       );
-      const jobRef = db.doc(
-        `users/${uid}/miniApps/fluidlab/imports/${importId}`,
+      const parallelWell = await createFluidWell.run(
+        request({ name: "Parallel", mutationId: randomUUID() }),
       );
+      const parallelJob = await beginFluidImport.run(
+        request({
+          ...upload,
+          wellId: parallelWell.well.id,
+          mutationId: randomUUID(),
+        }),
+      );
+      assert.equal(parallelJob.job.status, "uploading");
+      await cancelFluidImport.run(request({ importId: parallelJob.job.id }));
+      await deleteFluidWell.run(request({ wellId: parallelWell.well.id }));
+      const jobRef = db.doc(`fluidImports/${importId}`);
       await jobRef.update({ status: "processing", runId: "old-worker" });
       await cancelFluidImport.run(request({ importId }));
       await assert.rejects(
@@ -171,9 +185,7 @@ test(
         request({ ...upload, mutationId: randomUUID() }),
       );
       await cancelFluidImport.run(request({ importId: next.job.id }));
-      await db
-        .doc(`users/${uid}/miniApps/fluidlab/imports/${importId}`)
-        .update({ status: "ready" });
+      await db.doc(`fluidImports/${importId}`).update({ status: "ready" });
       await assert.rejects(
         beginFluidImport.run(request({ ...upload, mutationId: randomUUID() })),
         /already been imported/,
@@ -185,30 +197,59 @@ test(
         status: "active",
         role: "admin",
       });
+      assert.equal(
+        (await getFluidWell.run(request({ wellId: id }, other))).well.id,
+        id,
+      );
+      assert.ok(
+        (await listFluidWells.run(request({}, other))).wells.some(
+          (w) => w.id === id,
+        ),
+      );
+      await renameFluidWell.run(
+        request({ wellId: id, name: "Shared rename", baseRevision: 3 }, other),
+      );
+      const wellRef = db.doc(`fluidWells/${id}`);
+      await wellRef
+        .collection("chats")
+        .doc(uid)
+        .collection("messages")
+        .doc("personal")
+        .set({
+          answer: "Private",
+          createdAt: "2026-01-01",
+          version: first.version,
+        });
+      assert.equal(
+        (await getFluidChat.run(request({ wellId: id }, other))).messages
+          .length,
+        0,
+      );
+      assert.equal(
+        (await getFluidChat.run(request({ wellId: id }))).messages.length,
+        1,
+      );
+      const secondWell = await createFluidWell.run(
+        request({ name: "Second well", mutationId: randomUUID() }, other),
+      );
+      const secondJob = await beginFluidImport.run(
+        request(
+          { ...upload, wellId: secondWell.well.id, mutationId: randomUUID() },
+          other,
+        ),
+      );
+      await cancelFluidImport.run(request({ importId: secondJob.job.id }));
+      await deleteFluidWell.run(request({ wellId: secondWell.well.id }));
+      await db
+        .doc(`users/${other}`)
+        .update({ role: "user", enabledMiniApps: [] });
       await assert.rejects(
         getFluidWell.run(request({ wellId: id }, other)),
-        /not found/,
+        /access|enabled|permission/i,
       );
-      await assert.rejects(
-        beginFluidImport.run(
-          request({ wellId: id, mutationId: randomUUID(), files: [] }, other),
-        ),
-        /not found/,
-      );
-      await assert.rejects(
-        generateFluidGeometry.run(
-          request(
-            {
-              wellId: id,
-              version: first.version,
-              baseRevision: 3,
-              mutationId: randomUUID(),
-            },
-            other,
-          ),
-        ),
-        /not found/,
-      );
+      await db.doc(`users/${other}`).update({ enabledMiniApps: ["fluidlab"] });
+      await deleteFluidWell.run(request({ wellId: id }, other));
+      created = null;
       await db.doc(`users/${other}`).delete();
     } finally {
       if (created)
@@ -271,24 +312,25 @@ test(
   "emulator: import publishes data and a durable geometry handoff exactly once",
   { skip: !enabled },
   async () => {
-    await db
-      .doc(`users/${uid}`)
-      .set({
-        schemaVersion: 1,
-        email: `${uid}@example.com`,
-        status: "active",
-        role: "admin",
-      });
+    await db.doc(`users/${uid}`).set({
+      schemaVersion: 1,
+      email: `${uid}@example.com`,
+      status: "active",
+      role: "admin",
+    });
     const id = randomUUID(),
       importId = randomUUID(),
       runId = randomUUID();
-    const base = db.doc(`users/${uid}/miniApps/fluidlab`);
-    const jobRef = base.collection("imports").doc(importId);
+    const base = db.doc(`fluidWells/${id}`);
+    const jobRef = db.collection("fluidImports").doc(importId);
     try {
       await createFluidWell.run(
         request({ name: "Automatic geometry", mutationId: id }),
       );
-      await base.set({ importLock: importId, lockUntil: Date.now() + 3600000 });
+      await base.set(
+        { importLock: importId, lockUntil: Date.now() + 3600000 },
+        { merge: true },
+      );
       await jobRef.set({
         owner: uid,
         wellId: id,
@@ -314,7 +356,7 @@ test(
         (await getFluidWell.run(request({ wellId: id }))).well.version,
         result.version,
       );
-      const childRef = base.collection("imports").doc(result.geometryJobId);
+      const childRef = db.collection("fluidImports").doc(result.geometryJobId);
       const child = (await childRef.get()).data();
       assert.equal(child.status, "queued");
       assert.equal(child.version, result.version);
@@ -326,7 +368,11 @@ test(
         result.geometryJobId,
       );
       assert.deepEqual(await publish(...args), result);
-      assert.equal((await base.collection("imports").get()).size, 2);
+      assert.equal(
+        (await db.collection("fluidImports").where("wellId", "==", id).get())
+          .size,
+        2,
+      );
       await assert.rejects(
         dispatchLinkedGeometry(uid, importId, async () => {
           throw new Error("Queue temporarily down");
@@ -365,19 +411,19 @@ test(
         retryFluidImport.run(request({ importId: result.geometryJobId })),
         /dataset changed/,
       );
-      // A subsequent import retaining existing geometry never starts automatic AI work.
+      // Subsequent imports refresh geometry while keeping the existing view available.
       const secondId = randomUUID();
-      await base.set({ importLock: secondId, lockUntil: Date.now() + 3600000 });
-      await base
-        .collection("imports")
-        .doc(secondId)
-        .set({
-          owner: uid,
-          wellId: id,
-          status: "processing",
-          runId,
-          files: [],
-        });
+      await base.set(
+        { importLock: secondId, lockUntil: Date.now() + 3600000 },
+        { merge: true },
+      );
+      await db.collection("fluidImports").doc(secondId).set({
+        owner: uid,
+        wellId: id,
+        status: "processing",
+        runId,
+        files: [],
+      });
       const saved = { ...dataset, geometry: [{ id: "existing" }] };
       const second = await publish(
         uid,
@@ -388,12 +434,17 @@ test(
         "Later import",
         { id: secondId, runId, metrics: {}, autoGeometry: true },
       );
-      assert.equal(second.geometryJobId, undefined);
+      assert.ok(second.geometryJobId);
       assert.equal(
         (await getFluidWell.run(request({ wellId: id }))).geometry[0].id,
         "existing",
       );
     } finally {
+      for (const j of (
+        await db.collection("fluidImports").where("wellId", "==", id).get()
+      ).docs)
+        await db.recursiveDelete(j.ref);
+      await db.recursiveDelete(base);
       await db.recursiveDelete(db.doc(`users/${uid}`));
     }
   },

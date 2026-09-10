@@ -178,7 +178,7 @@ describe("FluidLab workspace", () => {
       Array.from(
         host.querySelectorAll('nav[aria-label="FluidLab sections"] button'),
       ).map((b) => b.textContent),
-    ).toEqual(["Costs", "Mud", "Chat"]);
+    ).toEqual(["Wells", "Costs", "Mud", "Problems", "Chat"]);
     const scene = host.querySelector('[data-testid="scene"]');
     expect(scene).toBeTruthy();
     await click('button[aria-label="Mud"]');
@@ -190,7 +190,99 @@ describe("FluidLab workspace", () => {
     expect(host.querySelector('[data-testid="scene"]')).toBe(scene);
     await click('button[aria-label="Expand information"]');
     expect(api.generateGeometry).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("Schematic well view");
+    expect(host.textContent).toContain("Estimated schematic");
+  });
+  it("keeps management inside Wells and restores the exact product list after Back", async () => {
+    await render();
+    const header = host.querySelector(".fl-header")!;
+    expect(header.querySelectorAll("button,select,input").length).toBe(0);
+    expect(
+      host
+        .querySelector('button[aria-label="Wells"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("page");
+    await click('button[aria-label="Costs"]');
+    const panel = host.querySelector<HTMLElement>(
+      '[aria-label="Costs panel"]',
+    )!;
+    panel.scrollTop = 150;
+    await click('[aria-label="Costs panel"] .fl-list-card');
+    expect(host.querySelector(".fl-tabs-shell")?.hasAttribute("hidden")).toBe(
+      true,
+    );
+    expect(host.querySelector(".fl-detail-body")?.textContent).toContain(
+      "Spend by report",
+    );
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    await click(".fl-detail-top button");
+    expect(host.querySelector('[aria-label="Costs panel"]')).toBe(panel);
+    expect(panel.scrollTop).toBe(150);
+    expect(
+      host
+        .querySelector('button[aria-label="Costs"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("page");
+  });
+  it("limits initial review to five priority groups and leaves remaining issues in Problems", async () => {
+    vi.mocked(api.getWell).mockResolvedValue({
+      ...sample,
+      next: null,
+      issues: Array.from({ length: 9 }, (_, i) => ({
+        id: String(i),
+        code: `problem${i}`,
+        message: `Issue ${i}`,
+        sources: [],
+        recordId: null,
+        priority: "high" as const,
+        status: "unresolved" as const,
+      })),
+    });
+    await render();
+    await click('button[aria-label="Problems"]');
+    expect(
+      host.querySelectorAll('[aria-label="Priority problems"] .fl-problem')
+        .length,
+    ).toBe(5);
+    expect(
+      host.querySelector('[aria-label="Problems panel"]')?.textContent,
+    ).toContain("Other items & schematic assumptions · 4");
+    expect(host.querySelectorAll(".fl-problem").length).toBe(9);
+  });
+  it("preserves pending chat across tabs and expands only the Chat layout", async () => {
+    let finish: (m: Awaited<ReturnType<typeof api.askChat>>) => void = () => {};
+    vi.mocked(api.askChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await render();
+    await click('button[aria-label="Chat"]');
+    const input = host.querySelector(".fl-chat-form textarea");
+    expect(
+      host.querySelector(".fl-main")?.classList.contains("fl-chat-active"),
+    ).toBe(true);
+    await click(".fl-prompts button");
+    await click('button[aria-label="Mud"]');
+    expect(
+      host.querySelector(".fl-main")?.classList.contains("fl-chat-active"),
+    ).toBe(false);
+    await act(async () =>
+      finish({
+        id: "pending",
+        question: "Question",
+        answer: "Answer survived",
+        citations: [],
+        highlights: [],
+        version: "v1",
+        createdAt: "",
+      }),
+    );
+    await click('button[aria-label="Chat"]');
+    expect(host.querySelector(".fl-chat-form textarea")).toBe(input);
+    expect(host.querySelector(".fl-answer")?.textContent).toBe(
+      "Answer survived",
+    );
   });
   it("resizes the sidebar with keyboard within its limits", async () => {
     await render();
@@ -224,7 +316,7 @@ describe("FluidLab workspace", () => {
     });
     await render();
     const report = host.querySelector<HTMLSelectElement>(
-      'select[aria-label="Report"]',
+      'select[aria-label="Cost report"]',
     )!;
     await act(async () => {
       report.value = "Report 1";
@@ -240,7 +332,7 @@ describe("FluidLab workspace", () => {
       null,
     );
     await click(".fl-message .fl-inline button");
-    expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
+    expect(host.querySelector(".fl-detail-body")?.textContent).toContain(
       "Products!C2",
     );
   });
@@ -273,7 +365,7 @@ describe("FluidLab workspace", () => {
     );
     await act(async () => cancel!.click());
     expect(api.cancelImport).toHaveBeenCalledWith("job");
-    expect(host.textContent).toContain("delete and upload again");
+    expect(host.textContent).toContain("Processing cancelled");
   });
   it("does not generate geometry merely by opening a well without a saved view", async () => {
     vi.mocked(api.getWell).mockResolvedValue({
@@ -283,7 +375,7 @@ describe("FluidLab workspace", () => {
     });
     await render();
     expect(api.generateGeometry).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("Generate 3D well");
+    expect(host.textContent).toContain("Generate 3D");
     expect(host.textContent).toContain("20.00");
   });
   it("follows the linked geometry job after import without blocking data", async () => {

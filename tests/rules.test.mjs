@@ -72,10 +72,10 @@ test("expired, wrong-size, disabled, and revoked uploads fail", async () => {
 async function seedFluid(uid,changes={},jobChanges={}) {
   await environment.withSecurityRulesDisabled(async context=>{
     await setDoc(doc(context.firestore(),`users/${uid}`),{schemaVersion:1,email:`${uid}@example.com`,role:"user",status:"active",enabledMiniApps:["fluidlab"],...changes});
-    await setDoc(doc(context.firestore(),`users/${uid}/miniApps/fluidlab/imports/job`),{owner:uid,wellId:"well",status:"uploading",expiresAt:Timestamp.fromMillis(Date.now()+60000),files:[{size:3}],...jobChanges});
+    await setDoc(doc(context.firestore(),`fluidImports/${uid}`),{owner:uid,wellId:"well",status:"uploading",expiresAt:Timestamp.fromMillis(Date.now()+60000),files:[{size:3}],...jobChanges});
   });
 }
-const fluidUpload=(uid,sdk=client(uid),suffix="0",size=3)=>uploadBytes(ref(sdk,`users/${uid}/fluidlab/well/imports/job/${suffix}`),new Uint8Array(size),{contentType:"application/octet-stream",customMetadata:{importId:"job",wellId:"well"}});
+const fluidUpload=(uid,sdk=client(uid),suffix="0",size=3)=>uploadBytes(ref(sdk,`fluidlab/well/imports/${uid}/${suffix}`),new Uint8Array(size),{contentType:"application/octet-stream",customMetadata:{importId:uid,wellId:"well"}});
 test("FluidLab original uploads require the active owner's exact reservation",async()=>{
   await seedFluid("fluid-owner");await seedFluid("fluid-other",{role:"admin"});
   await assertFails(fluidUpload("fluid-owner",client("fluid-other")));
@@ -83,9 +83,9 @@ test("FluidLab original uploads require the active owner's exact reservation",as
   await assertFails(fluidUpload("fluid-owner",client("fluid-owner"),"0",4));
   await assertSucceeds(fluidUpload("fluid-owner"));
   await assertFails(fluidUpload("fluid-owner"));
-  const original=ref(client("fluid-owner"),"users/fluid-owner/fluidlab/well/imports/job/0");
+  const original=ref(client("fluid-owner"),"fluidlab/well/imports/fluid-owner/0");
   await assertFails(getBytes(original));await assertFails(deleteObject(original));await assertFails(updateMetadata(original,{customMetadata:{wellId:"other"}}));
-  await assertFails(uploadString(ref(client("fluid-owner"),"users/fluid-owner/fluidlab/well/versions/fake.json"),"{}"));
+  await assertFails(uploadString(ref(client("fluid-owner"),"fluidlab/well/versions/fake.json"),"{}"));
 });
 test("FluidLab revoked, disabled, expired and processing imports deny uploads",async()=>{
   for(const [uid,user,job]of [["fluid-revoked",{enabledMiniApps:[]},{}],["fluid-disabled",{status:"disabled"},{}],["fluid-expired",{},{expiresAt:Timestamp.fromMillis(0)}],["fluid-processing",{},{status:"processing"}]]){await seedFluid(uid,user,job);await assertFails(fluidUpload(uid));}

@@ -41,6 +41,11 @@ export interface Source {
   column: number;
 }
 export interface Issue {
+  priority?: "high" | "low";
+  status?: "unresolved" | "accepted" | "kept";
+  fingerprint?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
   id: string;
   code: string;
   message: string;
@@ -315,4 +320,26 @@ export function scopedCosts(
       totalCost: g.products.plus(g.services).toFixed(2),
     })),
   };
+}
+
+export interface WellChange {
+  currency?: string | null;
+  correction?: {
+    recordId: string;
+    field: string;
+    value: string;
+    unit?: string | null;
+  };
+  review?: { issueId: string; action: "accepted" | "kept" | "unresolved" };
+}
+export function reviewGroups(issues: Issue[]) {
+  const groups = new Map<string, Issue[]>();
+  for (const item of issues) {
+    const key = `${item.code}:${item.field || ""}:${item.status || "unresolved"}`;
+    groups.set(key, [...(groups.get(key) || []), item]);
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      Number(b[0].priority === "high") - Number(a[0].priority === "high"),
+  );
 }
