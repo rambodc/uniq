@@ -13,7 +13,7 @@ import { callable, REGION } from "../../core/config.js";
 import { requireMiniApp } from "../../core/auth.js";
 import { analyzeLosses, lossEntries, lossFingerprint } from "./losses.js";
 import { nameSearch, searchWells } from "./search.js";
-import { cleanupPasonUploads } from "./pason.js";
+import { cleanupPasonUploads, revokePasonUploads } from "./pason.js";
 import { applyReview } from "./review.js";
 import { generateGeometry } from "./geometry.js";
 import { extractFiles, MODEL } from "./extraction.js";
@@ -836,12 +836,12 @@ export const deleteFluidWell = wrap(async (_uid, d) => {
       tx.get(lockFor(d.wellId)),
       tx.get(ref),
     ]);
-    if (!lock.exists || lock.data().status === "deleting")
-      throw new HttpsError("not-found", "Well not found.");
+    if (!lock.exists) throw new HttpsError("not-found", "Well not found.");
     if (lock.data()?.importLock && lock.data().lockUntil > Date.now())
       throw new Error("Wait for the active import before deleting a well.");
     if (snap.exists) tx.update(ref, { status: "deleting", listed: false });
   });
+  await revokePasonUploads(ref);
   await bucket().deleteFiles({ prefix: `fluidlab/${d.wellId}/` });
   for (const job of jobs.docs) await db.recursiveDelete(job.ref);
   await db.recursiveDelete(ref);

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { db, storage } from "../core/firebase.js";
 import {
   beginFluidPason,
+  revokePasonUploads,
   completeFluidPason,
   getFluidPason,
   cancelFluidPason,
@@ -26,14 +27,12 @@ test(
       denied = randomUUID(),
       wellId = randomUUID();
     for (const uid of [owner, other, denied])
-      await db
-        .doc(`users/${uid}`)
-        .set({
-          schemaVersion: 1,
-          email: `${uid}@test.com`,
-          status: "active",
-          enabledMiniApps: uid === denied ? [] : ["fluidlab"],
-        });
+      await db.doc(`users/${uid}`).set({
+        schemaVersion: 1,
+        email: `${uid}@test.com`,
+        status: "active",
+        enabledMiniApps: uid === denied ? [] : ["fluidlab"],
+      });
     try {
       await createFluidWell.run(
         req(owner, { name: "Shared Pason", mutationId: wellId }),
@@ -126,14 +125,12 @@ test(
     const col = db.collection(`search-test-${randomUUID()}`);
     try {
       for (let i = 0; i < 23; i++)
-        await col
-          .doc(`well-${String(i).padStart(2, "0")}`)
-          .set({
-            name: i === 0 ? "Northern Target" : "Northern Alpha",
-            ...nameSearch(i === 0 ? "Northern Target" : "Northern Alpha"),
-            updatedAt: "2026-09-01T00:00:00.000Z",
-            listed: true,
-          });
+        await col.doc(`well-${String(i).padStart(2, "0")}`).set({
+          name: i === 0 ? "Northern Target" : "Northern Alpha",
+          ...nameSearch(i === 0 ? "Northern Target" : "Northern Alpha"),
+          updatedAt: "2026-09-01T00:00:00.000Z",
+          listed: true,
+        });
       const a = await searchWells(col),
         b = await searchWells(col, { cursor: a.cursor }),
         c = await searchWells(col, { cursor: b.cursor });
@@ -160,6 +157,66 @@ test(
       );
     } finally {
       await db.recursiveDelete(col);
+    }
+  },
+);
+
+test(
+  "emulator: deleting a well revokes pending Pason reservations before cleanup and supports retry",
+  { skip: !enabled },
+  async () => {
+    const uid = randomUUID(),
+      wellId = randomUUID(),
+      ref = db.doc(`fluidWells/${wellId}`);
+    await db
+      .doc(`users/${uid}`)
+      .set({
+        schemaVersion: 1,
+        email: `${uid}@test.com`,
+        status: "active",
+        enabledMiniApps: ["fluidlab"],
+      });
+    try {
+      await createFluidWell.run(
+        req(uid, { name: "Delete retry", mutationId: wellId }),
+      );
+      await beginFluidPason.run(
+        req(uid, {
+          wellId,
+          uploadId: "pending",
+          originalName: "well.zip",
+          sizeBytes: 3,
+          detail: "balanced",
+        }),
+      );
+      await ref.update({ status: "deleting" });
+      await revokePasonUploads(ref);
+      assert.equal(
+        (await ref.collection("pasonUploads").doc("pending").get()).data()
+          .status,
+        "cancelled",
+      );
+      await assert.rejects(
+        beginFluidPason.run(
+          req(uid, {
+            wellId,
+            uploadId: "later",
+            originalName: "well.zip",
+            sizeBytes: 3,
+            detail: "balanced",
+          }),
+        ),
+        /Well not found/,
+      );
+      await assert.rejects(
+        completeFluidPason.run(req(uid, { wellId, uploadId: "pending" })),
+        /cancelled/,
+      );
+      await deleteFluidWell.run(req(uid, { wellId, mutationId: randomUUID() }));
+      assert.equal((await ref.get()).exists, false);
+    } finally {
+      await db.recursiveDelete(ref);
+      await db.doc(`users/${uid}`).delete();
     }
   },
 );

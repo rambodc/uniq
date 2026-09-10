@@ -205,3 +205,23 @@ export async function cleanupPasonUploads() {
     }
   }
 }
+
+// Called after the well is marked deleting, so no new reservations can be created.
+// Revoke byte-upload permission before any artifact deletion, including on retries.
+export async function revokePasonUploads(well) {
+  while (true) {
+    const pending = await well
+      .collection("pasonUploads")
+      .where("status", "==", "uploading")
+      .limit(400)
+      .get();
+    if (pending.empty) return;
+    const batch = db.batch();
+    for (const doc of pending.docs)
+      batch.update(doc.ref, {
+        status: "cancelled",
+        expiresAt: Timestamp.now(),
+      });
+    await batch.commit();
+  }
+}
