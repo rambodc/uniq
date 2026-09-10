@@ -199,6 +199,11 @@ describe("FluidLab workspace", () => {
         host.querySelectorAll('nav[aria-label="FluidLab sections"] button'),
       ).map((b) => b.textContent),
     ).toEqual(["All wells", "Well", "Costs", "Mud", "Chat"]);
+    expect(
+      host.querySelectorAll(
+        'nav[aria-label="FluidLab sections"] button svg[aria-hidden="true"]',
+      ),
+    ).toHaveLength(5);
     const scene = host.querySelector('[data-testid="scene"]');
     expect(scene).toBeTruthy();
     await click('button[aria-label="Mud"]');
