@@ -75,7 +75,35 @@ export interface Summary {
   reports: number;
   branches: number;
 }
+export interface PasonAttachment {
+  id: string;
+  path: string;
+  originalName: string;
+  sizeBytes: number;
+  detail: "detailed" | "balanced" | "compact";
+  warnings: string[];
+}
+export interface LossEntry {
+  id: string;
+  recordId: string;
+  field: string;
+  report: string | null;
+  date: string | null;
+  mdM: number | null;
+  endMdM: number | null;
+  tvdM: number | null;
+  totalDepthM: number | null;
+  amount: number;
+  unit: string | null;
+  category: string;
+  measure: string;
+  sources: string[];
+  description: string;
+  includedInTotal: boolean;
+  conflict: boolean;
+}
 export interface Well {
+  pason?: PasonAttachment;
   id: string;
   name: string;
   status: string;
@@ -85,6 +113,8 @@ export interface Well {
   summary?: Summary;
 }
 export interface Dataset {
+  losses?: LossEntry[];
+  lossAnalysisReady?: boolean;
   well: Well;
   records: DataRecord[];
   geometry: Branch[];
@@ -99,7 +129,7 @@ export interface ImportJob {
   sourceImportId?: string;
   version?: string;
   baseRevision?: number;
-  kind?: "import" | "geometry";
+  kind?: "import" | "geometry" | "losses";
   updatedAt?: string;
   id: string;
   wellId: string;

@@ -43,9 +43,14 @@ jobs:
           if before and set(before) != {"0"}:
               paths = subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines()
               runtime = [p for p in paths if p.startswith("functions/") and not p.startswith(("functions/test/", "functions/scripts/"))]
-              if runtime and all(p.startswith("functions/apps/fluidlab/") for p in runtime):
+              with open("functions/index.js") as source:
+                  current = source.read()
+              previous = subprocess.check_output(["git", "show", before + ":functions/index.js"], text=True)
+              pattern = r'export \{([^}]+)\} from "\./apps/fluidlab/[^"\n]+\.js";?'
+              other_exports_unchanged = re.sub(pattern, "", current).strip() == re.sub(pattern, "", previous).strip()
+              if runtime and other_exports_unchanged and all(p.startswith("functions/apps/fluidlab/") or p == "functions/index.js" for p in runtime):
                   with open("functions/index.js") as source:
-                      exports = re.findall(r'export \{([^}]+)\} from "\./apps/fluidlab/service\.js"', source.read())
+                      exports = re.findall(pattern, source.read())
                   target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
                   if not target:
                       raise SystemExit("No FluidLab exports found")
@@ -55,3 +60,7 @@ jobs:
       - run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
       - name: Configure FluidLab task dispatch
         run: python3 scripts/configure-fluidlab-cloud.py --after-deploy
+      - name: Index shared well names
+        env:
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
+        run: node functions/scripts/index-fluid-well-names.js

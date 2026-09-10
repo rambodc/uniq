@@ -751,7 +751,7 @@
     font-size: 16px;
   }
   .fl-main {
-    --panel-height: 48%;
+    --panel-height: 75%;
   }
   .fl-main.fl-chat-active {
     --panel-height: 75%;
@@ -856,4 +856,230 @@
   .fl-scene-empty {
     transition: none;
   }
+}
+.fl-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #42796f;
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin: 22px 0 14px;
+  background: #102e32;
+}
+.fl-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 5px;
+  font-size: 16px;
+  outline-offset: 5px;
+}
+.fl-search button {
+  border: 0;
+  padding: 4px;
+  background: transparent;
+}
+.fl-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+}
+.fl-mobile-icon {
+  display: none;
+}
+.fl-detail .well-section,
+.fl-detail .well-meta {
+  margin: 16px 0;
+}
+.fl-detail .well-camera-dock {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  width: auto;
+  display: flex;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+.well-import-dialog::backdrop {
+  background: rgba(2, 14, 20, 0.88);
+  backdrop-filter: blur(8px);
+}
+@media (max-width: 760px) {
+  .fl-mobile-icon {
+    display: inline-flex;
+  }
+  .fl-desktop-icon {
+    display: none;
+  }
+}
+.fl-chart {
+  margin: 20px 0;
+  padding: 16px 12px;
+  background: linear-gradient(145deg, #17383d, #10262e);
+  border: 1px solid #315158;
+  border-radius: 16px;
+}
+.fl-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+}
+.fl-chart figcaption small {
+  color: #9bbdb8;
+  font-weight: 400;
+}
+.fl-chart svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  margin-top: 12px;
+}
+.fl-chart svg text {
+  fill: #a0bfbd;
+  font-size: 10px;
+}
+.fl-chart-axis {
+  stroke: #537174;
+  stroke-dasharray: 3 4;
+}
+.fl-chart-line {
+  stroke: #79dbbf;
+  stroke-width: 2.5;
+}
+.fl-chart-dot,
+.fl-chart-bar {
+  fill: #7cd4be;
+}
+.fl-chart g:focus {
+  outline: none;
+}
+.fl-chart g:focus .fl-chart-dot,
+.fl-chart g:focus .fl-chart-bar {
+  stroke: white;
+  stroke-width: 3;
+}
+.fl-chart-value {
+  min-height: 50px;
+  font-size: 13px;
+}
+.fl-chart-value small {
+  display: block;
+  color: #adc7c4;
+  margin: 5px 0;
+}
+.fl-chart summary {
+  font-size: 12px;
+  color: #b5ceca;
+  cursor: pointer;
+}
+.fl-chart-table {
+  overflow-x: auto;
+}
+.fl-chart table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+.fl-chart td,
+.fl-chart th {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #315158;
+}
+.fl-depth-context {
+  display: block !important;
+  color: #96cbbf !important;
+  margin: 6px 0;
+}
+.fl-categories {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+.fl-categories button[aria-pressed="true"] {
+  background: #224d48;
+  border-color: #76bda8;
+}
+.fl-trends {
+  margin: 22px 0;
+}
+.fl-trends .fl-inline label {
+  min-width: 0;
+  flex: 1;
+}
+.fl-trends select {
+  width: 100%;
+}
+.fluidlab-app {
+  --line: rgba(111, 199, 208, 0.22);
+}
+.fl-source-switch {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 5px;
+  background: #0b2229df;
+  padding: 5px;
+  border-radius: 12px;
+  z-index: 22;
+}
+.fl-source-switch button {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.fl-source-switch button[aria-pressed="true"] {
+  background: #285a53;
+  border-color: #67bca8;
+}
+.fluidlab-app .fl-mobile-minimize {
+  display: none;
+}
+.fl-detail-top {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+}
+@media (max-width: 760px) {
+  .fluidlab-app .fl-mobile-minimize {
+    display: inline-flex;
+  }
+}
+
+.fl-detail .well-key-hint {
+  position: static;
+  transform: none;
+  flex-basis: 100%;
+  text-align: center;
+  order: -1;
+}
+.fl-detail .well-camera-dock {
+  left: auto;
+  bottom: auto;
+  width: 100%;
+}
+.fl-detail .well-camera-dock .well-joystick {
+  flex: 1;
+  min-width: 120px;
+}
+.fl-detail .well-camera-dock input {
+  width: 80px;
+  padding: 5px;
+}
+.fl-detail-top {
+  display: flex;
+}
+.fl-detail .well-leg-list button {
+  justify-content: flex-start;
+}
+.fl-detail .well-leg-list em {
+  margin-left: auto;
+}
+.fl-detail .well-engineering > div > button {
+  justify-content: flex-start;
 }

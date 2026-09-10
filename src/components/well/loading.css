@@ -1,0 +1,149 @@
+.well-brand-loader {
+  width: min(320px, 100%);
+  padding: 28px 26px 22px;
+  border: 1px solid #4dddc45c;
+  border-radius: 22px;
+  background: radial-gradient(ellipse at top, #124b4c, #06232ef5 72%);
+  color: #e5fff9;
+  text-align: center;
+  box-shadow:
+    0 22px 65px #0007,
+    0 0 45px #29e2bd12;
+  pointer-events: auto;
+}
+.well-loader-emblem {
+  position: relative;
+  width: 88px;
+  height: 96px;
+  margin: 0 auto 18px;
+  display: grid;
+  place-items: center;
+}
+.well-loader-emblem img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  animation: well-logo-glow 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px #50fbd6);
+}
+.well-loader-emblem span {
+  position: absolute;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #57e6ce26;
+  border-top-color: #83ffe5;
+  border-right-color: #30c9ac;
+  border-radius: 50%;
+  animation: well-loader-spin 1s linear infinite;
+  box-shadow: 0 0 12px #43e3c329;
+}
+.well-brand-loader p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.well-loader-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
+}
+.well-loader-progress progress {
+  width: 100%;
+  height: 6px;
+  accent-color: #53edcc;
+}
+.well-loader-progress span {
+  color: #8cf4df;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.well-brand-loader > button {
+  margin-top: 18px;
+  padding: 8px 20px;
+  border: 1px solid #588c9570;
+  border-radius: 9px;
+  background: #0b303a;
+  color: #bededc;
+  cursor: pointer;
+}
+.well-brand-loader > button:focus-visible {
+  outline: 2px solid #68f4db;
+  outline-offset: 3px;
+}
+@keyframes well-logo-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 7px #50fbd688);
+    opacity: 0.8;
+    transform: scale(0.96);
+  }
+  50% {
+    filter: drop-shadow(0 0 20px #50fbd6);
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+@keyframes well-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .well-loader-emblem img,
+  .well-loader-emblem span {
+    animation: none;
+  }
+}
+.well-loading-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: max(24px, env(safe-area-inset-top)) 24px
+    max(24px, env(safe-area-inset-bottom));
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e5fff9;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.well-loading-overlay[open] {
+  display: grid;
+  place-items: center;
+}
+.well-loading-overlay::backdrop {
+  background: rgba(0, 16, 19, 0.98);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+}
+.well-loading-overlay .well-brand-loader {
+  width: min(340px, 100%);
+  padding: 24px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.well-loading-overlay .well-loader-emblem {
+  width: 128px;
+  height: 150px;
+  margin-bottom: 28px;
+}
+.well-loading-overlay .well-loader-emblem img {
+  width: 100px;
+  height: 100px;
+}
+.well-loading-overlay .well-loader-emblem span {
+  width: 32px;
+  height: 32px;
+}
+.well-loading-overlay .well-brand-loader p {
+  font-size: 15px;
+}

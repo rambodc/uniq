@@ -1,3 +1,11 @@
+import {
+  Chart,
+  CostCharts,
+  ProductCharts,
+  ReportDepth,
+  ReportTrends,
+  DownholeLosses,
+} from "./Charts";
 import { useEffect, useRef, useState } from "react";
 import Decimal from "decimal.js";
 import {
@@ -12,7 +20,6 @@ import {
   compatiblePackage,
   exportCsv,
   money,
-  numeric,
   pretty,
   reportRecords,
   scopedCosts,
@@ -142,6 +149,7 @@ export function Costs({
         </select>
       </label>
       <Stats data={data} report={report} />
+      <CostCharts data={data} report={report} />
       <h2>
         Products <small>{productRecords(data).length} in this well</small>
       </h2>
@@ -252,9 +260,15 @@ export function ProductDetail({
       {[...new Set(chart.map((r) => r.currency))].map((c) => (
         <div key={c}>
           <small>{c === "unspecified" ? "Currency unconfirmed" : c}</small>
-          <Bars entries={chart.filter((r) => r.currency === c)} />
+          <Chart
+            title="Spend by report"
+            unit={c}
+            kind="bar"
+            points={chart.filter((r) => r.currency === c)}
+          />
         </div>
       ))}
+      <ProductCharts data={data} rows={rows} />
       <Facts record={record} openSources={openSources} />
       <details className="fl-card">
         <summary>Usage & inventory ledger</summary>
@@ -289,29 +303,18 @@ export function ProductDetail({
     </>
   );
 }
-function Bars({ entries }: { entries: { label: string; value: number }[] }) {
-  const max = Math.max(1, ...entries.map((r) => Math.abs(r.value)));
-  return (
-    <div className="fl-bars">
-      {entries.map((r, i) => (
-        <div className="fl-bar-row" key={`${r.label}:${i}`}>
-          <span>{r.label}</span>
-          <b>
-            {r.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </b>
-          <i style={{ width: `${(Math.abs(r.value) / max) * 100}%` }} />
-        </div>
-      ))}
-    </div>
-  );
-}
 export function Mud({
   data,
   select,
+  analyze,
+  analysisBusy,
 }: {
   data: Dataset;
+  analyze: () => void;
+  analysisBusy: boolean;
   select: (r: DataRecord) => void;
 }) {
+  const [category, setCategory] = useState("reports");
   const reports = reportRecords(data);
   return (
     <>
@@ -322,48 +325,72 @@ export function Mud({
           <h1>Mud & reports</h1>
         </div>
       </div>
-      <p className="fl-muted">
-        {reports.length} reports · select one to explore
-      </p>
-      <div className="fl-list">
-        {reports.map((r) => (
-          <button
-            className="fl-list-card fl-report-card"
-            key={r.id}
-            onClick={() => select(r)}
-          >
-            <span className="fl-icon">
-              <CalendarDays size={21} />
-            </span>
-            <span className="fl-card-copy">
-              <strong>{r.label}</strong>
-              <small>
-                {value(r, "createdDate") ||
-                  value(r, "date") ||
-                  "Date not stated"}
-                {value(r, "mdM") !== null && ` · ${value(r, "mdM")} m MD`}
-              </small>
-              <span className="fl-report-chips">
-                {measurements
-                  .filter((f) => value(r, f) !== null)
-                  .slice(0, 3)
-                  .map((f) => (
-                    <span key={f}>
-                      <small>{pretty(f)}</small>
-                      <b>
-                        {value(r, f)} {r.facts[f].unit}
-                      </b>
-                    </span>
-                  ))}
+      <nav className="fl-categories" aria-label="Mud categories">
+        <button
+          aria-pressed={category === "reports"}
+          onClick={() => setCategory("reports")}
+        >
+          Reports
+        </button>
+        <button
+          aria-pressed={category === "losses"}
+          onClick={() => {
+            setCategory("losses");
+            if (!data.lossAnalysisReady && !analysisBusy && data.well.version)
+              analyze();
+          }}
+        >
+          Downhole losses
+        </button>
+      </nav>
+      <div hidden={category !== "reports"}>
+        <ReportTrends data={data} />
+        <p className="fl-muted">
+          {reports.length} reports · select one to explore
+        </p>
+        <div className="fl-list">
+          {reports.map((r) => (
+            <button
+              className="fl-list-card fl-report-card"
+              key={r.id}
+              onClick={() => select(r)}
+            >
+              <span className="fl-icon">
+                <CalendarDays size={21} />
               </span>
-            </span>
-            <ChevronRight size={17} />
-          </button>
-        ))}
+              <span className="fl-card-copy">
+                <strong>{r.label}</strong>
+                <small>
+                  {value(r, "createdDate") ||
+                    value(r, "date") ||
+                    "Date not stated"}
+                </small>
+                <ReportDepth record={r} />
+                <span className="fl-report-chips">
+                  {measurements
+                    .filter((f) => value(r, f) !== null)
+                    .slice(0, 3)
+                    .map((f) => (
+                      <span key={f}>
+                        <small>{pretty(f)}</small>
+                        <b>
+                          {value(r, f)} {r.facts[f].unit}
+                        </b>
+                      </span>
+                    ))}
+                </span>
+              </span>
+              <ChevronRight size={17} />
+            </button>
+          ))}
+        </div>
+        {!reports.length && (
+          <p className="fl-muted">No mud reports have been mapped yet.</p>
+        )}
       </div>
-      {!reports.length && (
-        <p className="fl-muted">No mud reports have been mapped yet.</p>
-      )}
+      <div hidden={category !== "losses"}>
+        <DownholeLosses data={data} analyze={analyze} busy={analysisBusy} />
+      </div>
     </>
   );
 }
@@ -376,11 +403,6 @@ export function ReportDetail({
   record: DataRecord;
   openSources: (ids: string[]) => void;
 }) {
-  const [field, setField] = useState("density");
-  const reports = reportRecords(data).filter((r) => numeric(r, field) !== null);
-  const units = [
-    ...new Set(reports.map((r) => r.facts[field]?.unit || "Unit not stated")),
-  ];
   return (
     <>
       <span className="fl-hero-icon">
@@ -393,7 +415,7 @@ export function ReportDetail({
           "Report overview"}
       </p>
       <div className="fl-metrics">
-        {["mdM", ...measurements]
+        {["mdM", "tvdM", "totalDepthM", ...measurements]
           .filter((f) => value(record, f) !== null)
           .map((f) => (
             <div key={f}>
@@ -403,29 +425,8 @@ export function ReportDetail({
             </div>
           ))}
       </div>
-      <h2>Across reports</h2>
-      <label>
-        Property
-        <select value={field} onChange={(e) => setField(e.target.value)}>
-          {measurements.map((f) => (
-            <option key={f} value={f}>
-              {pretty(f)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {units.map((unit) => (
-        <div key={unit}>
-          <small>{unit}</small>
-          <Bars
-            entries={reports
-              .filter(
-                (r) => (r.facts[field].unit || "Unit not stated") === unit,
-              )
-              .map((r) => ({ label: r.label, value: numeric(r, field)! }))}
-          />
-        </div>
-      ))}
+      <ReportDepth record={record} />
+      <ReportTrends data={data} />
       {["activitySummary", "recommendation"]
         .filter((f) => value(record, f))
         .map((f) => (

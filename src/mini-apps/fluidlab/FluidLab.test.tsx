@@ -4,6 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import type { Dataset } from "./model";
+vi.mock("../../core/firebase", () => ({
+  auth: { currentUser: { uid: "test" } },
+}));
 vi.mock("./api", () => ({
   listWells: vi.fn(),
   getWell: vi.fn(),
@@ -123,7 +126,18 @@ beforeEach(() => {
   vi.resetAllMocks();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   HTMLElement.prototype.scrollIntoView = vi.fn();
-  vi.mocked(api.listWells).mockResolvedValue([sample.well]);
+  HTMLDialogElement.prototype.showModal = vi.fn(function (
+    this: HTMLDialogElement,
+  ) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+    this.open = false;
+  });
+  vi.mocked(api.listWells).mockResolvedValue({
+    wells: [sample.well],
+    cursor: null,
+  });
   vi.mocked(api.getWell).mockResolvedValue({
     ...structuredClone(sample),
     next: null,
@@ -178,7 +192,7 @@ describe("FluidLab workspace", () => {
       Array.from(
         host.querySelectorAll('nav[aria-label="FluidLab sections"] button'),
       ).map((b) => b.textContent),
-    ).toEqual(["Wells", "Costs", "Mud", "Problems", "Chat"]);
+    ).toEqual(["Wells", "Costs", "Mud", "Review", "Chat"]);
     const scene = host.querySelector('[data-testid="scene"]');
     expect(scene).toBeTruthy();
     await click('button[aria-label="Mud"]');
@@ -223,7 +237,7 @@ describe("FluidLab workspace", () => {
         ?.getAttribute("aria-current"),
     ).toBe("page");
   });
-  it("limits initial review to five priority groups and leaves remaining issues in Problems", async () => {
+  it("limits initial review to five priority groups and leaves remaining issues in Review", async () => {
     vi.mocked(api.getWell).mockResolvedValue({
       ...sample,
       next: null,
@@ -238,13 +252,13 @@ describe("FluidLab workspace", () => {
       })),
     });
     await render();
-    await click('button[aria-label="Problems"]');
+    await click('button[aria-label="Review"]');
     expect(
-      host.querySelectorAll('[aria-label="Priority problems"] .fl-problem')
+      host.querySelectorAll('[aria-label="Priority review"] .fl-problem')
         .length,
     ).toBe(5);
     expect(
-      host.querySelector('[aria-label="Problems panel"]')?.textContent,
+      host.querySelector('[aria-label="Review panel"]')?.textContent,
     ).toContain("Other items & schematic assumptions · 4");
     expect(host.querySelectorAll(".fl-problem").length).toBe(9);
   });
@@ -293,7 +307,7 @@ describe("FluidLab workspace", () => {
           new KeyboardEvent("keydown", { key, bubbles: true }),
         );
       });
-    expect(handle.getAttribute("aria-valuenow")).toBe("400");
+    expect(handle.getAttribute("aria-valuenow")).toBe("560");
     await key("End");
     await key("ArrowRight");
     expect(handle.getAttribute("aria-valuenow")).toBe("560");

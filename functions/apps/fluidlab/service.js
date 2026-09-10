@@ -11,6 +11,9 @@ import { z } from "zod";
 import { db, storage } from "../../core/firebase.js";
 import { callable, REGION } from "../../core/config.js";
 import { requireMiniApp } from "../../core/auth.js";
+import { analyzeLosses, lossEntries, lossFingerprint } from "./losses.js";
+import { nameSearch, searchWells } from "./search.js";
+import { cleanupPasonUploads } from "./pason.js";
 import { applyReview } from "./review.js";
 import { generateGeometry } from "./geometry.js";
 import { extractFiles, MODEL } from "./extraction.js";
@@ -194,12 +197,7 @@ export async function publish(
   return (await op.get()).data();
 }
 
-export const listFluidWells = wrap(async () => ({
-  wells: (await wells().get()).docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .filter((w) => w.status !== "deleting")
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-}));
+export const listFluidWells = wrap(async (_uid, d) => searchWells(wells(), d));
 export const createFluidWell = wrap(async (uid, d) => {
   const id = validId(d.mutationId),
     ref = wells().doc(id);
@@ -207,6 +205,8 @@ export const createFluidWell = wrap(async (uid, d) => {
     createdBy: uid,
     updatedBy: uid,
     name: nameOf(d.name),
+    ...nameSearch(d.name),
+    listed: true,
     autoName: d.autoName === true,
     schemaVersion: 2,
     status: "empty",
@@ -228,6 +228,7 @@ export const renameFluidWell = wrap(async (uid, d) => {
       throw new HttpsError("aborted", "Well changed; reload.");
     tx.update(ref, {
       name: nameOf(d.name),
+      ...nameSearch(d.name),
       autoName: false,
       updatedAt: now(),
       updatedBy: uid,
@@ -247,6 +248,9 @@ export const getFluidWell = wrap(async (uid, d) => {
     ...(offset === 0
       ? {
           geometry: dataset.geometry,
+          losses: lossEntries(dataset),
+          lossAnalysisReady:
+            dataset.lossAnalysis?.fingerprint === lossFingerprint(dataset),
           wellbore: dataset.wellbore || null,
           currency: dataset.currency,
           issues: dataset.issues,
@@ -391,7 +395,7 @@ export const beginFluidImport = wrap(async (uid, d) => {
   });
   return { job: { id, ...job } };
 });
-export const generateFluidGeometry = wrap(async (uid, d) => {
+async function queueDerivedAnalysis(uid, d, kind) {
   const { data: well } = await sharedWell(d.wellId);
   if (
     !well.version ||
@@ -400,13 +404,13 @@ export const generateFluidGeometry = wrap(async (uid, d) => {
   )
     throw new HttpsError(
       "aborted",
-      "This well changed. Refresh before generating a view.",
+      "This well changed. Refresh before starting analysis.",
     );
   const id = validId(d.mutationId),
     ref = imports().doc(id);
   const job = {
     owner: uid,
-    kind: "geometry",
+    kind,
     wellId: d.wellId,
     version: well.version,
     baseRevision: well.revision,
@@ -422,9 +426,24 @@ export const generateFluidGeometry = wrap(async (uid, d) => {
       tx.get(ref),
       tx.get(lockFor(d.wellId)),
     ]);
-    if (existing.exists) return;
+    if (existing.exists) {
+      if (existing.data().wellId !== d.wellId || existing.data().kind !== kind)
+        throw new HttpsError(
+          "aborted",
+          "This request ID is already used. Try again.",
+        );
+      return;
+    }
     if (!lock.exists || lock.data().status === "deleting")
       throw new HttpsError("not-found", "Well not found.");
+    if (
+      lock.data().revision !== d.baseRevision ||
+      lock.data().version !== d.version
+    )
+      throw new HttpsError(
+        "aborted",
+        "The well changed. Refresh before starting analysis.",
+      );
     if (lock.data()?.importLock && lock.data().lockUntil > Date.now())
       throw new HttpsError(
         "resource-exhausted",
@@ -439,7 +458,13 @@ export const generateFluidGeometry = wrap(async (uid, d) => {
   });
   await enqueue(uid, id);
   return { job: { id, ...(await ref.get()).data() } };
-});
+}
+export const generateFluidGeometry = wrap((uid, d) =>
+  queueDerivedAnalysis(uid, d, "geometry"),
+);
+export const analyzeFluidLosses = wrap((uid, d) =>
+  queueDerivedAnalysis(uid, d, "losses"),
+);
 async function enqueue(uid, id) {
   await getFunctions()
     .taskQueue(`locations/${REGION}/functions/processFluidImport`)
@@ -492,7 +517,7 @@ export const retryFluidImport = wrap(async (uid, d) => {
   if (!snap.exists) throw new HttpsError("not-found", "Import not found.");
   if (!["failed", "partial", "cancelled"].includes(snap.data().status))
     throw new Error("This import is not retryable.");
-  if (snap.data().kind === "geometry") {
+  if (["geometry", "losses"].includes(snap.data().kind)) {
     const { data: well } = await sharedWell(snap.data().wellId);
     if (
       well.version !== snap.data().version ||
@@ -661,10 +686,12 @@ export const processFluidImport = onTaskDispatched(
         },
         onProgress: update,
       };
-      const geometry = job.kind === "geometry";
-      const base = geometry ? await load(uid, job.wellId, job.version) : null;
+      const geometry = job.kind === "geometry",
+        losses = job.kind === "losses",
+        derived = geometry || losses;
+      const base = derived ? await load(uid, job.wellId, job.version) : null;
       if (
-        geometry &&
+        derived &&
         (base.well.version !== job.version ||
           base.well.revision !== job.baseRevision)
       )
@@ -674,11 +701,19 @@ export const processFluidImport = onTaskDispatched(
         );
       const result = geometry
         ? await generateGeometry(base.dataset, options)
-        : await extractFiles(files, options);
-      const { well, dataset } = geometry ? base : await load(uid, job.wellId);
-      let merged = geometry
+        : losses
+          ? await analyzeLosses(base.dataset, options)
+          : await extractFiles(files, options);
+      const { well, dataset } = derived ? base : await load(uid, job.wellId);
+      let merged = derived
         ? result.dataset
         : mergeDatasets(dataset, result.dataset);
+      if (!derived) {
+        const analysis = await analyzeLosses(merged, options);
+        merged = analysis.dataset;
+        result.usage.calls += analysis.usage.calls;
+        result.usage.tokens += analysis.usage.tokens;
+      }
       await publish(
         uid,
         job.wellId,
@@ -687,11 +722,13 @@ export const processFluidImport = onTaskDispatched(
         `${importId}-${(job.attempts || 0) + 1}`,
         geometry
           ? "3D well generation"
-          : `Import ${job.files.map((f) => f.name).join(", ")}`,
+          : losses
+            ? "Fluid loss analysis"
+            : `Import ${job.files.map((f) => f.name).join(", ")}`,
         {
           id: importId,
           runId,
-          autoGeometry: !geometry,
+          autoGeometry: !derived,
           metrics: {
             usage: result.usage,
             durationMs: Date.now() - started,
@@ -709,6 +746,7 @@ export const processFluidImport = onTaskDispatched(
           if (snap.data()?.autoName)
             tx.update(w, {
               name: String(named.facts.name.value).slice(0, 150),
+              ...nameSearch(named.facts.name.value),
               autoName: false,
             });
         });
@@ -802,7 +840,7 @@ export const deleteFluidWell = wrap(async (_uid, d) => {
       throw new HttpsError("not-found", "Well not found.");
     if (lock.data()?.importLock && lock.data().lockUntil > Date.now())
       throw new Error("Wait for the active import before deleting a well.");
-    if (snap.exists) tx.update(ref, { status: "deleting" });
+    if (snap.exists) tx.update(ref, { status: "deleting", listed: false });
   });
   await bucket().deleteFiles({ prefix: `fluidlab/${d.wellId}/` });
   for (const job of jobs.docs) await db.recursiveDelete(job.ref);
@@ -1064,6 +1102,7 @@ export const askFluidChat = wrap(
 export const cleanupFluidImports = onSchedule(
   { schedule: "every 60 minutes", region: REGION },
   async () => {
+    await cleanupPasonUploads();
     const apps = await db
       .collection("fluidImports")
       .where("status", "in", ["uploading", "queued", "processing"])

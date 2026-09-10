@@ -69,7 +69,7 @@ it("only confirms replacement explicitly, allowing close and Escape to keep the 
 });
 
 it("shows branded progress and offers cancellation only for cancellable operations", async () => {
-  const { default: WellLoader } = await import("./WellLoader");
+  const { default: WellLoader } = await import("../../components/well/BrandLoader");
   const cancel = vi.fn();
   await act(async () => root.render(<WellLoader message="Uploading original ZIP…" percent={42} onCancel={cancel}/>));
   expect(container.querySelector("img")!.getAttribute("src")).toBe("/brand/uniqenergy-mark-256.png");
@@ -81,7 +81,7 @@ it("shows branded progress and offers cancellation only for cancellable operatio
 });
 
 it("keeps non-cancellable loading modal open on Escape and restores focus on completion", async () => {
-  const { default: WellLoadingOverlay } = await import("./WellLoadingOverlay");
+  const { default: WellLoadingOverlay } = await import("../../components/well/LoadingOverlay");
   const trigger = document.createElement("button"); document.body.append(trigger); trigger.focus();
   await act(async () => root.render(<WellLoadingOverlay message="Deleting well…"/>));
   const dialog = container.querySelector("dialog")!;
@@ -94,7 +94,7 @@ it("keeps non-cancellable loading modal open on Escape and restores focus on com
 });
 
 it("allows Escape to cancel a transfer without dismissing unrelated work", async () => {
-  const { default: WellLoadingOverlay } = await import("./WellLoadingOverlay");
+  const { default: WellLoadingOverlay } = await import("../../components/well/LoadingOverlay");
   const cancel = vi.fn();
   await act(async () => root.render(<WellLoadingOverlay message="Downloading original ZIP…" percent={25} onCancel={cancel}/>));
   await act(async () => { container.querySelector("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true })); });

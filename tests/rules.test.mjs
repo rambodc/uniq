@@ -90,3 +90,14 @@ test("FluidLab original uploads require the active owner's exact reservation",as
 test("FluidLab revoked, disabled, expired and processing imports deny uploads",async()=>{
   for(const [uid,user,job]of [["fluid-revoked",{enabledMiniApps:[]},{}],["fluid-disabled",{status:"disabled"},{}],["fluid-expired",{},{expiresAt:Timestamp.fromMillis(0)}],["fluid-processing",{},{status:"processing"}]]){await seedFluid(uid,user,job);await assertFails(fluidUpload(uid));}
 });
+
+test("shared Pason ZIP rules: exact reservation owner, active attachment reads, revocation and no direct mutation",async()=>{
+ const owner="pason-owner",other="pason-other",denied="pason-denied";
+ for(const uid of [owner,other,denied])await seedFluid(uid,uid===denied?{enabledMiniApps:[]}:{});
+ await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),"fluidWells/pason-well"),{status:"ready"});await setDoc(doc(c.firestore(),"fluidWells/pason-well/pasonUploads/first"),{status:"uploading",owner,sizeBytes:3,expiresAt:Timestamp.fromMillis(Date.now()+60000)});});
+ const path="fluidlab/pason-well/pason/first/original.zip",send=(uid,size=3)=>uploadBytes(ref(client(uid),path),new Uint8Array(size),{contentType:"application/zip",customMetadata:{owner:uid,wellId:"pason-well"}});
+ await assertFails(send(other));await assertFails(send(denied));await assertFails(send(owner,4));await assertSucceeds(send(owner));await assertFails(getBytes(ref(client(other),path)));
+ await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),"fluidWells/pason-well"),{status:"ready",pason:{id:"first"}});});
+ await assertSucceeds(getBytes(ref(client(other),path)));await assertFails(getBytes(ref(client(denied),path)));await assertFails(send(owner));await assertFails(deleteObject(ref(client(other),path)));await assertFails(listAll(ref(client(other),"fluidlab/pason-well/pason")));
+ await environment.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),"fluidWells/pason-well"),{status:"ready",pason:{id:"replacement"}});});await assertFails(getBytes(ref(client(owner),path)));
+});

@@ -37,6 +37,19 @@ service firebase.storage {
         && request.resource.metadata.importId == importId && request.resource.metadata.wellId == wellId;
       allow read, update, delete: if false;
     }
+    match /fluidlab/{wellId}/pason/{uploadId}/original.zip {
+      function well() { return firestore.get(/databases/(default)/documents/fluidWells/$(wellId)).data; }
+      function reservation() { return firestore.get(/databases/(default)/documents/fluidWells/$(wellId)/pasonUploads/$(uploadId)).data; }
+      allow get: if request.auth != null && hasFluidAccess(request.auth.uid)
+        && well().status != 'deleting' && well().pason.id == uploadId;
+      allow create: if request.auth != null && hasFluidAccess(request.auth.uid) && resource == null
+        && well().status != 'deleting' && reservation().status == 'uploading'
+        && reservation().owner == request.auth.uid && request.time < reservation().expiresAt
+        && request.resource.size > 0 && request.resource.size <= 1000000000
+        && request.resource.size == reservation().sizeBytes && request.resource.contentType == 'application/zip'
+        && request.resource.metadata.owner == request.auth.uid && request.resource.metadata.wellId == wellId;
+      allow list, update, delete: if false;
+    }
     match /{object=**} { allow read, write: if false; }
   }
 }

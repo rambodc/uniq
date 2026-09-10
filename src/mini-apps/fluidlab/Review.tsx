@@ -37,16 +37,24 @@ const fields = [
   "ph",
   "fluidLoss",
   "totalLossesM3",
+  "totalDrillingLossesM3",
+  "totalOperationalLossesM3",
+  "lossRateM3Per100M",
+  "lossAmount",
+  "lossCategory",
+  "lossMeasure",
   "package",
 ];
 const defaultUnit = (field: string) =>
-  /M$/.test(field)
-    ? "m"
-    : field === "diameterMm"
-      ? "mm"
-      : /M3$/.test(field)
-        ? "m3"
-        : "";
+  field === "lossRateM3Per100M"
+    ? "m3/100m"
+    : /M$/.test(field)
+      ? "m"
+      : field === "diameterMm"
+        ? "mm"
+        : /M3$/.test(field)
+          ? "m3"
+          : "";
 export function Correction({
   data,
   item,
@@ -132,12 +140,30 @@ export function Correction({
       <div className="fl-inline">
         <label>
           Value
-          <input
-            aria-label="Corrected value"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Unknown"
-          />
+          {["lossCategory", "lossMeasure"].includes(field) ? (
+            <select
+              aria-label="Corrected value"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            >
+              <option value="">Choose…</option>
+              {(field === "lossCategory"
+                ? ["downhole", "surface", "unspecified"]
+                : ["event", "daily", "cumulative", "rate", "unspecified"]
+              ).map((v) => (
+                <option key={v} value={v}>
+                  {pretty(v)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              aria-label="Corrected value"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Unknown"
+            />
+          )}
         </label>
         <label>
           Unit
@@ -252,7 +278,7 @@ function ProblemItem({
     </article>
   );
 }
-export default function Problems({
+export default function Review({
   data,
   save,
   busy,
@@ -313,7 +339,7 @@ export default function Problems({
         <SlidersHorizontal />
         <div>
           <small>REVIEW AT YOUR PACE</small>
-          <h1>Problems</h1>
+          <h1>Review</h1>
         </div>
       </div>
       <p className="fl-muted">
@@ -321,7 +347,7 @@ export default function Problems({
         appear here first.
       </p>
       {important.length ? (
-        <section aria-label="Priority problems">
+        <section aria-label="Priority review">
           {important.map(renderGroup)}
         </section>
       ) : (

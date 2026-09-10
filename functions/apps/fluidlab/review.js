@@ -1,7 +1,9 @@
-import { Fact, idFor, reconcile } from "./model.js";
+import { Fact, idFor } from "./model.js";
+import { reconcileLosses } from "./losses.js";
 import { buildSchematic } from "./schematic.js";
 
 export const numericFields = new Set([
+  "lossAmount",
   "totalCost",
   "unitPrice",
   "cost",
@@ -39,6 +41,8 @@ export const numericFields = new Set([
   "lossRateM3Per100M",
 ]);
 const textFields = new Set([
+  "lossCategory",
+  "lossMeasure",
   "currency",
   "package",
   "parent",
@@ -78,6 +82,16 @@ export function applyReview(dataset, change, uid) {
       throw new Error("Unsupported correction.");
     const cleaned = value.trim();
     if (
+      field === "lossCategory" &&
+      !["downhole", "surface", "unspecified"].includes(cleaned)
+    )
+      throw new Error("Choose downhole, surface, or unspecified.");
+    if (
+      field === "lossMeasure" &&
+      !["event", "daily", "cumulative", "rate", "unspecified"].includes(cleaned)
+    )
+      throw new Error("Choose event, daily, cumulative, rate, or unspecified.");
+    if (
       numericFields.has(field) &&
       cleaned !== "" &&
       !Number.isFinite(Number(cleaned))
@@ -96,8 +110,23 @@ export function applyReview(dataset, change, uid) {
         ? r.facts[field]?.unit ||
           (/M$/.test(field) ? "m" : field === "diameterMm" ? "mm" : null)
         : unit;
-    if (/M$/.test(field) && u !== "m")
+    if (/M$/.test(field) && field !== "lossRateM3Per100M" && u !== "m")
       throw new Error("Enter depths in metres (m).");
+    if (/LossesM3$|^lossesM3$/.test(field) && u !== "m3")
+      throw new Error("Enter this loss volume in m3.");
+    if (field === "lossRateM3Per100M" && u !== "m3/100m")
+      throw new Error("Enter the rate in m3/100m.");
+    if (
+      field === "lossAmount" &&
+      cleaned &&
+      (!u ||
+        !/^(m3|m³|bbl|l|litres?|liters?|gal|gallons?)(\/(day|d|h|hr|min|100m|m))?$/i.test(
+          u,
+        ))
+    )
+      throw new Error(
+        "Use an explicit volume unit (m3, bbl, L, gal) or rate such as m3/day.",
+      );
     if (field === "diameterMm" && u !== "mm")
       throw new Error("Enter diameter in millimetres (mm).");
     if (
@@ -155,5 +184,5 @@ export function applyReview(dataset, change, uid) {
     };
   }
   if (change.correction) buildSchematic(dataset);
-  return reconcile(dataset);
+  return reconcileLosses(dataset);
 }

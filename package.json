@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build && node scripts/generate-seo.mjs",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
-    "test": "vitest run src/portal/AppLauncher.test.tsx src/mini-apps/well-viewer/WellViewer.test.tsx src/mini-apps/well-viewer/library.test.ts src/mini-apps/well-viewer/useWellLibrary.test.tsx src/mini-apps/well-viewer/zip.test.ts src/App.test.tsx src/portal/miniApps.test.ts src/mini-apps/fluidlab/model.test.ts src/mini-apps/fluidlab/FluidLab.test.tsx src/mini-apps/well-viewer/survey.test.ts src/mini-apps/well-viewer/well-package.test.ts src/mini-apps/well-viewer/viewer-math.test.ts && node --test tests/homepage.test.mjs tests/well-worker.test.mjs",
+    "test": "vitest run src/portal/AppLauncher.test.tsx src/mini-apps/well-viewer/WellViewer.test.tsx src/mini-apps/well-viewer/library.test.ts src/mini-apps/well-viewer/useWellLibrary.test.tsx src/mini-apps/well-viewer/zip.test.ts src/App.test.tsx src/portal/miniApps.test.ts src/mini-apps/fluidlab/model.test.ts src/mini-apps/fluidlab/FluidLab.test.tsx src/mini-apps/fluidlab/usePason.test.tsx src/mini-apps/fluidlab/useWellSearch.test.tsx src/mini-apps/well-viewer/survey.test.ts src/mini-apps/well-viewer/well-package.test.ts src/mini-apps/well-viewer/viewer-math.test.ts && node --test tests/homepage.test.mjs tests/well-worker.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node --test tests/rules.test.mjs\"",
     "deploy": "npm run build && firebase deploy --only hosting"
   },

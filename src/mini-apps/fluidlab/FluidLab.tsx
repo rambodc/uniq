@@ -1,3 +1,14 @@
+import LoadingOverlay from "../../components/well/LoadingOverlay";
+import PackageDetailDialog from "../../components/well/PackageDetailDialog";
+import { useWellSearch } from "./useWellSearch";
+import { usePason } from "./usePason";
+import {
+  SurveyScene,
+  SurveyDetails,
+  SurveyControls,
+  useSurveyNavigation,
+} from "../well-viewer/SurveyWorkspace";
+import "../well-viewer/well-viewer.css";
 import {
   lazy,
   Suspense,
@@ -17,19 +28,32 @@ import {
   Layers,
   ChevronRight,
   Plus,
+  ChevronDown,
+  ChevronUp,
+  Search,
 } from "lucide-react";
 import * as api from "./api";
 import { Costs, Mud, Chat, Facts, ProductDetail, ReportDetail } from "./Panels";
-import Problems from "./Problems";
+import Review from "./Review";
 import {
   type DataRecord,
   type Dataset,
   type ImportJob,
   type Source,
-  type Well,
   type WellChange,
 } from "./model";
 import "./fluidlab.css";
+function PreparingScene({
+  onChange,
+}: {
+  onChange: (loading: boolean) => void;
+}) {
+  useEffect(() => {
+    onChange(true);
+    return () => onChange(false);
+  }, [onChange]);
+  return null;
+}
 const WellScene = lazy(() => import("./WellScene"));
 const active = (job: ImportJob | null) =>
   !!job && ["uploading", "queued", "processing"].includes(job.status);
@@ -37,12 +61,13 @@ const message = (e: unknown) =>
   e instanceof Error ? e.message : "Something went wrong.";
 type Detail =
   | { kind: "record"; record: DataRecord }
-  | { kind: "sources"; sources: Source[] };
+  | { kind: "sources"; sources: Source[] }
+  | { kind: "pason" };
 const tabs = [
   ["wells", "Wells"],
   ["costs", "Costs"],
   ["mud", "Mud"],
-  ["problems", "Problems"],
+  ["review", "Review"],
   ["chat", "Chat"],
 ];
 export default function FluidLab({
@@ -52,11 +77,11 @@ export default function FluidLab({
   wellId?: string;
   navigate: (url: string) => void;
 }) {
-  const [wells, setWells] = useState<Well[]>([]),
-    [data, setData] = useState<Dataset | null>(null),
+  const [data, setData] = useState<Dataset | null>(null),
     [tab, setTab] = useState("wells"),
     [report, setReport] = useState<string | null>(null),
     [error, setError] = useState(""),
+    [pollError, setPollError] = useState(""),
     [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(false),
@@ -66,7 +91,7 @@ export default function FluidLab({
     [details, setDetails] = useState<Detail[]>([]),
     [selected, setSelected] = useState<string | null>(null),
     [collapsed, setCollapsed] = useState(false),
-    [sidebarWidth, setSidebarWidth] = useState(400),
+    [sidebarWidth, setSidebarWidth] = useState(560),
     [view, setView] = useState("isometric"),
     [fit, setFit] = useState(0),
     [capture, setCapture] = useState(0),
@@ -76,9 +101,12 @@ export default function FluidLab({
     [deleting, setDeleting] = useState(false);
   const file = useRef<HTMLInputElement>(null),
     currentWell = useRef(wellId),
+    uploadController = useRef<AbortController | null>(null),
     uploadTarget = useRef<string | null>(null),
     detailTrigger = useRef<HTMLElement | null>(null);
-  const list = useCallback(async () => setWells(await api.listWells()), []);
+  const library = useWellSearch();
+  const { wells, refresh: list } = library;
+  const zipFile = useRef<HTMLInputElement>(null);
   const refresh = useCallback(async () => {
     if (!wellId) return;
     const [d, h] = await Promise.all([
@@ -91,6 +119,17 @@ export default function FluidLab({
     setJob(h.imports.find(active) || h.imports[0] || null);
     return d;
   }, [wellId]);
+  const pason = usePason(
+    wellId,
+    data && data.well.id === wellId ? data.well.pason : undefined,
+    refresh,
+  );
+  const survey = useSurveyNavigation(
+    pason.model,
+    pason.view === "pason" && !pason.progress && !busy && !loading,
+  );
+  const [sceneLoading, setSceneLoading] = useState(false);
+  const processing = !!job && ["queued", "processing"].includes(job.status);
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
@@ -105,12 +144,6 @@ export default function FluidLab({
     }
   };
   useEffect(() => {
-    void api
-      .listWells()
-      .then(setWells)
-      .catch((e) => setError(message(e)));
-  }, [list]);
-  useEffect(() => {
     let alive = true;
     currentWell.current = wellId;
     void Promise.resolve().then(() => {
@@ -118,12 +151,13 @@ export default function FluidLab({
       setData(null);
       setReport(null);
       setJob(null);
-      setTab(uploadTarget.current === wellId ? "problems" : "wells");
+      setTab(uploadTarget.current === wellId ? "review" : "wells");
       setHistory([]);
       setDetails([]);
       setSelected(null);
       setHighlights([]);
       setError("");
+      setPollError("");
       setEditingName(false);
       setDeleting(false);
       setLoading(!!wellId);
@@ -164,14 +198,14 @@ export default function FluidLab({
         .getImport(jobId)
         .then(async (next) => {
           if (!alive) return;
-          setJob(next);
+          setPollError("");
           if (!active(next)) {
             await refresh();
             await list();
-          }
+          } else setJob(next);
         })
         .catch((e) => {
-          if (alive) setError(message(e));
+          if (alive) setPollError(message(e));
         })
         .finally(() => {
           pending = false;
@@ -208,9 +242,10 @@ export default function FluidLab({
   }, []);
   const upload = async (files: File[]) => {
     if (!files.length) return;
+    uploadController.current = new AbortController();
     setUploading(true);
     setPercent(0);
-    setTab("problems");
+    setTab("review");
     setDetails([]);
     try {
       await run(async () => {
@@ -226,15 +261,22 @@ export default function FluidLab({
           navigate(`/apps/fluidlab/wells/${id}`);
         }
         const target = id;
-        const j = await api.uploadFiles(target, files, setPercent, (j) => {
-          if (currentWell.current === target) setJob(j);
-        });
+        const j = await api.uploadFiles(
+          target,
+          files,
+          setPercent,
+          (j) => {
+            if (currentWell.current === target) setJob(j);
+          },
+          uploadController.current!.signal,
+        );
         if (currentWell.current === target) {
           setJob({ ...j, status: "queued" });
           if (target === wellId) await refresh();
         }
       });
     } finally {
+      uploadController.current = null;
       setUploading(false);
       uploadTarget.current = null;
     }
@@ -275,7 +317,7 @@ export default function FluidLab({
   const generate = () =>
     run(async () => {
       if (!data) return;
-      setTab("problems");
+      setTab("review");
       setJob(await api.generateGeometry(data.well));
       await refresh();
     });
@@ -303,10 +345,18 @@ export default function FluidLab({
         style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
       >
         <section className="fl-viewer" aria-label="3D well workspace">
-          {contentReady && data.geometry.length ? (
+          {contentReady && pason.view === "pason" && pason.model ? (
+            <div className="fl-scene">
+              <SurveyScene
+                navigation={survey}
+                active={!busy && !processing}
+                onLoading={setSceneLoading}
+              />
+            </div>
+          ) : contentReady && data.geometry.length ? (
             <div className="fl-scene">
               <Suspense
-                fallback={<p className="fl-scene-fallback">Loading 3D…</p>}
+                fallback={<PreparingScene onChange={setSceneLoading} />}
               >
                 <WellScene
                   key={data.well.id}
@@ -339,27 +389,52 @@ export default function FluidLab({
               </p>
             </div>
           )}
-          {!!data?.geometry.length && (
-            <>
-              <div className="fl-view-tools" aria-label="Well camera controls">
-                {["isometric", "top", "side"].map((v) => (
-                  <button
-                    key={v}
-                    aria-pressed={view === v}
-                    onClick={() => setView(v)}
-                  >
-                    {v}
-                  </button>
-                ))}
-                <button onClick={() => setFit((v) => v + 1)}>Fit</button>
-                <button onClick={() => setCapture((v) => v + 1)}>PNG</button>
-              </div>
-              <small className="fl-schematic-label">Estimated schematic</small>
-            </>
+          {!!data?.geometry.length &&
+            (pason.view !== "pason" || !pason.model) && (
+              <>
+                <div
+                  className="fl-view-tools"
+                  aria-label="Well camera controls"
+                >
+                  {["isometric", "top", "side"].map((v) => (
+                    <button
+                      key={v}
+                      aria-pressed={view === v}
+                      onClick={() => setView(v)}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                  <button onClick={() => setFit((v) => v + 1)}>Fit</button>
+                  <button onClick={() => setCapture((v) => v + 1)}>PNG</button>
+                </div>
+                <small className="fl-schematic-label">
+                  Estimated schematic
+                </small>
+              </>
+            )}
+          {data?.well.pason && (
+            <div className="fl-source-switch" aria-label="Visualization source">
+              <button
+                aria-pressed={pason.view === "pason"}
+                onClick={() => pason.select("pason")}
+              >
+                Pason
+              </button>
+              <button
+                aria-pressed={pason.view === "estimated"}
+                onClick={() => pason.select("estimated")}
+              >
+                Estimated
+              </button>
+            </div>
           )}
         </section>
         <aside className="fl-sidebar" aria-label="Well information">
-          <div className="fl-sidebar-heading" hidden={details.length > 0}>
+          <div
+            className="fl-sidebar-heading"
+            hidden={details.length > 0 && !collapsed}
+          >
             <span>{data?.well.name || "WELL INTELLIGENCE"}</span>
             <button
               aria-label={
@@ -369,11 +444,20 @@ export default function FluidLab({
               aria-controls="fl-sidebar-content"
               onClick={() => setCollapsed((v) => !v)}
             >
-              {collapsed ? (
-                <PanelLeftOpen size={18} />
-              ) : (
-                <PanelLeftClose size={18} />
-              )}
+              <span className="fl-mobile-icon">
+                {collapsed ? (
+                  <ChevronUp size={18} />
+                ) : (
+                  <ChevronDown size={18} />
+                )}
+              </span>
+              <span className="fl-desktop-icon">
+                {collapsed ? (
+                  <PanelLeftOpen size={18} />
+                ) : (
+                  <PanelLeftClose size={18} />
+                )}
+              </span>
             </button>
           </div>
           <div
@@ -381,12 +465,24 @@ export default function FluidLab({
             id="fl-sidebar-content"
             hidden={collapsed}
           >
-            {error && (
+            {(error || pollError) && (
               <div className="fl-error" role="alert">
-                {error}
-                <button aria-label="Dismiss error" onClick={() => setError("")}>
+                {error || pollError}
+                <button
+                  aria-label="Dismiss error"
+                  onClick={() => {
+                    setError("");
+                    setPollError("");
+                  }}
+                >
                   <X size={14} />
                 </button>
+              </div>
+            )}
+            {pason.error && tab !== "wells" && (
+              <div role="alert" className="fl-error">
+                {pason.error}
+                <button onClick={pason.retry}>Retry Pason</button>
               </div>
             )}
             <div className="fl-tabs-shell" hidden={details.length > 0}>
@@ -399,7 +495,7 @@ export default function FluidLab({
                     onClick={() => setTab(id)}
                   >
                     {label}
-                    {id === "problems" && problemCount > 0 && (
+                    {id === "review" && problemCount > 0 && (
                       <span className="fl-badge">{problemCount}</span>
                     )}
                   </button>
@@ -538,7 +634,98 @@ export default function FluidLab({
                     )}
                   </div>
                 )}
-                <div className="fl-list">
+                {data && (
+                  <section className="fl-card">
+                    <h2>Well view</h2>
+                    <p className="fl-muted">
+                      Attach a Pason ZIP for survey and drilling detail.
+                    </p>
+                    <div className="fl-inline">
+                      <button
+                        disabled={!data.well.pason}
+                        aria-pressed={pason.view === "pason"}
+                        onClick={() => pason.select("pason")}
+                      >
+                        Pason
+                      </button>
+                      <button
+                        aria-pressed={pason.view === "estimated"}
+                        onClick={() => pason.select("estimated")}
+                      >
+                        Estimated
+                      </button>
+                    </div>
+                    <div className="fl-actions">
+                      <button
+                        disabled={!!pason.progress}
+                        onClick={() => zipFile.current?.click()}
+                      >
+                        {data.well.pason
+                          ? "Replace Pason ZIP"
+                          : "Upload Pason ZIP"}
+                      </button>
+                      {data.well.pason && (
+                        <>
+                          <button
+                            onClick={() => {
+                              detailTrigger.current =
+                                document.activeElement as HTMLElement;
+                              setDetails([{ kind: "pason" }]);
+                            }}
+                          >
+                            Pason details
+                          </button>
+                          <button onClick={() => void pason.remove()}>
+                            Remove ZIP
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      ref={zipFile}
+                      type="file"
+                      accept=".zip"
+                      hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void pason.upload(f);
+                      }}
+                    />
+                    {pason.error && (
+                      <div role="alert">
+                        {pason.error}
+                        <button onClick={pason.retry}>Retry Pason</button>
+                      </div>
+                    )}
+                  </section>
+                )}
+                <div className="fl-search">
+                  <Search size={20} />
+                  <input
+                    type="search"
+                    aria-label="Search all wells"
+                    placeholder="Search all wells by name…"
+                    value={library.search}
+                    onChange={(e) => library.setSearch(e.target.value)}
+                  />
+                  {library.search && (
+                    <button
+                      aria-label="Clear well search"
+                      onClick={() => library.setSearch("")}
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                </div>
+                {library.loading && <p role="status">Searching wells…</p>}
+                {library.error && (
+                  <p role="alert">
+                    {library.error}
+                    <button onClick={() => void list()}>Retry search</button>
+                  </p>
+                )}
+                <div className="fl-list" aria-busy={library.loading}>
                   {wells.map((w) => (
                     <button
                       key={w.id}
@@ -561,9 +748,26 @@ export default function FluidLab({
                     </button>
                   ))}
                 </div>
-                {!wells.length && (
+                <nav className="fl-pagination" aria-label="Well pages">
+                  <button
+                    disabled={library.loading || library.page === 0}
+                    onClick={library.previous}
+                  >
+                    Previous
+                  </button>
+                  <span>Page {library.page + 1}</span>
+                  <button
+                    disabled={library.loading || !library.next}
+                    onClick={library.more}
+                  >
+                    Next
+                  </button>
+                </nav>
+                {!library.loading && !wells.length && (
                   <p className="fl-muted">
-                    Your first upload starts the shared library.
+                    {library.search
+                      ? "No matching wells."
+                      : "Your first upload starts the shared library."}
                   </p>
                 )}
               </section>
@@ -593,7 +797,17 @@ export default function FluidLab({
                 aria-label="Mud panel"
               >
                 {contentReady ? (
-                  <Mud data={data} select={openRecord} />
+                  <Mud
+                    data={data}
+                    select={openRecord}
+                    analyze={() =>
+                      void run(async () => {
+                        setJob(await api.analyzeLosses(data.well));
+                        await refresh();
+                      })
+                    }
+                    analysisBusy={processing || busy}
+                  />
                 ) : (
                   <p>
                     {loading
@@ -604,8 +818,8 @@ export default function FluidLab({
               </section>
               <section
                 className="fl-tab-panel"
-                hidden={tab !== "problems"}
-                aria-label="Problems panel"
+                hidden={tab !== "review"}
+                aria-label="Review panel"
               >
                 {(uploading || job) && (
                   <section className="fl-job" role="status">
@@ -642,12 +856,23 @@ export default function FluidLab({
                   </section>
                 )}
                 {contentReady && (
-                  <Problems
+                  <Review
                     data={data}
                     save={save}
                     busy={busy || active(job)}
                     openSources={(ids) => void openSources(ids)}
                   />
+                )}
+                {!!data?.well.pason?.warnings.length && (
+                  <details className="fl-card">
+                    <summary>
+                      Pason attachment · {data.well.pason.warnings.length}{" "}
+                      notices
+                    </summary>
+                    {data.well.pason.warnings.map((w, i) => (
+                      <p key={i}>{w}</p>
+                    ))}
+                  </details>
                 )}
                 <details className="fl-card">
                   <summary>Processing history · {history.length}</summary>
@@ -736,13 +961,51 @@ export default function FluidLab({
                 hidden={index !== details.length - 1}
               >
                 <div className="fl-detail-top">
+                  <button
+                    className="fl-mobile-minimize"
+                    aria-label="Collapse information"
+                    onClick={() => setCollapsed(true)}
+                  >
+                    <ChevronDown size={18} />
+                  </button>
                   <button onClick={back}>
                     <ArrowLeft size={17} />
                     Back
                   </button>
                 </div>
                 <div className="fl-detail-body">
-                  {detail.kind === "sources" ? (
+                  {detail.kind === "pason" ? (
+                    <>
+                      <h1>Pason · {data?.well.name}</h1>
+                      {pason.model ? (
+                        <>
+                          <SurveyControls navigation={survey} />
+                          <SurveyDetails
+                            navigation={survey}
+                            name={data?.well.name}
+                            showWarnings={false}
+                          />
+                          <button
+                            onClick={() =>
+                              survey.setLabelMode((v) =>
+                                v === "off"
+                                  ? "smart"
+                                  : v === "smart"
+                                    ? "all"
+                                    : "off",
+                              )
+                            }
+                          >
+                            Labels: {survey.labelMode}
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => pason.select("pason")}>
+                          Open Pason view
+                        </button>
+                      )}
+                    </>
+                  ) : detail.kind === "sources" ? (
                     <>
                       <h1>Supporting evidence</h1>
                       {detail.sources.map((s) => (
@@ -843,6 +1106,56 @@ export default function FluidLab({
           )}
         </aside>
       </main>
+      {pason.pending && !pason.progress && (
+        <PackageDetailDialog
+          manifest={pason.pending}
+          onCancel={pason.cancel}
+          onConfirm={(d) => void pason.save(d)}
+        />
+      )}
+      {!pason.pending &&
+        (loading ||
+          busy ||
+          uploading ||
+          (processing && !pollError) ||
+          pason.progress ||
+          sceneLoading) && (
+          <LoadingOverlay
+            message={
+              pason.progress?.message ||
+              (uploading
+                ? "Uploading reports…"
+                : loading
+                  ? "Opening well…"
+                  : processing
+                    ? job?.message || "Analyzing your well…"
+                    : sceneLoading
+                      ? "Preparing 3D view…"
+                      : "Saving changes…")
+            }
+            percent={
+              pason.progress?.percent ??
+              (uploading
+                ? percent
+                : processing && job?.total
+                  ? Math.round((100 * (job.completed || 0)) / job.total)
+                  : null)
+            }
+            onCancel={
+              uploading
+                ? () => uploadController.current?.abort()
+                : pason.progress
+                  ? pason.cancel
+                  : processing
+                    ? () =>
+                        void api
+                          .cancelImport(job!.id)
+                          .then(refresh)
+                          .catch((e) => setPollError(message(e)))
+                    : undefined
+            }
+          />
+        )}
     </div>
   );
 }

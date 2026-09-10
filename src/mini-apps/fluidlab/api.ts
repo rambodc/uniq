@@ -10,11 +10,14 @@ import type {
   Version,
   ChatMessage,
 } from "./model";
-const call = async <R>(name: string, data: unknown = {}) =>
+export const call = async <R>(name: string, data: unknown = {}) =>
   (await httpsCallable<unknown, R>(functions, name, { timeout: 330000 })(data))
     .data;
-export const listWells = async () =>
-  (await call<{ wells: Well[] }>("listFluidWells")).wells;
+export const listWells = (search = "", cursor: string | null = null) =>
+  call<{ wells: Well[]; cursor: string | null }>("listFluidWells", {
+    search,
+    cursor,
+  });
 export const createWell = async (name: string, autoName = false) =>
   (
     await call<{ well: Well }>("createFluidWell", {
@@ -77,6 +80,7 @@ export async function uploadFiles(
   files: File[],
   onProgress: (percent: number) => void,
   onReserved?: (job: ImportJob) => void,
+  signal?: AbortSignal,
 ) {
   if (!files.length || files.length > 5)
     throw new Error("Choose 1–5 spreadsheets.");
@@ -109,32 +113,48 @@ export async function uploadFiles(
     mutationId: crypto.randomUUID(),
   });
   onReserved?.(job);
-  for (let i = 0; i < files.length; i++) {
-    await new Promise<void>((resolve, reject) => {
-      const task = uploadBytesResumable(
-        ref(wellStorage, job.files[i].path),
-        files[i],
-        {
-          contentType: "application/octet-stream",
-          customMetadata: { importId: job.id, wellId },
-        },
-      );
-      task.on(
-        "state_changed",
-        (snap) =>
-          onProgress(
-            Math.round(
-              (100 * (i + snap.bytesTransferred / snap.totalBytes)) /
-                files.length,
+  try {
+    signal?.throwIfAborted();
+    for (let i = 0; i < files.length; i++) {
+      signal?.throwIfAborted();
+      await new Promise<void>((resolve, reject) => {
+        const task = uploadBytesResumable(
+          ref(wellStorage, job.files[i].path),
+          files[i],
+          {
+            contentType: "application/octet-stream",
+            customMetadata: { importId: job.id, wellId },
+          },
+        );
+        const abort = () => task.cancel();
+        signal?.addEventListener("abort", abort, { once: true });
+        task.on(
+          "state_changed",
+          (snap) =>
+            onProgress(
+              Math.round(
+                (100 * (i + snap.bytesTransferred / snap.totalBytes)) /
+                  files.length,
+              ),
             ),
-          ),
-        reject,
-        () => resolve(),
-      );
-    });
+          (e) => {
+            signal?.removeEventListener("abort", abort);
+            reject(e);
+          },
+          () => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+          },
+        );
+      });
+    }
+    signal?.throwIfAborted();
+    await call("completeFluidImport", { importId: job.id });
+    return job;
+  } catch (e) {
+    await cancelImport(job.id).catch(() => {});
+    throw e;
   }
-  await call("completeFluidImport", { importId: job.id });
-  return job;
 }
 export const completeImport = (importId: string) =>
   call("completeFluidImport", { importId });
@@ -171,6 +191,16 @@ export const cancelImport = (importId: string) =>
 export const generateGeometry = async (well: Well) =>
   (
     await call<{ job: ImportJob }>("generateFluidGeometry", {
+      wellId: well.id,
+      version: well.version,
+      baseRevision: well.revision,
+      mutationId: crypto.randomUUID(),
+    })
+  ).job;
+
+export const analyzeLosses = async (well: Well) =>
+  (
+    await call<{ job: ImportJob }>("analyzeFluidLosses", {
       wellId: well.id,
       version: well.version,
       baseRevision: well.revision,
