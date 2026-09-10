@@ -52,8 +52,13 @@ export async function searchWells(
       );
     }
   }
-  const result = await query.limit(11).get(),
-    page = result.docs.slice(0, 10),
+  let result;
+  try { result = await query.limit(11).get(); }
+  catch (error) {
+    console.error("Fluid Labs well search failed", { code: error.code, message: error.message });
+    throw new HttpsError("unavailable", "Wells could not be loaded. Please retry.");
+  }
+  const page = result.docs.slice(0, 10),
     last = page.at(-1);
   return {
     wells: page.map((d) => ({ id: d.id, ...d.data() })),

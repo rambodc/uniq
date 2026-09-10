@@ -35,3 +35,7 @@ jobs:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: firebase emulators:exec --only firestore,storage "node --test tests/rules.test.mjs && npm test --prefix functions"
       - run: firebase deploy --only firestore:rules,firestore:indexes,storage --project uniqenergy-de71c --non-interactive --message "CI rules deploy"
+      - name: Verify Fluid Labs indexes and real queries
+        env:
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
+        run: node functions/scripts/verify-fluid-well-indexes.js
