@@ -126,6 +126,8 @@ export const completeFluidPason = invoke(async (uid, d) => {
     });
     tx.update(r, { status: "ready", expiresAt: FieldValue.delete() });
   });
+  if (previous?.id)
+    await db.recursiveDelete(w.collection("pasonAnalysis").doc(previous.id));
   if (previous?.path)
     await storage
       .bucket()
@@ -176,7 +178,12 @@ export const removeFluidPason = invoke(async (uid, d) => {
     });
     return a.path;
   });
-  if (path) await storage.bucket().file(path).delete({ ignoreNotFound: true });
+  if (path) {
+    await storage.bucket().file(path).delete({ ignoreNotFound: true });
+    await db.recursiveDelete(
+      w.collection("pasonAnalysis").doc(validId(d.attachmentId)),
+    );
+  }
   return { ok: true };
 });
 export async function cleanupPasonUploads() {
@@ -201,6 +208,9 @@ export async function cleanupPasonUploads() {
     });
     if (path) {
       await storage.bucket().file(path).delete({ ignoreNotFound: true });
+      await db.recursiveDelete(
+        doc.ref.parent.parent.collection("pasonAnalysis").doc(doc.id),
+      );
       await doc.ref.delete();
     }
   }

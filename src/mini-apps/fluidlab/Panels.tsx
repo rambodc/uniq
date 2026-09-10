@@ -520,10 +520,16 @@ export function Chat({
         </p>
         {!messages.length && (
           <div className="fl-prompts">
-            {prompts.map((p) => (
+            {(data.well.pason
+              ? [
+                  "Which Pason measurements are available?",
+                  ...prompts.slice(0, 2),
+                ]
+              : prompts
+            ).map((p) => (
               <button
                 key={p}
-                disabled={busy || !data.well.version}
+                disabled={busy || (!data.well.version && !data.well.pason)}
                 onClick={() => void ask(p)}
               >
                 {p}
@@ -538,8 +544,10 @@ export function Chat({
             <div className="fl-answer">
               {m.answer.replace(/\[[a-f0-9]{32}\]/g, "")}
             </div>
-            {m.version !== data.well.version ? (
-              <small>Earlier well version</small>
+            {m.version !== data.well.version ||
+            (m.pasonAttachmentId &&
+              m.pasonAttachmentId !== data.well.pason?.id) ? (
+              <small>Earlier well data</small>
             ) : (
               <div className="fl-inline">
                 {m.citations.length > 0 && (
@@ -603,7 +611,9 @@ export function Chat({
         />
         <button
           aria-label="Send question"
-          disabled={busy || !question.trim() || !data.well.version}
+          disabled={
+            busy || !question.trim() || (!data.well.version && !data.well.pason)
+          }
         >
           <ArrowUp size={20} />
         </button>

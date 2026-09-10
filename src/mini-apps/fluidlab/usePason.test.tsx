@@ -135,7 +135,9 @@ it("large ZIP choice replaces progress and cancellation leaves the active packag
   expect(hook.model).toBe(previous);
 });
 it("failed Pason opening keeps the estimated view and retries successfully", async () => {
-  vi.mocked(downloadZip).mockRejectedValueOnce(new Error("Download unavailable"));
+  vi.mocked(downloadZip).mockRejectedValueOnce(
+    new Error("Download unavailable"),
+  );
   await act(async () => root.render(<Harness />));
   await flush();
   expect(hook.view).toBe("estimated");
@@ -145,4 +147,60 @@ it("failed Pason opening keeps the estimated view and retries successfully", asy
   await flush();
   expect(hook.view).toBe("pason");
   expect(hook.model).not.toBeNull();
+});
+it("prepares extracted Pason once and keeps the viewer usable after preparation fails", async () => {
+  vi.mocked(processPackage).mockResolvedValue({
+    name: "Survey",
+    warnings: [],
+    sourceUnit: "metric",
+    legs: [
+      {
+        id: "leg",
+        name: "Main",
+        parentId: null,
+        startMdM: 0,
+        endMdM: 100,
+        stations: [],
+      },
+    ],
+    holeSections: {},
+    casings: [],
+    bitRuns: [],
+    operationalBuckets: [],
+    operationalChannels: [],
+    operationalImport: {
+      sourceRows: 0,
+      validObservations: 0,
+      depthResolutionM: 0.5,
+    },
+  } as never);
+  vi.mocked(call).mockImplementation(async (name, data) => {
+    if (name === "getFluidPason") return { attachment };
+    if (name === "saveFluidPasonAnalysis") {
+      const stage = (data as { stage: string }).stage;
+      if (stage === "begin") return { runId: "run" };
+      if (stage === "page") throw new Error("Preparation interrupted");
+    }
+    return {};
+  });
+  await act(async () => root.render(<Harness />));
+  await flush();
+  const model = hook.model;
+  expect(model?.name).toBe("Survey");
+  expect(hook.analysisError).toContain("interrupted");
+  expect(hook.view).toBe("pason");
+  expect(call).toHaveBeenCalledWith(
+    "saveFluidPasonAnalysis",
+    expect.objectContaining({ stage: "cancel", runId: "run" }),
+  );
+  vi.mocked(call).mockImplementation(async () => ({ runId: "retry" }));
+  await act(async () => hook.prepareChat());
+  expect(hook.model).toBe(model);
+  expect(processPackage).toHaveBeenCalledTimes(1);
+  expect(call).toHaveBeenCalledWith(
+    "saveFluidPasonAnalysis",
+    expect.objectContaining({ stage: "finish", runId: "retry" }),
+  );
+  expect(hook.analysisError).toBe("");
+  expect(refresh).toHaveBeenCalled();
 });

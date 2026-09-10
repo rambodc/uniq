@@ -22,3 +22,5 @@ export { listFluidWells, createFluidWell, renameFluidWell, getFluidWell, getFlui
 export { generateFluidGeometry, analyzeFluidLosses } from "./apps/fluidlab/service.js";
 
 export { beginFluidPason, completeFluidPason, getFluidPason, cancelFluidPason, removeFluidPason } from "./apps/fluidlab/pason.js";
+
+export { saveFluidPasonAnalysis } from "./apps/fluidlab/pason-data.js";

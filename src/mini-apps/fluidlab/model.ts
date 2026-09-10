@@ -76,6 +76,12 @@ export interface Summary {
   branches: number;
 }
 export interface PasonAttachment {
+  analysis?: {
+    schema: number;
+    runId: string;
+    preparedBy: string;
+    preparedAt: string;
+  };
   id: string;
   path: string;
   originalName: string;
@@ -156,12 +162,13 @@ export interface Version {
   reason: string;
 }
 export interface ChatMessage {
+  pasonAttachmentId?: string | null;
   id: string;
   question: string;
   answer: string;
   citations: string[];
   highlights: string[];
-  version: string;
+  version: string | null;
   createdAt: string;
 }
 export const value = (r: DataRecord | undefined, key: string) =>

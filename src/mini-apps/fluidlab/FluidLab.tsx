@@ -1100,18 +1100,36 @@ export default function FluidLab({
                 aria-label="Chat panel"
               >
                 {contentReady ? (
-                  <Chat
-                    key={data.well.id}
-                    data={data}
-                    report={report}
-                    product={null}
-                    visible={tab === "chat" && !details.length && !collapsed}
-                    openSources={(ids) => void openSources(ids)}
-                    highlight={(ids) => {
-                      setHighlights(ids);
-                      setSelected(ids[0] || null);
-                    }}
-                  />
+                  <>
+                    {data.well.pason &&
+                      data.well.pason.analysis?.schema !== 1 && (
+                        <div className="fl-card">
+                          <p>
+                            Make this well’s extracted Pason information
+                            available to chat.
+                          </p>
+                          {pason.analysisError && (
+                            <p role="alert">{pason.analysisError}</p>
+                          )}
+                          <button onClick={() => void pason.prepareChat()}>
+                            <Route size={17} aria-hidden="true" />
+                            Prepare Pason for chat
+                          </button>
+                        </div>
+                      )}
+                    <Chat
+                      key={data.well.id}
+                      data={data}
+                      report={report}
+                      product={null}
+                      visible={tab === "chat" && !details.length && !collapsed}
+                      openSources={(ids) => void openSources(ids)}
+                      highlight={(ids) => {
+                        setHighlights(ids);
+                        setSelected(ids[0] || null);
+                      }}
+                    />
+                  </>
                 ) : (
                   <p>
                     {loading

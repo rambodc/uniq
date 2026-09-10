@@ -1,3 +1,4 @@
+import { savePasonChatData } from "./pason/chat-data";
 /* eslint-disable react-hooks/set-state-in-effect -- Synchronize the external well session and its cached package. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { auth } from "../../core/firebase";
@@ -30,6 +31,7 @@ export function usePason(
     } | null>(null),
     [pending, setPending] = useState<WellPackageManifest | null>(null),
     [error, setError] = useState("");
+  const [analysisError, setAnalysisError] = useState("");
   const work = useRef<Work | null>(null),
     cache = useRef<string | null>(null),
     selectedView = useRef<"pason" | "estimated">("estimated"),
@@ -61,6 +63,7 @@ export function usePason(
   };
   useEffect(() => {
     cache.current = null;
+    setAnalysisError("");
     initialized.current = null;
     selectedView.current = "estimated";
     setModel(null);
@@ -113,6 +116,31 @@ export function usePason(
     },
     [current],
   );
+  const prepareData = useCallback(
+    async (w: Work, id: string, parsed: WellModel) => {
+      setAnalysisError("");
+      try {
+        await savePasonChatData(
+          w.wellId,
+          id,
+          parsed,
+          w.controller.signal,
+          (message, percent) => {
+            if (current(w)) setProgress({ message, percent });
+          },
+        );
+        if (current(w)) await callback.current();
+      } catch (e) {
+        if (current(w))
+          setAnalysisError(
+            e instanceof Error
+              ? e.message
+              : "Pason chat preparation failed. Retry.",
+          );
+      }
+    },
+    [current],
+  );
   const open = useCallback(
     async (a: PasonAttachment) => {
       if (!wellId || cache.current === a.id || work.current) return;
@@ -151,6 +179,9 @@ export function usePason(
         if (!current(w)) return;
         cache.current = saved.id;
         setModel(parsed);
+        if (saved.analysis?.schema !== 1)
+          await prepareData(w, saved.id, parsed);
+        if (!current(w)) return;
         if (selectedView.current === "pason") setView("pason");
         setProgress(null);
         work.current = null;
@@ -158,7 +189,7 @@ export function usePason(
         fail(w, e);
       }
     },
-    [wellId, fail, current],
+    [wellId, fail, current, prepareData],
   );
   useEffect(() => {
     if (!wellId || !attachment || initialized.current === wellId) return;
@@ -232,10 +263,13 @@ export function usePason(
         warnings: parsed.warnings,
       });
       if (!current(w)) return;
-      cache.current = w.id;
+      const attachmentId = w.id;
+      cache.current = attachmentId;
       w.id = undefined;
       setModel(parsed);
       select("pason");
+      await prepareData(w, attachmentId, parsed);
+      if (!current(w)) return;
       await callback.current();
       if (current(w)) {
         setProgress(null);
@@ -287,12 +321,30 @@ export function usePason(
       setProgress(null);
     }
   };
+  const prepareChat = async () => {
+    if (!wellId || !attachment || work.current) return;
+    if (!model || cache.current !== attachment.id) {
+      select("pason");
+      await open(attachment);
+      return;
+    }
+    const w: Work = { wellId, controller: new AbortController() };
+    work.current = w;
+    setProgress({ message: "Preparing Pason for chat…", percent: null });
+    await prepareData(w, attachment.id, model);
+    if (current(w)) {
+      work.current = null;
+      setProgress(null);
+    }
+  };
   return {
     model,
     view,
     select,
     progress,
     pending,
+    analysisError,
+    prepareChat,
     error,
     cancel,
     upload,
