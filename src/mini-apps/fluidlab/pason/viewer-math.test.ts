@@ -1,3 +1,4 @@
+import { IdleRotation } from "../idle-rotation";
 import { describe, expect, it } from "vitest";
 import {
   followDistanceM,
@@ -109,5 +110,26 @@ describe("Well viewer label policy", () => {
     expect(
       opacity("casing", { mdDistance: 100, cameraDistance: 1000 }),
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("Fluid Labs idle rotation", () => {
+  it("waits five seconds and eases up to three degrees per second", () => {
+    const rotation = new IdleRotation(0);
+    expect(rotation.angle(4999, 0.1, false)).toBe(0);
+    expect(rotation.angle(5000, 0.1, false)).toBe(0);
+    expect(rotation.angle(5500, 0.1, false)).toBeCloseTo(
+      (Math.PI / 60) * 0.1 * 0.5,
+    );
+    expect(rotation.angle(6000, 0.1, false)).toBeCloseTo((Math.PI / 60) * 0.1);
+  });
+  it("pauses immediately and restarts the idle delay after interaction or suspension", () => {
+    const rotation = new IdleRotation(0);
+    expect(rotation.angle(7000, 0.1, true)).toBe(0);
+    expect(rotation.angle(11999, 0.1, false)).toBe(0);
+    expect(rotation.angle(13000, 0.1, false)).toBeGreaterThan(0);
+    rotation.pause(14000);
+    expect(rotation.angle(18999, 0.1, false)).toBe(0);
+    expect(rotation.angle(20000, 100, false)).toBeCloseTo((Math.PI / 60) * 0.1);
   });
 });

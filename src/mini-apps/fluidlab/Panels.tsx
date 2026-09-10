@@ -10,6 +10,9 @@ import { useEffect, useRef, useState } from "react";
 import Decimal from "decimal.js";
 import {
   ArrowUp,
+  FileText,
+  TrendingDown,
+  MessageCircle,
   ChevronRight,
   FlaskConical,
   Droplets,
@@ -330,7 +333,7 @@ export function Mud({
           aria-pressed={category === "reports"}
           onClick={() => setCategory("reports")}
         >
-          Reports
+          <FileText size={19} aria-hidden="true" /> Reports
         </button>
         <button
           aria-pressed={category === "losses"}
@@ -340,7 +343,7 @@ export function Mud({
               analyze();
           }}
         >
-          Downhole losses
+          <TrendingDown size={19} aria-hidden="true" /> Downhole losses
         </button>
       </nav>
       <div hidden={category !== "reports"}>
@@ -508,7 +511,10 @@ export function Chat({
     <div className="fl-chat">
       <div className="fl-chat-feed">
         <small>YOUR WELL ANALYST</small>
-        <h1>Ask the data.</h1>
+        <h1 className="fl-card-heading">
+          <MessageCircle aria-hidden="true" />
+          Ask the data.
+        </h1>
         <p className="fl-muted">
           {report || "Whole well"} · {product || "All products"}
         </p>

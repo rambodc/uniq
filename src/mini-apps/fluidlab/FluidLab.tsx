@@ -1,3 +1,5 @@
+import Confirmation from "./Confirmation";
+import { useAutoRotation } from "./AutoRotation";
 import SceneViewport from "./SceneViewport";
 import LoadingOverlay from "./loading/LoadingOverlay";
 import PackageDetailChoice from "./pason/PackageDetailChoice";
@@ -19,9 +21,21 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Link } from "react-router-dom";
 import {
   ArrowLeft,
+  Route,
+  Box,
+  SlidersHorizontal,
+  FileArchive,
+  RefreshCw,
+  Trash2,
+  Pencil,
+  MapPin,
+  ClipboardCheck,
+  RotateCw,
+  Tags,
+  Play,
+  Pause,
   Upload,
   X,
   PanelLeftClose,
@@ -78,6 +92,10 @@ export default function FluidLab({
   wellId?: string;
   navigate: (url: string) => void;
 }) {
+  const rotation = useAutoRotation();
+  const [confirmation, setConfirmation] = useState<
+    "exit" | "remove" | File | null
+  >(null);
   const [data, setData] = useState<Dataset | null>(null),
     [tab, setTab] = useState(wellId ? "well" : "wells"),
     [report, setReport] = useState<string | null>(null),
@@ -338,9 +356,12 @@ export default function FluidLab({
   return (
     <div className="fluidlab-app">
       <header className="fl-header">
-        <Link to="/portal" aria-label="Back to portal">
+        <button
+          aria-label="Back to portal"
+          onClick={() => setConfirmation("exit")}
+        >
           <ArrowLeft size={19} />
-        </Link>
+        </button>
         <strong>
           <Layers size={22} /> FluidLab
         </strong>
@@ -351,6 +372,17 @@ export default function FluidLab({
       >
         <section className="fl-viewer" aria-label="3D well workspace">
           <SceneViewport
+            autoRotate={rotation.enabled}
+            motionBlocked={
+              !!confirmation ||
+              loading ||
+              busy ||
+              uploading ||
+              processing ||
+              sceneLoading ||
+              !!pason.progress ||
+              !!pason.pending
+            }
             sceneKey={`${wellId || "empty"}:${pason.view === "pason" && pason.model ? "pason" : "estimated"}`}
           >
             {contentReady && pason.view === "pason" && pason.model ? (
@@ -694,7 +726,10 @@ export default function FluidLab({
                     )}
                     {data && (
                       <div className="fl-card">
-                        <small>SELECTED WELL</small>
+                        <div className="fl-card-heading">
+                          <MapPin aria-hidden="true" />
+                          <small>SELECTED WELL</small>
+                        </div>
                         <h2>{data.well.name}</h2>
                         <div className="fl-inline">
                           <button
@@ -704,7 +739,7 @@ export default function FluidLab({
                               setName(data.well.name);
                             }}
                           >
-                            Rename
+                            <Pencil size={16} aria-hidden="true" /> Rename
                           </button>
                           <button
                             disabled={busy || active(job) || !data.well.version}
@@ -716,7 +751,7 @@ export default function FluidLab({
                             disabled={busy || active(job)}
                             onClick={() => setDeleting((v) => !v)}
                           >
-                            Delete
+                            <Trash2 size={16} aria-hidden="true" /> Delete
                           </button>
                         </div>
                         {deleting && (
@@ -745,67 +780,130 @@ export default function FluidLab({
                       </div>
                     )}
                     {data && (
-                      <section className="fl-card">
-                        <h2>Well view</h2>
-                        <p className="fl-muted">
-                          Attach a Pason ZIP for survey and drilling detail.
-                        </p>
-                        <div className="fl-inline">
+                      <section className="fl-card fl-well-view">
+                        <div className="fl-card-heading">
+                          <Box aria-hidden="true" />
+                          <div>
+                            <h2>Well view</h2>
+                            <p className="fl-muted">
+                              Choose how to explore this well.
+                            </p>
+                          </div>
+                        </div>
+                        <div
+                          className="fl-view-selector"
+                          role="group"
+                          aria-label="Visualization source"
+                          data-camera-tools
+                        >
                           <button
                             disabled={!data.well.pason}
                             aria-pressed={pason.view === "pason"}
                             onClick={() => pason.select("pason")}
                           >
-                            Pason
+                            <Route aria-hidden="true" />
+                            <span>
+                              Pason<small>Survey & drilling detail</small>
+                            </span>
                           </button>
                           <button
                             aria-pressed={pason.view === "estimated"}
                             onClick={() => pason.select("estimated")}
                           >
-                            Estimated
+                            <Box aria-hidden="true" />
+                            <span>
+                              Estimated<small>Report-based schematic</small>
+                            </span>
                           </button>
                         </div>
-                        {pason.view === "estimated" && (
-                          <div
-                            className="fl-inline"
-                            aria-label="Estimated camera orientation"
-                          >
-                            {["isometric", "top", "side"].map((v) => (
-                              <button
-                                key={v}
-                                aria-pressed={view === v}
-                                onClick={() => setView(v)}
-                              >
-                                {v}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <div className="fl-actions">
+                        <div className="fl-active-tools" data-camera-tools>
+                          {pason.view === "pason" && data.well.pason ? (
+                            <button
+                              className="fl-tools-entry"
+                              onClick={() => {
+                                detailTrigger.current =
+                                  document.activeElement as HTMLElement;
+                                setDetails([{ kind: "pason" }]);
+                              }}
+                            >
+                              <SlidersHorizontal aria-hidden="true" />
+                              <span>
+                                <strong>Pason Tools</strong>
+                                <small>
+                                  Labels, casing, depth and survey details
+                                </small>
+                              </span>
+                              <ChevronRight aria-hidden="true" />
+                            </button>
+                          ) : (
+                            <div
+                              className="fl-orientations"
+                              aria-label="Estimated camera orientation"
+                            >
+                              {["isometric", "top", "side"].map((v) => (
+                                <button
+                                  key={v}
+                                  aria-pressed={view === v}
+                                  onClick={() => setView(v)}
+                                >
+                                  <Box size={16} aria-hidden="true" />
+                                  {v}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <button
-                            disabled={!!pason.progress}
-                            onClick={() => zipFile.current?.click()}
+                            className="fl-auto-rotate"
+                            aria-pressed={rotation.enabled}
+                            onClick={rotation.toggle}
                           >
-                            {data.well.pason
-                              ? "Replace Pason ZIP"
-                              : "Upload Pason ZIP"}
+                            <RotateCw size={17} aria-hidden="true" />
+                            <span>Auto-rotate</span>
+                            <small>{rotation.enabled ? "On" : "Off"}</small>
+                            {rotation.enabled ? (
+                              <Pause size={15} aria-hidden="true" />
+                            ) : (
+                              <Play size={15} aria-hidden="true" />
+                            )}
                           </button>
-                          {data.well.pason && (
-                            <>
+                        </div>
+                        <div className="fl-attachment">
+                          <div className="fl-card-heading">
+                            <FileArchive size={20} aria-hidden="true" />
+                            <div>
+                              <strong>Pason attachment</strong>
+                              <p className="fl-muted">
+                                {data.well.pason?.originalName ||
+                                  "Upload a Pason ZIP to unlock survey and drilling tools."}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="fl-actions">
+                            <button
+                              className={!data.well.pason ? "fl-primary" : ""}
+                              disabled={!!pason.progress}
+                              onClick={() => zipFile.current?.click()}
+                            >
+                              {data.well.pason ? (
+                                <RefreshCw size={16} aria-hidden="true" />
+                              ) : (
+                                <Upload size={16} aria-hidden="true" />
+                              )}
+                              {data.well.pason
+                                ? "Replace Pason ZIP"
+                                : "Upload Pason ZIP"}
+                            </button>
+                            {data.well.pason && (
                               <button
-                                onClick={() => {
-                                  detailTrigger.current =
-                                    document.activeElement as HTMLElement;
-                                  setDetails([{ kind: "pason" }]);
-                                }}
+                                className="fl-remove-zip"
+                                disabled={!!pason.progress}
+                                onClick={() => setConfirmation("remove")}
                               >
-                                Pason Tools
-                              </button>
-                              <button onClick={() => void pason.remove()}>
+                                <Trash2 size={16} aria-hidden="true" />
                                 Remove ZIP
                               </button>
-                            </>
-                          )}
+                            )}
+                          </div>
                         </div>
                         <input
                           ref={zipFile}
@@ -815,7 +913,10 @@ export default function FluidLab({
                           onChange={(e) => {
                             const f = e.target.files?.[0];
                             e.target.value = "";
-                            if (f) void pason.upload(f);
+                            if (f) {
+                              if (data.well.pason) setConfirmation(f);
+                              else void pason.upload(f);
+                            }
                           }}
                         />
                         {pason.error && (
@@ -827,8 +928,9 @@ export default function FluidLab({
                       </section>
                     )}
                     <section aria-label="Review" className="fl-well-review">
-                      <h2>
-                        Review <span className="fl-badge">{problemCount}</span>
+                      <h2 className="fl-card-heading">
+                        <ClipboardCheck aria-hidden="true" /> Review{" "}
+                        <span className="fl-badge">{problemCount}</span>
                       </h2>
                       {(uploading || job) && (
                         <section className="fl-job" role="status">
@@ -1048,15 +1150,31 @@ export default function FluidLab({
                     Back
                   </button>
                 </div>
-                <div className="fl-detail-body">
+                <div
+                  className="fl-detail-body"
+                  data-camera-tools={detail.kind === "pason" ? "" : undefined}
+                >
                   {detail.kind === "pason" ? (
                     <>
-                      <h1>Pason Tools</h1>
+                      <h1 className="fl-card-heading">
+                        <SlidersHorizontal aria-hidden="true" />
+                        Pason Tools
+                      </h1>
                       <p className="fl-muted">{data?.well.name}</p>
                       {pason.model ? (
                         <>
                           {pason.view === "pason" ? (
-                            <SurveyControls navigation={survey} />
+                            <div data-camera-tools>
+                              <SurveyControls navigation={survey} />
+                              <button
+                                className="fl-auto-rotate"
+                                aria-pressed={rotation.enabled}
+                                onClick={rotation.toggle}
+                              >
+                                <RotateCw size={17} aria-hidden="true" />
+                                Auto-rotate: {rotation.enabled ? "On" : "Off"}
+                              </button>
+                            </div>
                           ) : (
                             <button onClick={() => pason.select("pason")}>
                               Open Pason view
@@ -1074,14 +1192,17 @@ export default function FluidLab({
                                 )
                               }
                             >
-                              Labels: {survey.labelMode}
+                              <Tags size={16} aria-hidden="true" /> Labels:{" "}
+                              {survey.labelMode}
                             </button>
                           )}
-                          <SurveyDetails
-                            navigation={survey}
-                            name={data?.well.name}
-                            showWarnings={false}
-                          />
+                          {pason.view === "pason" && (
+                            <SurveyDetails
+                              navigation={survey}
+                              name={data?.well.name}
+                              showWarnings={false}
+                            />
+                          )}
                         </>
                       ) : (
                         <button onClick={() => pason.select("pason")}>
@@ -1139,6 +1260,7 @@ export default function FluidLab({
             // A keyboard-operable separator resizes the desktop sidebar.
             // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
             <div
+              data-camera-tools
               className="fl-sidebar-resize"
               role="separator"
               aria-label="Resize information sidebar"
@@ -1233,6 +1355,61 @@ export default function FluidLab({
             }
           />
         )}
+      {confirmation && (
+        <Confirmation
+          title={
+            confirmation === "exit"
+              ? "Leave Fluid Labs?"
+              : confirmation === "remove"
+                ? "Remove Pason attachment?"
+                : "Replace Pason attachment?"
+          }
+          cancelLabel={
+            confirmation === "exit" ? "Stay here" : "Keep attachment"
+          }
+          confirmLabel={
+            confirmation === "exit"
+              ? "Exit to portal"
+              : confirmation === "remove"
+                ? "Remove attachment"
+                : "Replace attachment"
+          }
+          destructive={confirmation !== "exit"}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={() => {
+            const action = confirmation;
+            setConfirmation(null);
+            if (action === "exit") navigate("/portal");
+            else if (action === "remove") void pason.remove();
+            else void pason.upload(action);
+          }}
+        >
+          {confirmation === "exit" ? (
+            <p>
+              Saved wells remain available. Unsaved edits and unsent messages
+              are not retained when you leave.
+            </p>
+          ) : (
+            <>
+              <p>
+                {confirmation === "remove"
+                  ? "This removes the Pason attachment for everyone using this shared well. The estimated view and report data remain available."
+                  : "The current attachment stays available until the replacement is ready. This changes the attachment for everyone using this shared well."}
+              </p>
+              <p>
+                <strong>Current attachment</strong>
+                <span>{data?.well.pason?.originalName}</span>
+              </p>
+              {confirmation instanceof File && (
+                <p>
+                  <strong>Replacement</strong>
+                  <span>{confirmation.name}</span>
+                </p>
+              )}
+            </>
+          )}
+        </Confirmation>
+      )}
     </div>
   );
 }

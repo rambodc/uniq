@@ -104,10 +104,6 @@
   border-bottom: 1px solid #26383f;
   background: #111d23;
 }
-.fl-header a {
-  display: flex;
-  color: #9bb6ba;
-}
 .fl-header strong {
   display: flex;
   align-items: center;
@@ -412,6 +408,9 @@
   flex-shrink: 0;
   padding: 10px 17px;
   border-bottom: 1px solid #2b4048;
+  flex-direction: row;
+  justify-content: flex-start;
+  display: flex;
 }
 .fl-detail-top button {
   border: 0;
@@ -974,13 +973,15 @@
   margin: 6px 0;
 }
 .fl-categories {
-  display: flex;
-  gap: 8px;
-  margin: 16px 0;
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+  grid-template-columns: 1fr 1fr;
 }
 .fl-categories button[aria-pressed="true"] {
-  background: #224d48;
-  border-color: #76bda8;
+  background: #20463f;
+  border-color: #70d6c0;
+  color: #a2f0d9;
 }
 .fl-trends {
   margin: 22px 0;
@@ -997,10 +998,6 @@
 }
 .fluidlab-app .fl-mobile-minimize {
   display: none;
-}
-.fl-detail-top {
-  flex-direction: row-reverse;
-  justify-content: space-between;
 }
 @media (max-width: 760px) {
   .fluidlab-app .fl-mobile-minimize {
@@ -1027,9 +1024,6 @@
 .fl-detail .fl-pason-camera-dock input {
   width: 80px;
   padding: 5px;
-}
-.fl-detail-top {
-  display: flex;
 }
 .fl-detail .fl-pason-leg-list button {
   justify-content: flex-start;
@@ -1129,4 +1123,167 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+/* Consistent detail headers: Back left, optional mobile collapse right. */
+.fl-detail-top .fl-mobile-minimize {
+  order: 2;
+  margin-left: auto;
+}
+.fl-header > button {
+  padding: 5px;
+  border: 0;
+  background: transparent;
+}
+.fl-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.fl-card-heading > svg {
+  flex-shrink: 0;
+  color: #70d6c0;
+}
+.fl-card-heading h2,
+.fl-card-heading p {
+  margin: 0;
+}
+.fl-card-heading p {
+  margin-top: 6px;
+}
+.fl-view-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 20px 0 14px;
+}
+.fl-view-selector button {
+  justify-content: flex-start;
+  text-align: left;
+  gap: 10px;
+  padding: 14px 10px;
+}
+.fl-view-selector button > svg {
+  flex-shrink: 0;
+}
+.fl-view-selector button small {
+  font-size: 10px;
+  margin-top: 5px;
+}
+.fl-view-selector button[aria-pressed="true"] {
+  border-color: #72d8c1;
+  background: #20463f;
+  color: #a2f0d9;
+}
+.fl-active-tools {
+  display: grid;
+  gap: 12px;
+}
+.fluidlab-app .fl-tools-entry {
+  width: 100%;
+  padding: 18px 14px;
+  gap: 12px;
+  text-align: left;
+  background: linear-gradient(120deg, #22574f, #163b40);
+  border-color: #5aa897;
+}
+.fl-tools-entry > svg {
+  color: #8ee7cf;
+  flex-shrink: 0;
+}
+.fl-tools-entry span {
+  flex: 1;
+}
+.fl-tools-entry strong {
+  font-size: 17px;
+}
+.fl-tools-entry small {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.fl-orientations {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fl-orientations button {
+  flex: 1;
+  text-transform: capitalize;
+  padding: 10px 8px;
+  gap: 6px;
+}
+.fluidlab-app .fl-auto-rotate {
+  gap: 8px;
+  justify-content: flex-start;
+}
+.fl-auto-rotate small {
+  margin-left: auto;
+}
+.fl-attachment {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 18px;
+}
+.fl-attachment p {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.fluidlab-app .fl-remove-zip {
+  color: #d5a9a4;
+  background: transparent;
+  border-color: transparent;
+}
+.fl-categories button {
+  padding: 14px 10px;
+  gap: 8px;
+  border-radius: 12px;
+}
+.fluidlab-app .fl-confirmation {
+  position: fixed;
+  margin: auto;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid #40625e;
+  border-radius: 20px;
+  background: #14282d;
+  color: #dcebea;
+  box-shadow: 0 24px 100px #0008;
+}
+.fl-confirmation::backdrop {
+  background: #001016b8;
+  backdrop-filter: blur(5px);
+}
+.fl-confirm-icon {
+  display: inline-flex;
+  padding: 14px;
+  border-radius: 16px;
+  background: #23453f;
+  color: #8be2cd;
+}
+.fl-confirmation h2 {
+  margin: 20px 0 12px;
+}
+.fl-confirm-copy {
+  color: #afc5c7;
+  line-height: 1.6;
+}
+.fl-confirm-copy strong,
+.fl-confirm-copy span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.fl-confirmation .fl-actions {
+  margin-top: 24px;
+}
+.fluidlab-app .fl-danger {
+  background: #824940;
+  border-color: #bc776b;
+  color: #fff1ee;
+}
+
+.fl-detail-body [data-camera-tools] > .fl-auto-rotate {
+  margin-bottom: 10px;
 }

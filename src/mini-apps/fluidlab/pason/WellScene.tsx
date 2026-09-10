@@ -450,6 +450,7 @@ function Label({
     <Html position={position} center occlude={false} zIndexRange={[20, 0]}>
       <span
         ref={element}
+        style={{ opacity: 0 }}
         className={`fl-pason-scene-label ${category}${active ? " active" : ""}`}
       >
         {children}

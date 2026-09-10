@@ -8,6 +8,7 @@ vi.mock("../../core/firebase", () => ({
   auth: { currentUser: { uid: "test" } },
 }));
 vi.mock("./api", () => ({
+  call: vi.fn(),
   listWells: vi.fn(),
   createWell: vi.fn(),
   uploadFiles: vi.fn(),
@@ -22,7 +23,9 @@ vi.mock("./api", () => ({
   getImport: vi.fn(),
   retryImport: vi.fn(),
 }));
-vi.mock("./SceneViewport", () => ({ default: ({ children }: {children: ReactNode}) => <div>{children}</div> }));
+vi.mock("./SceneViewport", () => ({
+  default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
 vi.mock("./WellScene", () => ({
   default: () => <div data-testid="scene">3D scene</div>,
 }));
@@ -212,7 +215,10 @@ describe("FluidLab workspace", () => {
   it("keeps management inside Well and restores the exact product list after Back", async () => {
     await render();
     const header = host.querySelector(".fl-header")!;
-    expect(header.querySelectorAll("button,select,input").length).toBe(0);
+    expect(header.querySelectorAll("button,select,input").length).toBe(1);
+    expect(header.querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Back to portal",
+    );
     expect(
       host
         .querySelector('button[aria-label="Well"]')
@@ -260,9 +266,9 @@ describe("FluidLab workspace", () => {
       host.querySelectorAll('[aria-label="Priority review"] .fl-problem')
         .length,
     ).toBe(5);
-    expect(
-      host.querySelector('[aria-label="Review"]')?.textContent,
-    ).toContain("Other items & schematic assumptions · 4");
+    expect(host.querySelector('[aria-label="Review"]')?.textContent).toContain(
+      "Other items & schematic assumptions · 4",
+    );
     expect(host.querySelectorAll(".fl-problem").length).toBe(9);
   });
   it("preserves pending chat across tabs and expands only the Chat layout", async () => {
@@ -446,9 +452,15 @@ describe("FluidLab workspace", () => {
 });
 it("separates library search and uploads from the selected well and preserves library scroll", async () => {
   await render();
-  const library = host.querySelector<HTMLElement>('[aria-label="All wells panel"]')!;
-  const selected = host.querySelector<HTMLElement>('[aria-label="Well panel"]')!;
-  expect(library.querySelector('[aria-label="Search all wells"]')).not.toBeNull();
+  const library = host.querySelector<HTMLElement>(
+    '[aria-label="All wells panel"]',
+  )!;
+  const selected = host.querySelector<HTMLElement>(
+    '[aria-label="Well panel"]',
+  )!;
+  expect(
+    library.querySelector('[aria-label="Search all wells"]'),
+  ).not.toBeNull();
   expect(selected.querySelector('[aria-label="Search all wells"]')).toBeNull();
   expect(selected.querySelector('[aria-label="Review"]')).not.toBeNull();
   expect(library.textContent).not.toContain("SELECTED WELL");
@@ -457,25 +469,176 @@ it("separates library search and uploads from the selected well and preserves li
   await click('button[aria-label="Well"]');
   await click('button[aria-label="All wells"]');
   expect(library.scrollTop).toBe(240);
-  vi.mocked(api.createWell).mockResolvedValue({ ...sample.well, id: "new-well" });
-  vi.mocked(api.uploadFiles).mockResolvedValue({ id: "new-job", wellId: "new-well", status: "queued" } as never);
-  const input = host.querySelector<HTMLInputElement>('input[accept=".xlsx,.xls,.csv,.tsv"]')!;
-  const send = async () => act(async () => {
-    Object.defineProperty(input, "files", { configurable:true, value:[new File(["a,b"],"reports.csv")] });
-    input.dispatchEvent(new Event("change", { bubbles:true }));
+  vi.mocked(api.createWell).mockResolvedValue({
+    ...sample.well,
+    id: "new-well",
   });
+  vi.mocked(api.uploadFiles).mockResolvedValue({
+    id: "new-job",
+    wellId: "new-well",
+    status: "queued",
+  } as never);
+  const input = host.querySelector<HTMLInputElement>(
+    'input[accept=".xlsx,.xls,.csv,.tsv"]',
+  )!;
+  const send = async () =>
+    act(async () => {
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File(["a,b"], "reports.csv")],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
   await click('[aria-label="All wells panel"] .fl-primary');
   await send();
-  expect(api.uploadFiles).toHaveBeenLastCalledWith("new-well",expect.any(Array),expect.any(Function),expect.any(Function),expect.any(AbortSignal));
+  expect(api.uploadFiles).toHaveBeenLastCalledWith(
+    "new-well",
+    expect.any(Array),
+    expect.any(Function),
+    expect.any(Function),
+    expect.any(AbortSignal),
+  );
   await click('button[aria-label="Well"]');
   await click('[aria-label="Well panel"] .fl-primary');
   await send();
-  expect(api.uploadFiles).toHaveBeenLastCalledWith("well",expect.any(Array),expect.any(Function),expect.any(Function),expect.any(AbortSignal));
+  expect(api.uploadFiles).toHaveBeenLastCalledWith(
+    "well",
+    expect.any(Array),
+    expect.any(Function),
+    expect.any(Function),
+    expect.any(AbortSignal),
+  );
   expect(api.createWell).toHaveBeenCalledTimes(1);
 });
 it("expands from the complete collapsed mobile bar", async () => {
   await render();
   await click('button[aria-label="Collapse information"]');
   await click('button[aria-label="Expand well information"]');
-  expect(host.querySelector('#fl-sidebar-content')?.hasAttribute('hidden')).toBe(false);
+  expect(
+    host.querySelector("#fl-sidebar-content")?.hasAttribute("hidden"),
+  ).toBe(false);
+});
+
+it("confirms portal exit and restores focus and the mounted workspace on cancellation", async () => {
+  const navigate = vi.fn();
+  await act(async () =>
+    root.render(
+      <MemoryRouter>
+        <FluidLab wellId="well" navigate={navigate} />
+      </MemoryRouter>,
+    ),
+  );
+  const scene = host.querySelector('[data-testid="scene"]');
+  const back = host.querySelector<HTMLButtonElement>(
+    '[aria-label="Back to portal"]',
+  )!;
+  back.focus();
+  await act(async () => back.click());
+  const dialog = host.querySelector("dialog.fl-confirmation")!;
+  expect(dialog.textContent).toContain("Leave Fluid Labs?");
+  expect(document.activeElement?.textContent).toBe("Stay here");
+  expect(navigate).not.toHaveBeenCalled();
+  await act(async () =>
+    dialog.dispatchEvent(
+      new Event("cancel", { bubbles: true, cancelable: true }),
+    ),
+  );
+  expect(host.querySelector(".fl-confirmation")).toBeNull();
+  expect(document.activeElement).toBe(back);
+  expect(host.querySelector('[data-testid="scene"]')).toBe(scene);
+  await act(async () => back.click());
+  await act(async () =>
+    host
+      .querySelector<HTMLButtonElement>(".fl-confirmation .fl-primary")!
+      .click(),
+  );
+  expect(navigate).toHaveBeenCalledWith("/portal");
+});
+
+it("requires confirmation before removing the shared attachment", async () => {
+  const saved = {
+    ...structuredClone(sample),
+    next: null,
+    well: {
+      ...sample.well,
+      pason: {
+        id: "zip",
+        path: "fluidlab/well/pason/zip/original.zip",
+        originalName: "shared-survey.zip",
+        sizeBytes: 3,
+        detail: "balanced" as const,
+        warnings: [],
+      },
+    },
+  };
+  vi.mocked(api.getWell).mockResolvedValue(saved);
+  vi.mocked(api.call).mockRejectedValue(
+    new Error("Attachment download unavailable"),
+  );
+  await render();
+  await click(".fl-remove-zip");
+  expect(host.querySelector(".fl-confirmation")?.textContent).toContain(
+    "shared-survey.zip",
+  );
+  await click(".fl-confirmation button");
+  expect(
+    vi
+      .mocked(api.call)
+      .mock.calls.some(([name]) => name === "removeFluidPason"),
+  ).toBe(false);
+  await click(".fl-remove-zip");
+  vi.mocked(api.call).mockResolvedValue({});
+  vi.mocked(api.getWell).mockResolvedValue({
+    ...structuredClone(sample),
+    next: null,
+  });
+  await click(".fl-confirmation .fl-danger");
+  expect(api.call).toHaveBeenCalledWith("removeFluidPason", {
+    wellId: "well",
+    attachmentId: "zip",
+  });
+  expect(host.querySelector(".fl-remove-zip")).toBeNull();
+});
+it("identifies both ZIPs and keeps the attachment when replacement is cancelled", async () => {
+  vi.mocked(api.getWell).mockResolvedValue({
+    ...structuredClone(sample),
+    next: null,
+    well: {
+      ...sample.well,
+      pason: {
+        id: "zip",
+        path: "fluidlab/well/pason/zip/original.zip",
+        originalName: "old-survey.zip",
+        sizeBytes: 3,
+        detail: "balanced",
+        warnings: [],
+      },
+    },
+  });
+  vi.mocked(api.call).mockRejectedValue(
+    new Error("Attachment download unavailable"),
+  );
+  await render();
+  const input = host.querySelector<HTMLInputElement>('input[accept=".zip"]')!;
+  Object.defineProperty(input, "files", {
+    configurable: true,
+    value: [new File(["zip"], "new-survey.zip")],
+  });
+  await act(async () =>
+    input.dispatchEvent(new Event("change", { bubbles: true })),
+  );
+  const dialog = host.querySelector(".fl-confirmation")!;
+  expect(dialog.textContent).toContain("old-survey.zip");
+  expect(dialog.textContent).toContain("new-survey.zip");
+  await click(".fl-confirmation button");
+  expect(
+    vi
+      .mocked(api.call)
+      .mock.calls.some(
+        ([name]) => name === "beginFluidPason" || name === "removeFluidPason",
+      ),
+  ).toBe(false);
+  expect(host.querySelector(".fl-attachment")?.textContent).toContain(
+    "old-survey.zip",
+  );
 });

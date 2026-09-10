@@ -1,3 +1,4 @@
+import AutoRotation from "./AutoRotation";
 import { CAMERA_NEAR } from "./camera";
 /* eslint-disable react-hooks/immutability -- Three.js camera is mutable renderer state. */
 /* eslint-disable react/no-unknown-property -- React Three Fiber scene properties. */
@@ -53,9 +54,13 @@ function SceneReady({ reveal }: { reveal: () => void }) {
 export default function SceneViewport({
   sceneKey,
   children,
+  autoRotate = false,
+  motionBlocked = false,
 }: {
   sceneKey: string;
   children: ReactNode;
+  autoRotate?: boolean;
+  motionBlocked?: boolean;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const reveal = useCallback(() => {
@@ -77,6 +82,7 @@ export default function SceneViewport({
             <group key={sceneKey}>
               <SceneReady reveal={reveal} />
               {children}
+              <AutoRotation enabled={autoRotate} blocked={motionBlocked} />
             </group>
           </Suspense>
         </Canvas>
