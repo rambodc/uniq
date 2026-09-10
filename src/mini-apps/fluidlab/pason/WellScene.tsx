@@ -62,6 +62,7 @@ function HoleTube({
       false,
     );
   }, [points, section.diameterMm]);
+  useEffect(() => () => geometry?.dispose(), [geometry]);
   if (!geometry) return null;
   return (
     <group>
@@ -109,6 +110,13 @@ function CasingTube({ leg, casing }: { leg: SurveyLeg; casing: CasingString }) {
       ),
     };
   }, [casing.insideDiameterMm, casing.outsideDiameterMm, end, points, start]);
+  useEffect(
+    () => () => {
+      geometries?.outer.dispose();
+      geometries?.inner.dispose();
+    },
+    [geometries],
+  );
   if (!geometries) return null;
   return (
     <group>

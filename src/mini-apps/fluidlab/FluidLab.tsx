@@ -421,9 +421,6 @@ export default function FluidLab({
                       PNG
                     </button>
                   </div>
-                  <small className="fl-schematic-label">
-                    Estimated schematic
-                  </small>
                 </>
               )}
             {data?.well.pason && (
@@ -446,6 +443,10 @@ export default function FluidLab({
               </div>
             )}
           </div>
+          {!!data?.geometry.length &&
+            (pason.view !== "pason" || !pason.model) && (
+              <small className="fl-schematic-label">Estimated schematic</small>
+            )}
         </section>
         <aside className="fl-sidebar" aria-label="Well information">
           <div
@@ -996,25 +997,33 @@ export default function FluidLab({
                       <h1>Pason · {data?.well.name}</h1>
                       {pason.model ? (
                         <>
-                          <SurveyControls navigation={survey} />
+                          {pason.view === "pason" ? (
+                            <SurveyControls navigation={survey} />
+                          ) : (
+                            <button onClick={() => pason.select("pason")}>
+                              Open Pason view
+                            </button>
+                          )}
                           <SurveyDetails
                             navigation={survey}
                             name={data?.well.name}
                             showWarnings={false}
                           />
-                          <button
-                            onClick={() =>
-                              survey.setLabelMode((v) =>
-                                v === "off"
-                                  ? "smart"
-                                  : v === "smart"
-                                    ? "all"
-                                    : "off",
-                              )
-                            }
-                          >
-                            Labels: {survey.labelMode}
-                          </button>
+                          {pason.view === "pason" && (
+                            <button
+                              onClick={() =>
+                                survey.setLabelMode((v) =>
+                                  v === "off"
+                                    ? "smart"
+                                    : v === "smart"
+                                      ? "all"
+                                      : "off",
+                                )
+                              }
+                            >
+                              Labels: {survey.labelMode}
+                            </button>
+                          )}
                         </>
                       ) : (
                         <button onClick={() => pason.select("pason")}>

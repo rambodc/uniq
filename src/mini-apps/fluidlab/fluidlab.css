@@ -1088,7 +1088,7 @@
   position: absolute;
   top: 12px;
   right: 12px;
-  left: 12px;
+  left: calc(var(--sidebar-width) + 36px);
   z-index: 22;
   display: flex;
   flex-wrap: wrap;
@@ -1106,11 +1106,6 @@
 .fl-viewport-toolbar .fl-source-switch {
   order: -1;
 }
-.fl-viewport-toolbar .fl-schematic-label {
-  position: static;
-  flex-basis: 100%;
-  text-align: right;
-}
 .fl-scene-transition {
   transition: opacity 180ms ease;
   background: #03131d;
@@ -1118,5 +1113,15 @@
 @media (prefers-reduced-motion: reduce) {
   .fl-scene-transition {
     transition: none;
+  }
+}
+
+.fl-collapsed .fl-viewport-toolbar {
+  left: 90px;
+}
+@media (max-width: 760px) {
+  .fl-viewport-toolbar,
+  .fl-collapsed .fl-viewport-toolbar {
+    left: 12px;
   }
 }
