@@ -272,6 +272,15 @@ describe("FluidLab workspace", () => {
     expect(host.querySelectorAll(".fl-problem").length).toBe(9);
   });
   it("preserves pending chat across tabs and expands only the Chat layout", async () => {
+    let history: (
+      m: Awaited<ReturnType<typeof api.getChat>>,
+    ) => void = () => {};
+    vi.mocked(api.getChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          history = resolve;
+        }),
+    );
     let finish: (m: Awaited<ReturnType<typeof api.askChat>>) => void = () => {};
     vi.mocked(api.askChat).mockImplementation(
       () =>
@@ -286,6 +295,26 @@ describe("FluidLab workspace", () => {
       host.querySelector(".fl-main")?.classList.contains("fl-chat-active"),
     ).toBe(true);
     await click(".fl-prompts button");
+    expect(host.querySelector(".fl-question")?.textContent).toBe(
+      vi.mocked(api.askChat).mock.calls[0][1],
+    );
+    expect(host.querySelector(".fl-thinking")).toBeTruthy();
+    expect(host.querySelector(".fl-prompts")).toBeNull();
+    await act(async () =>
+      history([
+        {
+          id: "old",
+          question: "Earlier question",
+          answer: "Earlier answer",
+          citations: [],
+          highlights: [],
+          version: "v1",
+          createdAt: "",
+        },
+      ]),
+    );
+    expect(host.querySelectorAll(".fl-question")).toHaveLength(2);
+    expect(host.querySelector(".fl-thinking")).toBeTruthy();
     await click('button[aria-label="Mud"]');
     expect(
       host.querySelector(".fl-main")?.classList.contains("fl-chat-active"),
@@ -303,9 +332,9 @@ describe("FluidLab workspace", () => {
     );
     await click('button[aria-label="Chat"]');
     expect(host.querySelector(".fl-chat-form textarea")).toBe(input);
-    expect(host.querySelector(".fl-answer")?.textContent).toBe(
-      "Answer survived",
-    );
+    expect(
+      Array.from(host.querySelectorAll(".fl-answer")).map((e) => e.textContent),
+    ).toContain("Answer survived");
   });
   it("resizes the sidebar with keyboard within its limits", async () => {
     await render();
@@ -353,6 +382,7 @@ describe("FluidLab workspace", () => {
       expect.any(String),
       "Report 1",
       null,
+      expect.any(String),
     );
     await click(".fl-message .fl-inline button");
     expect(host.querySelector(".fl-detail-body")?.textContent).toContain(
@@ -641,4 +671,55 @@ it("identifies both ZIPs and keeps the attachment when replacement is cancelled"
   expect(host.querySelector(".fl-attachment")?.textContent).toContain(
     "old-survey.zip",
   );
+});
+
+it("shows questions immediately, preserves drafts on failure and retries the same request", async () => {
+  let reject: (e: Error) => void = () => {};
+  vi.mocked(api.askChat).mockImplementationOnce(
+    () =>
+      new Promise((_, r) => {
+        reject = r;
+      }),
+  );
+  await render();
+  await click('button[aria-label="Chat"]');
+  const input = host.querySelector<HTMLTextAreaElement>(
+    ".fl-chat-form textarea",
+  )!;
+  const type = async (value: string) =>
+    act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  await type("Gamma at this depth?");
+  await act(async () => {
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+  });
+  expect(host.querySelector(".fl-question")?.textContent).toBe(
+    "Gamma at this depth?",
+  );
+  expect(input.value).toBe("");
+  await type("My next question");
+  await act(async () => reject(new Error("Please retry")));
+  expect(input.value).toBe("My next question");
+  const args = vi.mocked(api.askChat).mock.calls[0];
+  vi.mocked(api.askChat).mockResolvedValueOnce({
+    id: args[4]!,
+    question: args[1],
+    answer: "Gamma is 12 API",
+    citations: [],
+    highlights: [],
+    version: "v1",
+    createdAt: "",
+  });
+  await click(".fl-message .fl-error button");
+  expect(vi.mocked(api.askChat).mock.calls[1]).toEqual(args);
+  expect(host.querySelectorAll(".fl-question")).toHaveLength(1);
+  expect(host.querySelector(".fl-answer")?.textContent).toBe("Gamma is 12 API");
+  expect(input.value).toBe("My next question");
 });

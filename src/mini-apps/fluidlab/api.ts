@@ -173,6 +173,7 @@ export const askChat = async (
   question: string,
   report: string | null = null,
   product: string | null = null,
+  mutationId: string = crypto.randomUUID(),
 ) =>
   (
     await call<{ message: ChatMessage }>("askFluidChat", {
@@ -181,7 +182,7 @@ export const askChat = async (
       question,
       report,
       product,
-      mutationId: crypto.randomUUID(),
+      mutationId,
     })
   ).message;
 

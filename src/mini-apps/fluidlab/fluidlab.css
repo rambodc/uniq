@@ -205,6 +205,11 @@
   gap: 2px;
 }
 .fl-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
   flex: 1;
   padding: 8px 3px;
   font-size: 12px;
@@ -1286,4 +1291,59 @@
 
 .fl-detail-body [data-camera-tools] > .fl-auto-rotate {
   margin-bottom: 10px;
+}
+
+.fl-tabs button > svg {
+  flex-shrink: 0;
+}
+.fl-pason-featured {
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid #365a60;
+  border-radius: 14px;
+  background: #173137;
+}
+.fl-pason-featured label {
+  display: grid;
+  gap: 7px;
+}
+.fl-pason-featured label > span,
+.fl-pason-featured small {
+  color: #a7c3c7;
+  font-size: 12px;
+}
+.fl-pason-featured select {
+  width: 100%;
+  min-width: 0;
+}
+.fl-pason-featured-value {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0 8px;
+  min-height: 48px;
+}
+.fl-pason-featured-value strong {
+  color: #8df0d3;
+  font-size: clamp(32px, 5vw, 44px);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.fl-pason-featured-value > span {
+  color: #c5d9dc;
+}
+@media (max-width: 760px) {
+  .fl-tabs button {
+    flex-direction: column;
+    gap: 3px;
+    min-height: 48px;
+  }
+  .fl-tabs button .fl-badge {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    font-size: 9px;
+  }
 }

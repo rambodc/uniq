@@ -55,6 +55,7 @@ export function useSurveyNavigation(
   const [selectedLegId, setSelectedLegId] = useState(""),
     [selectedSectionId, setSelectedSectionId] = useState<string | null>(null),
     [showCasings, setShowCasings] = useState(true);
+  const [featuredChannel, setFeaturedChannel] = useState("");
   const [fitSignal, setFitSignal] = useState(0),
     [navigationFocusSignal, setNavigationFocusSignal] = useState(0),
     [labelMode, setLabelMode] = useState<LabelMode>("off"),
@@ -100,6 +101,11 @@ export function useSurveyNavigation(
     if (!active) stop();
   }, [active, stop]);
   useEffect(() => {
+    setFeaturedChannel(
+      survey?.operationalChannels.find((c) => c.id === "gamma")?.id ??
+        survey?.operationalChannels[0]?.id ??
+        "",
+    );
     const selected = survey?.legs.at(-1);
     if (selected) {
       setSelectedLegId(selected.id);
@@ -292,6 +298,8 @@ export function useSurveyNavigation(
     activeCasings = survey ? casingsAtMd(survey, currentMd) : [],
     operations = survey ? summarizeOperations(survey, currentMd) : null;
   return {
+    featuredChannel,
+    setFeaturedChannel,
     survey,
     leg,
     imperial,
@@ -616,6 +624,55 @@ export function SurveyDetails({
     </>
   );
 }
+export function FeaturedPasonReading({
+  navigation,
+}: {
+  navigation: SurveyNavigation;
+}) {
+  const { survey, operations, featuredChannel, setFeaturedChannel } =
+    navigation;
+  const channel = survey?.operationalChannels.find(
+    (c) => c.id === featuredChannel,
+  );
+  const reading = operations?.statistics.find(
+    (s) => s.channel.id === featuredChannel,
+  );
+  return (
+    <section className="fl-pason-featured" aria-label="Featured Pason reading">
+      {survey?.operationalChannels.length ? (
+        <>
+          <label>
+            <span>Featured measurement</span>
+            <select
+              aria-label="Featured measurement"
+              value={featuredChannel}
+              onChange={(e) => setFeaturedChannel(e.target.value)}
+            >
+              {survey.operationalChannels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="fl-pason-featured-value">
+            {reading ? (
+              <>
+                <strong>{reading.latest.toFixed(2)}</strong>
+                <span>{channel?.unit}</span>
+              </>
+            ) : (
+              <span>No nearby reading</span>
+            )}
+          </div>
+          <small>Near current MD · ±2 m</small>
+        </>
+      ) : (
+        <p>No operational measurements available.</p>
+      )}
+    </section>
+  );
+}
 export function SurveyControls({
   navigation,
 }: {
@@ -636,68 +693,71 @@ export function SurveyControls({
   } = navigation;
   if (!survey || !leg) return null;
   return (
-    <div className="fl-pason-camera-dock">
-      <div
-        ref={joystick}
-        className="fl-pason-joystick"
-        role="slider"
-        tabIndex={0}
-        aria-label="Well depth navigation"
-        aria-valuemin={-100}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(navigationIntensity * 100)}
-        aria-valuetext={
-          navigationIntensity < 0
-            ? `Shallower ${Math.round(Math.abs(navigationIntensity) * 100)} percent`
-            : navigationIntensity > 0
-              ? `Deeper ${Math.round(navigationIntensity * 100)} percent`
-              : "Stopped"
-        }
-        aria-keyshortcuts="ArrowLeft ArrowRight"
-        {...joystickEvents}
-      >
-        <span>Shallower</span>
-        <div className="fl-pason-joystick-track">
-          <i
-            style={{
-              left: `calc(${50 + navigationIntensity * 50}% - ${11 + navigationIntensity * 11}px)`,
-            }}
-          >
-            <b />
-          </i>
+    <>
+      <div className="fl-pason-camera-dock">
+        <div
+          ref={joystick}
+          className="fl-pason-joystick"
+          role="slider"
+          tabIndex={0}
+          aria-label="Well depth navigation"
+          aria-valuemin={-100}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(navigationIntensity * 100)}
+          aria-valuetext={
+            navigationIntensity < 0
+              ? `Shallower ${Math.round(Math.abs(navigationIntensity) * 100)} percent`
+              : navigationIntensity > 0
+                ? `Deeper ${Math.round(navigationIntensity * 100)} percent`
+                : "Stopped"
+          }
+          aria-keyshortcuts="ArrowLeft ArrowRight"
+          {...joystickEvents}
+        >
+          <span>Shallower</span>
+          <div className="fl-pason-joystick-track">
+            <i
+              style={{
+                left: `calc(${50 + navigationIntensity * 50}% - ${11 + navigationIntensity * 11}px)`,
+              }}
+            >
+              <b />
+            </i>
+          </div>
+          <span>Deeper</span>
         </div>
-        <span>Deeper</span>
-      </div>
-      <label>
-        <span>MD</span>
-        <input
-          className="fl-pason-depth-input"
-          inputMode="decimal"
-          value={depthInput}
-          onChange={(event) => setDepthInput(event.target.value)}
-          onBlur={commitDepth}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              commitDepth();
-              event.currentTarget.blur();
-            }
+        <label>
+          <span>MD</span>
+          <input
+            className="fl-pason-depth-input"
+            inputMode="decimal"
+            value={depthInput}
+            onChange={(event) => setDepthInput(event.target.value)}
+            onBlur={commitDepth}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                commitDepth();
+                event.currentTarget.blur();
+              }
+            }}
+          />
+          <small>{unit}</small>
+        </label>
+        <button
+          onClick={() => {
+            stop();
+            setFitSignal((value) => value + 1);
           }}
-        />
-        <small>{unit}</small>
-      </label>
-      <button
-        onClick={() => {
-          stop();
-          setFitSignal((value) => value + 1);
-        }}
-      >
-        <Maximize2 />
-        <span>Fit Well</span>
-      </button>
-      <span className="fl-pason-key-hint" aria-hidden="true">
-        ↑↓ Zoom · ←→ Depth · Shift 4×
-      </span>
-    </div>
+        >
+          <Maximize2 />
+          <span>Fit Well</span>
+        </button>
+        <span className="fl-pason-key-hint" aria-hidden="true">
+          ↑↓ Zoom · ←→ Depth · Shift 4×
+        </span>
+      </div>
+      <FeaturedPasonReading navigation={navigation} />
+    </>
   );
 }
 export function SurveyScene({

@@ -22,6 +22,10 @@ import {
   type CSSProperties,
 } from "react";
 import {
+  Library,
+  Coins,
+  Droplets,
+  MessageCircle,
   ArrowLeft,
   Route,
   Box,
@@ -79,12 +83,12 @@ type Detail =
   | { kind: "sources"; sources: Source[] }
   | { kind: "pason" };
 const tabs = [
-  ["wells", "All wells"],
-  ["well", "Well"],
-  ["costs", "Costs"],
-  ["mud", "Mud"],
-  ["chat", "Chat"],
-];
+  ["wells", "All wells", Library],
+  ["well", "Well", Layers],
+  ["costs", "Costs", Coins],
+  ["mud", "Mud", Droplets],
+  ["chat", "Chat", MessageCircle],
+] as const;
 export default function FluidLab({
   wellId,
   navigate,
@@ -508,14 +512,15 @@ export default function FluidLab({
               hidden={details.length > 0 || !!pason.pending}
             >
               <nav className="fl-tabs" aria-label="FluidLab sections">
-                {tabs.map(([id, label]) => (
+                {tabs.map(([id, label, Icon]) => (
                   <button
                     key={id}
                     aria-label={label}
                     aria-current={tab === id ? "page" : undefined}
                     onClick={() => setTab(id)}
                   >
-                    {label}
+                    <Icon size={17} aria-hidden="true" />
+                    <span>{label}</span>
                     {id === "well" && problemCount > 0 && (
                       <span className="fl-badge">{problemCount}</span>
                     )}

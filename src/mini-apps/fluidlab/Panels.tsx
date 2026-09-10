@@ -466,7 +466,17 @@ export function Chat({
   highlight: (ids: string[]) => void;
   visible?: boolean;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]),
+  type DisplayMessage = ChatMessage & {
+    delivery?: "pending" | "failed";
+    failure?: string;
+    request?: {
+      well: Dataset["well"];
+      report: string | null;
+      product: string | null;
+    };
+  };
+  const sending = useRef(false);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]),
     [question, setQuestion] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -492,18 +502,52 @@ export function Chat({
     if (visible)
       bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy, visible]);
-  const ask = async (text: string) => {
-    if (busy || !text.trim()) return;
+  const ask = async (text: string, retry?: DisplayMessage) => {
+    if (sending.current || !text.trim()) return;
+    sending.current = true;
     setBusy(true);
     setError("");
-    setQuestion("");
+    const id = retry?.id ?? crypto.randomUUID();
+    const request = retry?.request ?? { well: data.well, report, product };
+    if (!retry) setQuestion("");
+    const pending: DisplayMessage = {
+      id,
+      question: text,
+      answer: "",
+      citations: [],
+      highlights: [],
+      version: request.well.version,
+      pasonAttachmentId: request.well.pason?.id ?? null,
+      createdAt: new Date().toISOString(),
+      delivery: "pending",
+      request,
+    };
+    setMessages((prev) =>
+      retry ? prev.map((m) => (m.id === id ? pending : m)) : [...prev, pending],
+    );
     try {
-      const m = await askChat(data.well, text, report, product);
-      setMessages((prev) => [...prev, m]);
+      const m = await askChat(
+        request.well,
+        text,
+        request.report,
+        request.product,
+        id,
+      );
+      setMessages((prev) => prev.map((item) => (item.id === id ? m : item)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Chat failed");
-      setQuestion(text);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? {
+                ...pending,
+                delivery: "failed",
+                failure: e instanceof Error ? e.message : "Chat failed",
+              }
+            : m,
+        ),
+      );
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   };
@@ -541,37 +585,47 @@ export function Chat({
         {messages.map((m) => (
           <article className="fl-message" key={m.id}>
             <div className="fl-question">{m.question}</div>
-            <div className="fl-answer">
-              {m.answer.replace(/\[[a-f0-9]{32}\]/g, "")}
-            </div>
-            {m.version !== data.well.version ||
-            (m.pasonAttachmentId &&
-              m.pasonAttachmentId !== data.well.pason?.id) ? (
-              <small>Earlier well data</small>
-            ) : (
-              <div className="fl-inline">
-                {m.citations.length > 0 && (
-                  <details>
-                    <summary>Supporting details</summary>
-                    <button onClick={() => openSources(m.citations)}>
-                      View evidence
-                    </button>
-                  </details>
-                )}
-                {m.highlights.length > 0 && (
-                  <button onClick={() => highlight(m.highlights)}>
-                    Show in well
-                  </button>
-                )}
+            {m.delivery === "pending" ? (
+              <div className="fl-thinking" role="status">
+                Looking through your well…
               </div>
+            ) : m.delivery === "failed" ? (
+              <div className="fl-error" role="alert">
+                <p>{m.failure}</p>
+                <button disabled={busy} onClick={() => void ask(m.question, m)}>
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="fl-answer">
+                  {m.answer.replace(/\[[a-f0-9]{32}\]/g, "")}
+                </div>
+                {m.version !== data.well.version ||
+                (m.pasonAttachmentId &&
+                  m.pasonAttachmentId !== data.well.pason?.id) ? (
+                  <small>Earlier well data</small>
+                ) : (
+                  <div className="fl-inline">
+                    {m.citations.length > 0 && (
+                      <details>
+                        <summary>Supporting details</summary>
+                        <button onClick={() => openSources(m.citations)}>
+                          View evidence
+                        </button>
+                      </details>
+                    )}
+                    {m.highlights.length > 0 && (
+                      <button onClick={() => highlight(m.highlights)}>
+                        Show in well
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </article>
         ))}
-        {busy && (
-          <div className="fl-thinking" role="status">
-            Looking through your well…
-          </div>
-        )}
         {error && (
           <p className="fl-error" role="alert">
             {error}
