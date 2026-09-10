@@ -2,7 +2,7 @@ name: "Production: Firebase Rules"
 on:
   push:
     branches: [production]
-    paths: ["firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
+    paths: ["functions/scripts/verify-fluid-well-indexes.js", "firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
   workflow_dispatch:
 concurrency: { group: rules-production, cancel-in-progress: false }
 jobs:

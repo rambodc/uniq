@@ -1,3 +1,4 @@
+import { CAMERA_NEAR } from "./camera";
 /* eslint-disable react-hooks/immutability -- Three.js camera is mutable renderer state. */
 /* eslint-disable react/no-unknown-property -- React Three Fiber scene properties. */
 import {
@@ -33,7 +34,7 @@ function SceneReady({ reveal }: { reveal: () => void }) {
   const { camera } = useThree();
   useLayoutEffect(() => {
     camera.position.set(1200, 600, 1200);
-    camera.near = 0.1;
+    camera.near = CAMERA_NEAR;
     camera.far = 100000;
     camera.updateProjectionMatrix();
   }, [camera]);
@@ -67,8 +68,8 @@ export default function SceneViewport({
     <div className="fl-scene fl-scene-transition" ref={viewport}>
       <SceneBoundary key={sceneKey.split(":")[0]}>
         <Canvas
-          camera={{ fov: 45, near: 0.1, far: 100000 }}
-          gl={{ antialias: true, preserveDrawingBuffer: true }}
+          camera={{ fov: 45, near: CAMERA_NEAR, far: 100000 }}
+          gl={{ antialias: true }}
           dpr={[1, 1.5]}
         >
           <color attach="background" args={["#03131d"]} />

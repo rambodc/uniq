@@ -68,3 +68,10 @@ it("ignores an old response arriving after the input has changed", async () => {
   expect(listWells).toHaveBeenLastCalledWith("new", null);
   expect(hook.loading).toBe(false);
 });
+it("does not expose database diagnostics in the search panel", async () => {
+  vi.mocked(listWells).mockRejectedValue(new Error("FAILED_PRECONDITION https://console.firebase.google.com/secret-index"));
+  await act(async()=>root.render(<Harness/>));
+  await wait(251); await wait();
+  expect(hook.error).toBe("Wells could not be loaded. Please retry.");
+  expect(hook.error).not.toContain("firebase");
+});

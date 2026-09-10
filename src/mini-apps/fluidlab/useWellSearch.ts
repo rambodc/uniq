@@ -34,9 +34,9 @@ export function useWellSearch() {
       if (token !== request.current) return;
       setWells(result.wells);
       setNext(result.cursor);
-    } catch (e) {
+    } catch {
       if (token === request.current)
-        setError(e instanceof Error ? e.message : "Search failed. Retry.");
+        setError("Wells could not be loaded. Please retry.");
     } finally {
       if (token === request.current) setLoading(false);
     }

@@ -1,3 +1,4 @@
+import { useFocusPoint, MIN_CAMERA_DISTANCE, CAMERA_NEAR } from "../camera";
 /* eslint-disable react/no-unknown-property,react-hooks/immutability */
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -47,6 +48,7 @@ function HoleTube({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const focusPoint = useFocusPoint();
   const points = useMemo(
     () => pointsBetween(leg, section.startMdM, section.endMdM),
     [leg, section],
@@ -71,6 +73,7 @@ function HoleTube({
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
+          focusPoint(event.point);
         }}
       >
         <meshStandardMaterial
@@ -87,6 +90,7 @@ function HoleTube({
 }
 
 function CasingTube({ leg, casing }: { leg: SurveyLeg; casing: CasingString }) {
+  const focusPoint = useFocusPoint();
   const start = Math.max(leg.startMdM, casing.topMdM),
     end = Math.min(leg.endMdM, casing.bottomMdM),
     points = useMemo(() => pointsBetween(leg, start, end), [end, leg, start]);
@@ -119,7 +123,12 @@ function CasingTube({ leg, casing }: { leg: SurveyLeg; casing: CasingString }) {
   );
   if (!geometries) return null;
   return (
-    <group>
+    <group
+      onClick={(e) => {
+        e.stopPropagation();
+        focusPoint(e.point);
+      }}
+    >
       <mesh geometry={geometries.outer}>
         <meshPhysicalMaterial
           color="#b8c8cc"
@@ -210,7 +219,7 @@ function CameraController({
         .clone()
         .add(new THREE.Vector3(1, 0.5, 1).normalize().multiplyScalar(distance)),
     );
-    camera.near = Math.max(0.01, extent / 100000);
+    camera.near = CAMERA_NEAR;
     camera.far = Math.max(10000, distance + extent * 20);
     camera.updateProjectionMatrix();
     if (controls && "target" in controls) {
@@ -338,7 +347,7 @@ function CameraController({
         },
         offset = camera.position.clone().sub(orbit.target),
         distance = offset.length();
-      const minimum = Math.max(0.006, activeDiameterMm / 10000),
+      const minimum = MIN_CAMERA_DISTANCE,
         maximum = Math.max(extent * 50, 10000);
       const nextDistance = keyboardZoomDistance(
         distance,
@@ -354,7 +363,7 @@ function CameraController({
           .add(offset.multiplyScalar(nextDistance / distance));
       orbit.update();
     }
-    camera.near = 0.002;
+    camera.near = CAMERA_NEAR;
     camera.far = Math.max(10000, extent * 20);
     camera.updateProjectionMatrix();
   });
@@ -484,6 +493,7 @@ export default function WellScene({
   onSelectSection: (legId: string, section: HoleSection) => void;
   onManualInteraction: () => void;
 }) {
+  const focusPoint = useFocusPoint();
   const selected =
     survey.legs.find((leg) => leg.id === selectedLegId) ?? survey.legs.at(-1)!;
   const allPoints = useMemo(
@@ -545,6 +555,7 @@ export default function WellScene({
               onClick={(event) => {
                 event.stopPropagation();
                 onSelectLeg(leg.id);
+                focusPoint(event.point);
               }}
             />
             <Label
@@ -638,13 +649,7 @@ export default function WellScene({
         enablePan
         enableRotate
         enableZoom
-        minDistance={Math.max(
-          0.006,
-          (survey.holeSections[selected.id]?.find(
-            (section) =>
-              currentMd >= section.startMdM && currentMd <= section.endMdM,
-          )?.diameterMm ?? 159) / 10000,
-        )}
+        minDistance={MIN_CAMERA_DISTANCE}
         maxDistance={Math.max(extent * 50, 10000)}
         minPolarAngle={0}
         maxPolarAngle={Math.PI}

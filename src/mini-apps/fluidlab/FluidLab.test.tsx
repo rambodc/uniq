@@ -9,6 +9,8 @@ vi.mock("../../core/firebase", () => ({
 }));
 vi.mock("./api", () => ({
   listWells: vi.fn(),
+  createWell: vi.fn(),
+  uploadFiles: vi.fn(),
   getWell: vi.fn(),
   getHistory: vi.fn(),
   getChat: vi.fn(),
@@ -193,7 +195,7 @@ describe("FluidLab workspace", () => {
       Array.from(
         host.querySelectorAll('nav[aria-label="FluidLab sections"] button'),
       ).map((b) => b.textContent),
-    ).toEqual(["Wells", "Costs", "Mud", "Review", "Chat"]);
+    ).toEqual(["All wells", "Well", "Costs", "Mud", "Chat"]);
     const scene = host.querySelector('[data-testid="scene"]');
     expect(scene).toBeTruthy();
     await click('button[aria-label="Mud"]');
@@ -207,13 +209,13 @@ describe("FluidLab workspace", () => {
     expect(api.generateGeometry).not.toHaveBeenCalled();
     expect(host.textContent).toContain("Estimated schematic");
   });
-  it("keeps management inside Wells and restores the exact product list after Back", async () => {
+  it("keeps management inside Well and restores the exact product list after Back", async () => {
     await render();
     const header = host.querySelector(".fl-header")!;
     expect(header.querySelectorAll("button,select,input").length).toBe(0);
     expect(
       host
-        .querySelector('button[aria-label="Wells"]')
+        .querySelector('button[aria-label="Well"]')
         ?.getAttribute("aria-current"),
     ).toBe("page");
     await click('button[aria-label="Costs"]');
@@ -253,13 +255,13 @@ describe("FluidLab workspace", () => {
       })),
     });
     await render();
-    await click('button[aria-label="Review"]');
+    await click('button[aria-label="Well"]');
     expect(
       host.querySelectorAll('[aria-label="Priority review"] .fl-problem')
         .length,
     ).toBe(5);
     expect(
-      host.querySelector('[aria-label="Review panel"]')?.textContent,
+      host.querySelector('[aria-label="Review"]')?.textContent,
     ).toContain("Other items & schematic assumptions · 4");
     expect(host.querySelectorAll(".fl-problem").length).toBe(9);
   });
@@ -441,4 +443,39 @@ describe("FluidLab workspace", () => {
     expect(host.textContent).toContain("Ask the data.");
     expect(api.generateGeometry).not.toHaveBeenCalled();
   });
+});
+it("separates library search and uploads from the selected well and preserves library scroll", async () => {
+  await render();
+  const library = host.querySelector<HTMLElement>('[aria-label="All wells panel"]')!;
+  const selected = host.querySelector<HTMLElement>('[aria-label="Well panel"]')!;
+  expect(library.querySelector('[aria-label="Search all wells"]')).not.toBeNull();
+  expect(selected.querySelector('[aria-label="Search all wells"]')).toBeNull();
+  expect(selected.querySelector('[aria-label="Review"]')).not.toBeNull();
+  expect(library.textContent).not.toContain("SELECTED WELL");
+  await click('button[aria-label="All wells"]');
+  library.scrollTop = 240;
+  await click('button[aria-label="Well"]');
+  await click('button[aria-label="All wells"]');
+  expect(library.scrollTop).toBe(240);
+  vi.mocked(api.createWell).mockResolvedValue({ ...sample.well, id: "new-well" });
+  vi.mocked(api.uploadFiles).mockResolvedValue({ id: "new-job", wellId: "new-well", status: "queued" } as never);
+  const input = host.querySelector<HTMLInputElement>('input[accept=".xlsx,.xls,.csv,.tsv"]')!;
+  const send = async () => act(async () => {
+    Object.defineProperty(input, "files", { configurable:true, value:[new File(["a,b"],"reports.csv")] });
+    input.dispatchEvent(new Event("change", { bubbles:true }));
+  });
+  await click('[aria-label="All wells panel"] .fl-primary');
+  await send();
+  expect(api.uploadFiles).toHaveBeenLastCalledWith("new-well",expect.any(Array),expect.any(Function),expect.any(Function),expect.any(AbortSignal));
+  await click('button[aria-label="Well"]');
+  await click('[aria-label="Well panel"] .fl-primary');
+  await send();
+  expect(api.uploadFiles).toHaveBeenLastCalledWith("well",expect.any(Array),expect.any(Function),expect.any(Function),expect.any(AbortSignal));
+  expect(api.createWell).toHaveBeenCalledTimes(1);
+});
+it("expands from the complete collapsed mobile bar", async () => {
+  await render();
+  await click('button[aria-label="Collapse information"]');
+  await click('button[aria-label="Expand well information"]');
+  expect(host.querySelector('#fl-sidebar-content')?.hasAttribute('hidden')).toBe(false);
 });

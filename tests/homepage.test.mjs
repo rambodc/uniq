@@ -171,8 +171,8 @@ test("mini apps use independent navigation and Fluid Labs owns Pason", async () 
   assert.match(account, /<details className="account-card account-security">/);
   assert.doesNotMatch(account, /sendPasswordResetEmail|Forgot current password/);
   assert.match(account, /Sign out/);
-  assert.match(fluidlab, /Wells panel/);
-  assert.match(fluidlab, /Review panel/);
+  assert.match(fluidlab, /All wells panel/);
+  assert.match(fluidlab, /aria-label="Review"/);
   assert.match(fluidlab, /Costs/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
   assert.match(await read("src/mini-apps/fluidlab/pason/zip.ts"), /file\.slice\(start, start \+ length\)/);

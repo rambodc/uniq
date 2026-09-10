@@ -1,10 +1,11 @@
+import { useFocusPoint, MIN_CAMERA_DISTANCE } from "./camera";
 /* eslint-disable react/no-unknown-property -- Three.js elements use their own JSX properties. */
 import { useEffect, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { OrbitControls, Line, Html, Grid } from "@react-three/drei";
 import { Vector3, CatmullRomCurve3, TubeGeometry } from "three";
 import type { OrbitControls as OrbitControlType } from "three-stdlib";
-import { download, numeric, value, type Branch, type Dataset } from "./model";
+import { numeric, value, type Branch, type Dataset } from "./model";
 
 type Point = [number, number, number];
 export interface SceneProps {
@@ -17,8 +18,6 @@ export interface SceneProps {
   report: string | null;
   product: string | null;
   view: string;
-  fit: number;
-  capture: number;
 }
 
 export function branchPaths(
@@ -162,6 +161,7 @@ function Pipe({
   radius?: number;
   opacity?: number;
 }) {
+  const focusPoint = useFocusPoint();
   const geometry = useMemo(
     () =>
       new TubeGeometry(
@@ -180,6 +180,7 @@ function Pipe({
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
+        focusPoint(e.point);
       }}
     >
       <meshStandardMaterial
@@ -194,19 +195,12 @@ function Pipe({
     </mesh>
   );
 }
-function Controls({
-  view,
-  fit,
-  capture,
-  bounds,
-}: {
-  view: string;
-  fit: number;
-  capture: number;
-  bounds: Vector3[];
-}) {
-  const { camera, gl, size } = useThree(),
-    controls = useRef<OrbitControlType>(null);
+function Controls({ view, bounds }: { view: string; bounds: Vector3[] }) {
+  const { camera, size } = useThree(),
+    controls = useRef<OrbitControlType>(null),
+    fitted = useRef<{ center: Vector3; radius: number; view: string } | null>(
+      null,
+    );
   const center = useMemo(
     () =>
       bounds.length
@@ -221,6 +215,13 @@ function Controls({
     [bounds, center],
   );
   useEffect(() => {
+    if (
+      fitted.current?.center === center &&
+      fitted.current.radius === radius &&
+      fitted.current.view === view
+    )
+      return;
+    fitted.current = { center, radius, view };
     const delta =
       view === "top"
         ? new Vector3(0, 1, 0.001)
@@ -240,17 +241,13 @@ function Controls({
     camera.updateProjectionMatrix();
     controls.current?.target.copy(center);
     controls.current?.update();
-  }, [camera, center, radius, view, fit, size.height, size.width]);
-  useEffect(() => {
-    if (capture)
-      download(gl.domElement.toDataURL("image/png"), "fluidlab-well.png");
-  }, [capture, gl]);
+  }, [camera, center, radius, view, size.height, size.width]);
   return (
     <OrbitControls
       ref={controls}
       makeDefault
       enableDamping
-      minDistance={20}
+      minDistance={MIN_CAMERA_DISTANCE}
       maxDistance={30000}
     />
   );
@@ -387,12 +384,7 @@ export default function EstimatedScene(props: SceneProps) {
           </Html>
         </group>
       ))}
-      <Controls
-        view={props.view}
-        fit={props.fit}
-        capture={props.capture}
-        bounds={bounds}
-      />
+      <Controls view={props.view} bounds={bounds} />
     </>
   );
 }

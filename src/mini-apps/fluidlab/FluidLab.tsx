@@ -1,6 +1,6 @@
 import SceneViewport from "./SceneViewport";
 import LoadingOverlay from "./loading/LoadingOverlay";
-import PackageDetailDialog from "./loading/PackageDetailDialog";
+import PackageDetailChoice from "./pason/PackageDetailChoice";
 import { useWellSearch } from "./useWellSearch";
 import { usePason } from "./usePason";
 import {
@@ -65,10 +65,10 @@ type Detail =
   | { kind: "sources"; sources: Source[] }
   | { kind: "pason" };
 const tabs = [
-  ["wells", "Wells"],
+  ["wells", "All wells"],
+  ["well", "Well"],
   ["costs", "Costs"],
   ["mud", "Mud"],
-  ["review", "Review"],
   ["chat", "Chat"],
 ];
 export default function FluidLab({
@@ -79,7 +79,7 @@ export default function FluidLab({
   navigate: (url: string) => void;
 }) {
   const [data, setData] = useState<Dataset | null>(null),
-    [tab, setTab] = useState("wells"),
+    [tab, setTab] = useState(wellId ? "well" : "wells"),
     [report, setReport] = useState<string | null>(null),
     [error, setError] = useState(""),
     [pollError, setPollError] = useState(""),
@@ -94,14 +94,14 @@ export default function FluidLab({
     [collapsed, setCollapsed] = useState(false),
     [sidebarWidth, setSidebarWidth] = useState(560),
     [view, setView] = useState("isometric"),
-    [fit, setFit] = useState(0),
-    [capture, setCapture] = useState(0),
     [highlights, setHighlights] = useState<string[]>([]),
     [name, setName] = useState(""),
     [editingName, setEditingName] = useState(false),
+    [creating, setCreating] = useState(false),
     [deleting, setDeleting] = useState(false);
   const file = useRef<HTMLInputElement>(null),
     currentWell = useRef(wellId),
+    uploadDestination = useRef<string | null>(null),
     uploadController = useRef<AbortController | null>(null),
     uploadTarget = useRef<string | null>(null),
     detailTrigger = useRef<HTMLElement | null>(null);
@@ -152,7 +152,7 @@ export default function FluidLab({
       setData(null);
       setReport(null);
       setJob(null);
-      setTab(uploadTarget.current === wellId ? "review" : "wells");
+      setTab(wellId ? "well" : "wells");
       setHistory([]);
       setDetails([]);
       setSelected(null);
@@ -243,16 +243,16 @@ export default function FluidLab({
       document.documentElement.style.removeProperty("--fluid-viewport-height");
     };
   }, []);
-  const upload = async (files: File[]) => {
+  const upload = async (files: File[], destination: string | null) => {
     if (!files.length) return;
     uploadController.current = new AbortController();
     setUploading(true);
     setPercent(0);
-    setTab("review");
+    setTab("well");
     setDetails([]);
     try {
       await run(async () => {
-        let id = wellId;
+        let id = destination;
         if (!id) {
           const w = await api.createWell(
             files[0].name.replace(/\.[^.]+$/, ""),
@@ -320,13 +320,15 @@ export default function FluidLab({
   const generate = () =>
     run(async () => {
       if (!data) return;
-      setTab("review");
+      setTab("well");
       setJob(await api.generateGeometry(data.well));
       await refresh();
     });
   const choose = (id: string) => {
     if (uploading) return;
     setDetails([]);
+    setTab("well");
+    setCreating(false);
     navigate(`/apps/fluidlab/wells/${id}`);
   };
   const problemCount =
@@ -375,8 +377,6 @@ export default function FluidLab({
                     report={report}
                     product={null}
                     view={view}
-                    fit={fit}
-                    capture={capture}
                   />
                 </Suspense>
               </>
@@ -395,63 +395,31 @@ export default function FluidLab({
               <p>
                 {active(job)
                   ? "Explore the sidebar while processing continues."
-                  : "Select a well or upload reports in Wells."}
+                  : "Select a well or upload reports in All wells."}
               </p>
             </div>
           ) : null}
-          <div className="fl-viewport-toolbar">
-            {!!data?.geometry.length &&
-              (pason.view !== "pason" || !pason.model) && (
-                <>
-                  <div
-                    className="fl-view-tools"
-                    aria-label="Well camera controls"
-                  >
-                    {["isometric", "top", "side"].map((v) => (
-                      <button
-                        key={v}
-                        aria-pressed={view === v}
-                        onClick={() => setView(v)}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                    <button onClick={() => setFit((v) => v + 1)}>Fit</button>
-                    <button onClick={() => setCapture((v) => v + 1)}>
-                      PNG
-                    </button>
-                  </div>
-                </>
-              )}
-            {data?.well.pason && (
-              <div
-                className="fl-source-switch"
-                aria-label="Visualization source"
-              >
-                <button
-                  aria-pressed={pason.view === "pason"}
-                  onClick={() => pason.select("pason")}
-                >
-                  Pason
-                </button>
-                <button
-                  aria-pressed={pason.view === "estimated"}
-                  onClick={() => pason.select("estimated")}
-                >
-                  Estimated
-                </button>
-              </div>
-            )}
-          </div>
           {!!data?.geometry.length &&
             (pason.view !== "pason" || !pason.model) && (
               <small className="fl-schematic-label">Estimated schematic</small>
             )}
         </section>
         <aside className="fl-sidebar" aria-label="Well information">
+          {collapsed && (
+            <button
+              className="fl-mobile-expand"
+              aria-label="Expand well information"
+              aria-expanded={false}
+              aria-controls="fl-sidebar-content"
+              onClick={() => setCollapsed(false)}
+            >
+              <span>{data?.well.name || "All wells"}</span>
+              <ChevronUp size={18} />
+            </button>
+          )}
           <div
-            className="fl-sidebar-heading"
-            hidden={details.length > 0 && !collapsed}
+            className={`fl-sidebar-heading${collapsed ? " fl-heading-collapsed" : ""}`}
+            hidden={(details.length > 0 || !!pason.pending) && !collapsed}
           >
             <span>{data?.well.name || "WELL INTELLIGENCE"}</span>
             <button
@@ -497,13 +465,16 @@ export default function FluidLab({
                 </button>
               </div>
             )}
-            {pason.error && tab !== "wells" && (
+            {pason.error && tab !== "well" && (
               <div role="alert" className="fl-error">
                 {pason.error}
                 <button onClick={pason.retry}>Retry Pason</button>
               </div>
             )}
-            <div className="fl-tabs-shell" hidden={details.length > 0}>
+            <div
+              className="fl-tabs-shell"
+              hidden={details.length > 0 || !!pason.pending}
+            >
               <nav className="fl-tabs" aria-label="FluidLab sections">
                 {tabs.map(([id, label]) => (
                   <button
@@ -513,7 +484,7 @@ export default function FluidLab({
                     onClick={() => setTab(id)}
                   >
                     {label}
-                    {id === "review" && problemCount > 0 && (
+                    {id === "well" && problemCount > 0 && (
                       <span className="fl-badge">{problemCount}</span>
                     )}
                   </button>
@@ -522,7 +493,7 @@ export default function FluidLab({
               <section
                 className="fl-tab-panel"
                 hidden={tab !== "wells"}
-                aria-label="Wells panel"
+                aria-label="All wells panel"
               >
                 <div className="fl-section-title">
                   <Layers />
@@ -537,18 +508,20 @@ export default function FluidLab({
                 <div className="fl-actions">
                   <button
                     className="fl-primary"
-                    disabled={busy || uploading || active(job)}
-                    onClick={() => file.current?.click()}
+                    disabled={busy || uploading}
+                    onClick={() => {
+                      uploadDestination.current = null;
+                      file.current?.click();
+                    }}
                   >
                     <Upload size={17} />
-                    {data ? "Upload to this well" : "Upload spreadsheets"}
+                    Upload reports to a new well
                   </button>
                   <button
                     disabled={busy || uploading}
                     onClick={() => {
-                      setEditingName(false);
+                      setCreating(true);
                       setName("");
-                      navigate("/apps/fluidlab");
                     }}
                   >
                     <Plus size={17} />
@@ -562,161 +535,41 @@ export default function FluidLab({
                   multiple
                   accept=".xlsx,.xls,.csv,.tsv"
                   onChange={(e) => {
-                    void upload(Array.from(e.target.files || []));
+                    void upload(
+                      Array.from(e.target.files || []),
+                      uploadDestination.current,
+                    );
                     e.target.value = "";
                   }}
                 />
-                {(!wellId || editingName) && (
+                {creating && (
                   <form
                     className="fl-edit-form"
                     onSubmit={(e) => {
                       e.preventDefault();
                       void run(async () => {
-                        if (editingName && data) {
-                          await api.renameWell(data.well, name);
-                          await refresh();
-                          setEditingName(false);
-                        } else {
-                          const w = await api.createWell(name);
-                          choose(w.id);
-                        }
+                        const w = await api.createWell(name);
+                        choose(w.id);
                         await list();
                         setName("");
                       });
                     }}
                   >
                     <label>
-                      {editingName ? "Well name" : "Create a well"}
+                      New well name
                       <input
-                        aria-label="Well name"
+                        aria-label="New well name"
                         value={name}
                         maxLength={150}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Well name"
                         required
                       />
                     </label>
-                    <button disabled={busy || !name.trim()}>
-                      {editingName ? "Save name" : "Create well"}
+                    <button disabled={busy || !name.trim()}>Create well</button>
+                    <button type="button" onClick={() => setCreating(false)}>
+                      Cancel
                     </button>
                   </form>
-                )}
-                {data && (
-                  <div className="fl-card">
-                    <small>SELECTED WELL</small>
-                    <h2>{data.well.name}</h2>
-                    <div className="fl-inline">
-                      <button
-                        disabled={busy}
-                        onClick={() => {
-                          setEditingName(true);
-                          setName(data.well.name);
-                        }}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        disabled={busy || active(job) || !data.well.version}
-                        onClick={() => void generate()}
-                      >
-                        {data.geometry.length ? "Update 3D" : "Generate 3D"}
-                      </button>
-                      <button
-                        disabled={busy || active(job)}
-                        onClick={() => setDeleting((v) => !v)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    {deleting && (
-                      <div className="fl-delete-confirm">
-                        <p>
-                          Delete this shared well and its files for everyone?
-                        </p>
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            void run(async () => {
-                              await api.deleteWell(data.well.id);
-                              await list();
-                              navigate("/apps/fluidlab");
-                            })
-                          }
-                        >
-                          Delete well
-                        </button>
-                        <button onClick={() => setDeleting(false)}>
-                          Keep well
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {data && (
-                  <section className="fl-card">
-                    <h2>Well view</h2>
-                    <p className="fl-muted">
-                      Attach a Pason ZIP for survey and drilling detail.
-                    </p>
-                    <div className="fl-inline">
-                      <button
-                        disabled={!data.well.pason}
-                        aria-pressed={pason.view === "pason"}
-                        onClick={() => pason.select("pason")}
-                      >
-                        Pason
-                      </button>
-                      <button
-                        aria-pressed={pason.view === "estimated"}
-                        onClick={() => pason.select("estimated")}
-                      >
-                        Estimated
-                      </button>
-                    </div>
-                    <div className="fl-actions">
-                      <button
-                        disabled={!!pason.progress}
-                        onClick={() => zipFile.current?.click()}
-                      >
-                        {data.well.pason
-                          ? "Replace Pason ZIP"
-                          : "Upload Pason ZIP"}
-                      </button>
-                      {data.well.pason && (
-                        <>
-                          <button
-                            onClick={() => {
-                              detailTrigger.current =
-                                document.activeElement as HTMLElement;
-                              setDetails([{ kind: "pason" }]);
-                            }}
-                          >
-                            Pason details
-                          </button>
-                          <button onClick={() => void pason.remove()}>
-                            Remove ZIP
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    <input
-                      ref={zipFile}
-                      type="file"
-                      accept=".zip"
-                      hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (f) void pason.upload(f);
-                      }}
-                    />
-                    {pason.error && (
-                      <div role="alert">
-                        {pason.error}
-                        <button onClick={pason.retry}>Retry Pason</button>
-                      </div>
-                    )}
-                  </section>
                 )}
                 <div className="fl-search">
                   <Search size={20} />
@@ -781,11 +634,316 @@ export default function FluidLab({
                     Next
                   </button>
                 </nav>
-                {!library.loading && !wells.length && (
+                {!library.loading && !library.error && !wells.length && (
                   <p className="fl-muted">
                     {library.search
                       ? "No matching wells."
                       : "Your first upload starts the shared library."}
+                  </p>
+                )}
+              </section>
+              <section
+                className="fl-tab-panel"
+                hidden={tab !== "well"}
+                aria-label="Well panel"
+              >
+                {contentReady ? (
+                  <>
+                    <div className="fl-actions">
+                      <button
+                        className="fl-primary"
+                        disabled={busy || uploading || active(job)}
+                        onClick={() => {
+                          uploadDestination.current = data.well.id;
+                          file.current?.click();
+                        }}
+                      >
+                        <Upload size={17} />
+                        Upload reports to this well
+                      </button>
+                    </div>
+                    {editingName && (
+                      <form
+                        className="fl-edit-form"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void run(async () => {
+                            await api.renameWell(data.well, name);
+                            await refresh();
+                            setEditingName(false);
+                            await list();
+                            setName("");
+                          });
+                        }}
+                      >
+                        <label>
+                          Well name
+                          <input
+                            aria-label="Well name"
+                            value={name}
+                            maxLength={150}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="Well name"
+                            required
+                          />
+                        </label>
+                        <button disabled={busy || !name.trim()}>
+                          Save name
+                        </button>
+                      </form>
+                    )}
+                    {data && (
+                      <div className="fl-card">
+                        <small>SELECTED WELL</small>
+                        <h2>{data.well.name}</h2>
+                        <div className="fl-inline">
+                          <button
+                            disabled={busy}
+                            onClick={() => {
+                              setEditingName(true);
+                              setName(data.well.name);
+                            }}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            disabled={busy || active(job) || !data.well.version}
+                            onClick={() => void generate()}
+                          >
+                            {data.geometry.length ? "Update 3D" : "Generate 3D"}
+                          </button>
+                          <button
+                            disabled={busy || active(job)}
+                            onClick={() => setDeleting((v) => !v)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        {deleting && (
+                          <div className="fl-delete-confirm">
+                            <p>
+                              Delete this shared well and its files for
+                              everyone?
+                            </p>
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                void run(async () => {
+                                  await api.deleteWell(data.well.id);
+                                  await list();
+                                  navigate("/apps/fluidlab");
+                                })
+                              }
+                            >
+                              Delete well
+                            </button>
+                            <button onClick={() => setDeleting(false)}>
+                              Keep well
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {data && (
+                      <section className="fl-card">
+                        <h2>Well view</h2>
+                        <p className="fl-muted">
+                          Attach a Pason ZIP for survey and drilling detail.
+                        </p>
+                        <div className="fl-inline">
+                          <button
+                            disabled={!data.well.pason}
+                            aria-pressed={pason.view === "pason"}
+                            onClick={() => pason.select("pason")}
+                          >
+                            Pason
+                          </button>
+                          <button
+                            aria-pressed={pason.view === "estimated"}
+                            onClick={() => pason.select("estimated")}
+                          >
+                            Estimated
+                          </button>
+                        </div>
+                        {pason.view === "estimated" && (
+                          <div
+                            className="fl-inline"
+                            aria-label="Estimated camera orientation"
+                          >
+                            {["isometric", "top", "side"].map((v) => (
+                              <button
+                                key={v}
+                                aria-pressed={view === v}
+                                onClick={() => setView(v)}
+                              >
+                                {v}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="fl-actions">
+                          <button
+                            disabled={!!pason.progress}
+                            onClick={() => zipFile.current?.click()}
+                          >
+                            {data.well.pason
+                              ? "Replace Pason ZIP"
+                              : "Upload Pason ZIP"}
+                          </button>
+                          {data.well.pason && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  detailTrigger.current =
+                                    document.activeElement as HTMLElement;
+                                  setDetails([{ kind: "pason" }]);
+                                }}
+                              >
+                                Pason Tools
+                              </button>
+                              <button onClick={() => void pason.remove()}>
+                                Remove ZIP
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        <input
+                          ref={zipFile}
+                          type="file"
+                          accept=".zip"
+                          hidden
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            e.target.value = "";
+                            if (f) void pason.upload(f);
+                          }}
+                        />
+                        {pason.error && (
+                          <div role="alert">
+                            {pason.error}
+                            <button onClick={pason.retry}>Retry Pason</button>
+                          </div>
+                        )}
+                      </section>
+                    )}
+                    <section aria-label="Review" className="fl-well-review">
+                      <h2>
+                        Review <span className="fl-badge">{problemCount}</span>
+                      </h2>
+                      {(uploading || job) && (
+                        <section className="fl-job" role="status">
+                          <strong>
+                            {uploading
+                              ? `Uploading ${percent}%`
+                              : active(job)
+                                ? job?.kind === "geometry"
+                                  ? "Building your 3D well"
+                                  : "Reading your reports"
+                                : job?.status === "failed"
+                                  ? "Processing needs a retry"
+                                  : job?.status === "cancelled"
+                                    ? "Processing cancelled"
+                                    : "Your data is ready"}
+                          </strong>
+                          <p>{job?.message}</p>
+                          {uploading && (
+                            <progress max={100} value={percent} />
+                          )}{" "}
+                          {job && active(job) && !uploading && (
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                void run(async () => {
+                                  await api.cancelImport(job!.wellId, job.id);
+                                  await refresh();
+                                })
+                              }
+                            >
+                              {job.kind === "geometry"
+                                ? "Cancel 3D generation"
+                                : "Cancel import"}
+                            </button>
+                          )}
+                        </section>
+                      )}
+                      {contentReady && (
+                        <Review
+                          data={data}
+                          save={save}
+                          busy={busy || active(job)}
+                          openSources={(ids) => void openSources(ids)}
+                        />
+                      )}
+                      {!!data?.well.pason?.warnings.length && (
+                        <details className="fl-card">
+                          <summary>
+                            Pason attachment · {data.well.pason.warnings.length}{" "}
+                            notices
+                          </summary>
+                          {data.well.pason.warnings.map((w, i) => (
+                            <p key={i}>{w}</p>
+                          ))}
+                        </details>
+                      )}
+                      <details className="fl-card">
+                        <summary>Processing history · {history.length}</summary>
+                        {history.map((j) => (
+                          <div className="fl-history" key={j.id}>
+                            <strong>
+                              {j.kind === "geometry"
+                                ? "3D well"
+                                : j.files.map((f) => f.name).join(", ")}
+                            </strong>
+                            <small>
+                              {j.status} · {j.message}
+                            </small>
+                            {["failed", "cancelled"].includes(j.status) && (
+                              <button
+                                disabled={busy || active(job)}
+                                onClick={() =>
+                                  void run(async () => {
+                                    if (
+                                      j.kind === "geometry" &&
+                                      (j.version !== data?.well.version ||
+                                        j.baseRevision !== data?.well.revision)
+                                    ) {
+                                      await generate();
+                                      return;
+                                    }
+                                    await api.retryImport(j.wellId, j.id);
+                                    setJob({ ...j, status: "queued" });
+                                  })
+                                }
+                              >
+                                Resume saved progress
+                              </button>
+                            )}
+                            {j.status === "uploading" && !uploading && (
+                              <button
+                                disabled={busy}
+                                onClick={() =>
+                                  void run(async () => {
+                                    await api.completeImport(j.wellId, j.id);
+                                    setJob({ ...j, status: "queued" });
+                                  })
+                                }
+                              >
+                                Finish uploaded import
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </details>
+                      {!contentReady && !job && (
+                        <p>Upload reports to this well to begin.</p>
+                      )}
+                    </section>
+                  </>
+                ) : (
+                  <p>
+                    {loading
+                      ? "Loading well…"
+                      : "Select or create a well in All wells."}
                   </p>
                 )}
               </section>
@@ -805,7 +963,7 @@ export default function FluidLab({
                   <p>
                     {loading
                       ? "Loading well…"
-                      : "Select a well in Wells to explore costs."}
+                      : "Select a well in All wells to explore costs."}
                   </p>
                 )}
               </section>
@@ -830,119 +988,8 @@ export default function FluidLab({
                   <p>
                     {loading
                       ? "Loading well…"
-                      : "Select a well in Wells to explore reports."}
+                      : "Select a well in All wells to explore reports."}
                   </p>
-                )}
-              </section>
-              <section
-                className="fl-tab-panel"
-                hidden={tab !== "review"}
-                aria-label="Review panel"
-              >
-                {(uploading || job) && (
-                  <section className="fl-job" role="status">
-                    <strong>
-                      {uploading
-                        ? `Uploading ${percent}%`
-                        : active(job)
-                          ? job?.kind === "geometry"
-                            ? "Building your 3D well"
-                            : "Reading your reports"
-                          : job?.status === "failed"
-                            ? "Processing needs a retry"
-                            : job?.status === "cancelled"
-                              ? "Processing cancelled"
-                              : "Your data is ready"}
-                    </strong>
-                    <p>{job?.message}</p>
-                    {uploading && <progress max={100} value={percent} />}{" "}
-                    {job && active(job) && !uploading && (
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            await api.cancelImport(job!.wellId, job.id);
-                            await refresh();
-                          })
-                        }
-                      >
-                        {job.kind === "geometry"
-                          ? "Cancel 3D generation"
-                          : "Cancel import"}
-                      </button>
-                    )}
-                  </section>
-                )}
-                {contentReady && (
-                  <Review
-                    data={data}
-                    save={save}
-                    busy={busy || active(job)}
-                    openSources={(ids) => void openSources(ids)}
-                  />
-                )}
-                {!!data?.well.pason?.warnings.length && (
-                  <details className="fl-card">
-                    <summary>
-                      Pason attachment · {data.well.pason.warnings.length}{" "}
-                      notices
-                    </summary>
-                    {data.well.pason.warnings.map((w, i) => (
-                      <p key={i}>{w}</p>
-                    ))}
-                  </details>
-                )}
-                <details className="fl-card">
-                  <summary>Processing history · {history.length}</summary>
-                  {history.map((j) => (
-                    <div className="fl-history" key={j.id}>
-                      <strong>
-                        {j.kind === "geometry"
-                          ? "3D well"
-                          : j.files.map((f) => f.name).join(", ")}
-                      </strong>
-                      <small>
-                        {j.status} · {j.message}
-                      </small>
-                      {["failed", "cancelled"].includes(j.status) && (
-                        <button
-                          disabled={busy || active(job)}
-                          onClick={() =>
-                            void run(async () => {
-                              if (
-                                j.kind === "geometry" &&
-                                (j.version !== data?.well.version ||
-                                  j.baseRevision !== data?.well.revision)
-                              ) {
-                                await generate();
-                                return;
-                              }
-                              await api.retryImport(j.wellId, j.id);
-                              setJob({ ...j, status: "queued" });
-                            })
-                          }
-                        >
-                          Resume saved progress
-                        </button>
-                      )}
-                      {j.status === "uploading" && !uploading && (
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            void run(async () => {
-                              await api.completeImport(j.wellId, j.id);
-                              setJob({ ...j, status: "queued" });
-                            })
-                          }
-                        >
-                          Finish uploaded import
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </details>
-                {!contentReady && !job && (
-                  <p>Upload spreadsheets from Wells to begin.</p>
                 )}
               </section>
               <section
@@ -967,16 +1014,26 @@ export default function FluidLab({
                   <p>
                     {loading
                       ? "Loading well…"
-                      : "Select a well in Wells to start a conversation."}
+                      : "Select a well in All wells to start a conversation."}
                   </p>
                 )}
               </section>
             </div>
+            {pason.pending && !pason.progress && (
+              <section className="fl-detail" aria-label="ZIP detail choice">
+                <PackageDetailChoice
+                  manifest={pason.pending}
+                  onCancel={pason.cancel}
+                  onConfirm={(d) => void pason.save(d)}
+                  onMinimize={() => setCollapsed(true)}
+                />
+              </section>
+            )}
             {details.map((detail, index) => (
               <section
                 className="fl-detail"
                 key={index}
-                hidden={index !== details.length - 1}
+                hidden={index !== details.length - 1 || !!pason.pending}
               >
                 <div className="fl-detail-top">
                   <button
@@ -994,7 +1051,8 @@ export default function FluidLab({
                 <div className="fl-detail-body">
                   {detail.kind === "pason" ? (
                     <>
-                      <h1>Pason · {data?.well.name}</h1>
+                      <h1>Pason Tools</h1>
+                      <p className="fl-muted">{data?.well.name}</p>
                       {pason.model ? (
                         <>
                           {pason.view === "pason" ? (
@@ -1004,11 +1062,6 @@ export default function FluidLab({
                               Open Pason view
                             </button>
                           )}
-                          <SurveyDetails
-                            navigation={survey}
-                            name={data?.well.name}
-                            showWarnings={false}
-                          />
                           {pason.view === "pason" && (
                             <button
                               onClick={() =>
@@ -1024,6 +1077,11 @@ export default function FluidLab({
                               Labels: {survey.labelMode}
                             </button>
                           )}
+                          <SurveyDetails
+                            navigation={survey}
+                            name={data?.well.name}
+                            showWarnings={false}
+                          />
                         </>
                       ) : (
                         <button onClick={() => pason.select("pason")}>
@@ -1132,13 +1190,6 @@ export default function FluidLab({
           )}
         </aside>
       </main>
-      {pason.pending && !pason.progress && (
-        <PackageDetailDialog
-          manifest={pason.pending}
-          onCancel={pason.cancel}
-          onConfirm={(d) => void pason.save(d)}
-        />
-      )}
       {!pason.pending &&
         (loading ||
           busy ||
