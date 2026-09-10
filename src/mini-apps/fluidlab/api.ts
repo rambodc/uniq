@@ -71,10 +71,10 @@ export const getHistory = (wellId: string) =>
   call<{ versions: Version[]; imports: ImportJob[] }>("getFluidHistory", {
     wellId,
   });
-export const getImport = async (importId: string) =>
-  (await call<{ job: ImportJob }>("getFluidImport", { importId })).job;
-export const retryImport = (importId: string) =>
-  call("retryFluidImport", { importId });
+export const getImport = async (wellId: string, importId: string) =>
+  (await call<{ job: ImportJob }>("getFluidImport", { wellId, importId })).job;
+export const retryImport = (wellId: string, importId: string) =>
+  call("retryFluidImport", { wellId, importId });
 export async function uploadFiles(
   wellId: string,
   files: File[],
@@ -149,15 +149,15 @@ export async function uploadFiles(
       });
     }
     signal?.throwIfAborted();
-    await call("completeFluidImport", { importId: job.id });
+    await call("completeFluidImport", { wellId, importId: job.id });
     return job;
   } catch (e) {
-    await cancelImport(job.id).catch(() => {});
+    await cancelImport(wellId, job.id).catch(() => {});
     throw e;
   }
 }
-export const completeImport = (importId: string) =>
-  call("completeFluidImport", { importId });
+export const completeImport = (wellId: string, importId: string) =>
+  call("completeFluidImport", { wellId, importId });
 export const saveWell = (well: Well, change: WellChange) =>
   call<{ version: string; revision: number }>("saveFluidWell", {
     wellId: well.id,
@@ -185,8 +185,8 @@ export const askChat = async (
     })
   ).message;
 
-export const cancelImport = (importId: string) =>
-  call("cancelFluidImport", { importId });
+export const cancelImport = (wellId: string, importId: string) =>
+  call("cancelFluidImport", { wellId, importId });
 
 export const generateGeometry = async (well: Well) =>
   (

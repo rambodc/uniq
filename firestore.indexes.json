@@ -1,34 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "wells",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "fluidImports",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "wellId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "fluidWells",
       "queryScope": "COLLECTION",
       "fields": [
@@ -63,8 +35,8 @@
   ],
   "fieldOverrides": [
     {
-      "collectionGroup": "wells",
-      "fieldPath": "cleanupAt",
+      "collectionGroup": "pasonUploads",
+      "fieldPath": "expiresAt",
       "indexes": [
         {
           "order": "ASCENDING",
@@ -73,9 +45,17 @@
       ]
     },
     {
-      "collectionGroup": "pasonUploads",
-      "fieldPath": "expiresAt",
+      "collectionGroup": "imports",
+      "fieldPath": "status",
       "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
         {
           "order": "ASCENDING",
           "queryScope": "COLLECTION_GROUP"

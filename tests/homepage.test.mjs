@@ -102,9 +102,9 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 
 test("enterprise routes include the private Well Viewer mini app", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
-  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/apps/well-viewer", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /path="\/well-viewer"/);
-  assert.match(registry, /well-viewer|Well Viewer/);
+  assert.doesNotMatch(registry, /well-viewer|Well Viewer/);
   assert.doesNotMatch(firebase, /well-viewer/);
   for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
@@ -139,8 +139,8 @@ test("enterprise authentication has one portal destination and one profile autho
 
 test("portal launcher contains only managed and account mini apps", async () => {
   const registry = await read("src/portal/miniApps.ts"), launcher = await read("src/portal/AppLauncher.tsx");
-  for (const id of ["fluidlab", "well-viewer", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
-  assert.match(registry, /well-viewer/);
+  for (const id of ["fluidlab", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
+  assert.doesNotMatch(registry, /well-viewer/);
   assert.match(launcher, /visibleMiniApps\(user\)/);
   assert.doesNotMatch(launcher, /Recent projects|Search projects/);
 });
@@ -160,8 +160,8 @@ test("enterprise clients keep their authorized callable interfaces", async () =>
   assert.doesNotMatch(exports, /saveFluidLabProject/);
 });
 
-test("mini apps use independent navigation and Well Viewer stores private ZIPs", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), well = await read("src/mini-apps/well-viewer/WellViewer.tsx"), wellScene = await read("src/mini-apps/well-viewer/WellScene.tsx"), wellStyles = await read("src/mini-apps/well-viewer/well-viewer.css");
+test("mini apps use independent navigation and Fluid Labs owns Pason", async () => {
+  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx");
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-back-button" to="\/portal"/);
   assert.match(layout, /className="portal-brand-mark"/);
@@ -175,31 +175,16 @@ test("mini apps use independent navigation and Well Viewer stores private ZIPs",
   assert.match(fluidlab, /Review panel/);
   assert.match(fluidlab, /Costs/);
   assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
-  assert.match(well, /WellLibrary/);
-  assert.match(well, /useWellLibrary/);
-  assert.match(await read("src/mini-apps/well-viewer/zip.ts"), /file\.slice\(start, start \+ length\)/);
-  assert.match(well, /navigate\("\/portal"\)/);
-  assert.doesNotMatch(well, /Auto|Pause|setAuto/);
-  assert.match(well, /Labels:.*labelMode/);
-  const controls = (await read("src/mini-apps/well-viewer/SurveyWorkspace.tsx")).replace(/\s+/g," ");
+  assert.match(await read("src/mini-apps/fluidlab/pason/zip.ts"), /file\.slice\(start, start \+ length\)/);
+  const controls = (await read("src/mini-apps/fluidlab/pason/SurveyWorkspace.tsx")).replace(/\s+/g," ");
   assert.match(controls, /navigationFocusSignal/);
   assert.match(controls, /ArrowUp.*ArrowDown.*ArrowLeft.*ArrowRight/);
   assert.match(controls, /ArrowLeft.*\? -1 : 1/);
   assert.match(controls, /ArrowUp.*\? -1 : 1/);
   assert.match(controls, /↑↓ Zoom · ←→ Depth · Shift 4×/);
-  assert.match(controls, /className="well-joystick" role="slider"/);
+  assert.match(controls, /className="fl-pason-joystick" role="slider"/);
   assert.match(controls, /joystickIntensity/);
-  assert.doesNotMatch(well, /className="well-hold"/);
-  assert.match(well, /className="well-label-toggle"/);
   assert.match(controls, /useState<LabelMode>\("off"\)/);
-  assert.match(well, /<small>Label<\/small>/);
-  assert.match(well, /aria-controls="well-inspector"\s+aria-expanded=\{panelOpen\}/);
-  assert.match(well, /aria-hidden=\{mobile && !panelOpen\}\s+inert=\{mobile && !panelOpen\}/);
-  assert.match(well, /closeMobilePanel\(\)/);
-  assert.match(wellScene, /zIndexRange=\{\[20, 0\]\}/);
-  assert.match(wellStyles, /width:min\(82vw,340px\)/);
-  assert.match(wellStyles, /well-panel\.closed.*translateX/);
-  assert.doesNotMatch(well, /httpsCallable|firestore|storage/);
 });
 
 test("forgot-password delivery uses the protected SMTP callable", async () => {

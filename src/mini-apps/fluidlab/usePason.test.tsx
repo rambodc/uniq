@@ -7,19 +7,19 @@ vi.mock("../../core/firebase", () => ({
   auth: { currentUser: { uid: "viewer" } },
 }));
 vi.mock("./api", () => ({ call: vi.fn() }));
-vi.mock("../../components/well/zip-transfer", () => ({
+vi.mock("./loading/zip-transfer", () => ({
   downloadZip: vi.fn(),
   uploadZip: vi.fn(),
   ensureActive: (s: AbortSignal) => s.throwIfAborted(),
 }));
-vi.mock("../well-viewer/package-worker", () => ({
+vi.mock("./pason/package-worker", () => ({
   inspectPackage: vi.fn(),
   processPackage: vi.fn(),
 }));
 import { usePason } from "./usePason";
 import { call } from "./api";
-import { downloadZip, uploadZip } from "../../components/well/zip-transfer";
-import { inspectPackage, processPackage } from "../well-viewer/package-worker";
+import { downloadZip, uploadZip } from "./loading/zip-transfer";
+import { inspectPackage, processPackage } from "./pason/package-worker";
 const attachment: PasonAttachment = {
   id: "zip-a",
   path: "fluidlab/a/pason/zip-a/original.zip",
@@ -133,4 +133,16 @@ it("large ZIP choice replaces progress and cancellation leaves the active packag
   await act(async () => hook.cancel());
   expect(hook.pending).toBeNull();
   expect(hook.model).toBe(previous);
+});
+it("failed Pason opening keeps the estimated view and retries successfully", async () => {
+  vi.mocked(downloadZip).mockRejectedValueOnce(new Error("Download unavailable"));
+  await act(async () => root.render(<Harness />));
+  await flush();
+  expect(hook.view).toBe("estimated");
+  expect(hook.error).toBe("Download unavailable");
+  expect(hook.progress).toBeNull();
+  await act(async () => hook.retry());
+  await flush();
+  expect(hook.view).toBe("pason");
+  expect(hook.model).not.toBeNull();
 });

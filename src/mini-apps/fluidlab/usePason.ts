@@ -1,17 +1,13 @@
 /* eslint-disable react-hooks/set-state-in-effect -- Synchronize the external well session and its cached package. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { auth } from "../../core/firebase";
-import {
-  uploadZip,
-  downloadZip,
-  ensureActive,
-} from "../../components/well/zip-transfer";
-import { inspectPackage, processPackage } from "../well-viewer/package-worker";
+import { uploadZip, downloadZip, ensureActive } from "./loading/zip-transfer";
+import { inspectPackage, processPackage } from "./pason/package-worker";
 import type {
   OperationalDetail,
   WellModel,
   WellPackageManifest,
-} from "../well-viewer/well-package";
+} from "./pason/well-package";
 import type { PasonAttachment } from "./model";
 import { call } from "./api";
 interface Work {
@@ -103,6 +99,10 @@ export function usePason(
         );
         setProgress(null);
         setPending(null);
+        if (!cache.current) {
+          selectedView.current = "estimated";
+          setView("estimated");
+        }
         work.current = null;
       }
       if (w.id)
@@ -151,6 +151,7 @@ export function usePason(
         if (!current(w)) return;
         cache.current = saved.id;
         setModel(parsed);
+        if (selectedView.current === "pason") setView("pason");
         setProgress(null);
         work.current = null;
       } catch (e) {
@@ -299,7 +300,10 @@ export function usePason(
     remove,
     retry: () => {
       setError("");
-      if (attachment) void open(attachment);
+      if (attachment) {
+        selectedView.current = "pason";
+        void open(attachment);
+      }
     },
   };
 }

@@ -1,5 +1,6 @@
-import LoadingOverlay from "../../components/well/LoadingOverlay";
-import PackageDetailDialog from "../../components/well/PackageDetailDialog";
+import SceneViewport from "./SceneViewport";
+import LoadingOverlay from "./loading/LoadingOverlay";
+import PackageDetailDialog from "./loading/PackageDetailDialog";
 import { useWellSearch } from "./useWellSearch";
 import { usePason } from "./usePason";
 import {
@@ -7,8 +8,8 @@ import {
   SurveyDetails,
   SurveyControls,
   useSurveyNavigation,
-} from "../well-viewer/SurveyWorkspace";
-import "../well-viewer/well-viewer.css";
+} from "./pason/SurveyWorkspace";
+import "./pason/pason.css";
 import {
   lazy,
   Suspense,
@@ -181,11 +182,13 @@ export default function FluidLab({
       alive = false;
     };
   }, [wellId]);
-  const jobId = job?.id,
+  const jobWellId = job?.wellId,
+    jobId = job?.id,
     jobStatus = job?.status;
   useEffect(() => {
     if (
       !jobId ||
+      !jobWellId ||
       !["queued", "processing", "uploading"].includes(jobStatus || "")
     )
       return;
@@ -195,7 +198,7 @@ export default function FluidLab({
       if (pending) return;
       pending = true;
       void api
-        .getImport(jobId)
+        .getImport(jobWellId, jobId)
         .then(async (next) => {
           if (!alive) return;
           setPollError("");
@@ -215,7 +218,7 @@ export default function FluidLab({
       alive = false;
       clearInterval(timer);
     };
-  }, [jobId, jobStatus, refresh, list]);
+  }, [jobWellId, jobId, jobStatus, refresh, list]);
   useEffect(() => {
     if (!uploading) return;
     const leave = (e: BeforeUnloadEvent) => {
@@ -345,36 +348,43 @@ export default function FluidLab({
         style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
       >
         <section className="fl-viewer" aria-label="3D well workspace">
-          {contentReady && pason.view === "pason" && pason.model ? (
-            <div className="fl-scene">
-              <SurveyScene
-                navigation={survey}
-                active={!busy && !processing}
-                onLoading={setSceneLoading}
-              />
-            </div>
-          ) : contentReady && data.geometry.length ? (
-            <div className="fl-scene">
-              <Suspense
-                fallback={<PreparingScene onChange={setSceneLoading} />}
-              >
-                <WellScene
-                  key={data.well.id}
-                  data={data}
-                  branches={data.geometry}
-                  selected={selected}
-                  highlights={highlights}
-                  select={setSelected}
-                  mode="losses"
-                  report={report}
-                  product={null}
-                  view={view}
-                  fit={fit}
-                  capture={capture}
+          <SceneViewport
+            sceneKey={`${wellId || "empty"}:${pason.view === "pason" && pason.model ? "pason" : "estimated"}`}
+          >
+            {contentReady && pason.view === "pason" && pason.model ? (
+              <>
+                <SurveyScene
+                  navigation={survey}
+                  active={!busy && !processing}
+                  onLoading={setSceneLoading}
                 />
-              </Suspense>
-            </div>
-          ) : (
+              </>
+            ) : contentReady && data.geometry.length ? (
+              <>
+                <Suspense
+                  fallback={<PreparingScene onChange={setSceneLoading} />}
+                >
+                  <WellScene
+                    key={data.well.id}
+                    data={data}
+                    branches={data.geometry}
+                    selected={selected}
+                    highlights={highlights}
+                    select={setSelected}
+                    mode="losses"
+                    report={report}
+                    product={null}
+                    view={view}
+                    fit={fit}
+                    capture={capture}
+                  />
+                </Suspense>
+              </>
+            ) : null}
+          </SceneViewport>
+          {!contentReady ||
+          (!data.geometry.length &&
+            !(pason.view === "pason" && pason.model)) ? (
             <div className="fl-scene-empty">
               <Layers size={48} strokeWidth={1} />
               <h1>
@@ -388,47 +398,54 @@ export default function FluidLab({
                   : "Select a well or upload reports in Wells."}
               </p>
             </div>
-          )}
-          {!!data?.geometry.length &&
-            (pason.view !== "pason" || !pason.model) && (
-              <>
-                <div
-                  className="fl-view-tools"
-                  aria-label="Well camera controls"
-                >
-                  {["isometric", "top", "side"].map((v) => (
-                    <button
-                      key={v}
-                      aria-pressed={view === v}
-                      onClick={() => setView(v)}
-                    >
-                      {v}
+          ) : null}
+          <div className="fl-viewport-toolbar">
+            {!!data?.geometry.length &&
+              (pason.view !== "pason" || !pason.model) && (
+                <>
+                  <div
+                    className="fl-view-tools"
+                    aria-label="Well camera controls"
+                  >
+                    {["isometric", "top", "side"].map((v) => (
+                      <button
+                        key={v}
+                        aria-pressed={view === v}
+                        onClick={() => setView(v)}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                    <button onClick={() => setFit((v) => v + 1)}>Fit</button>
+                    <button onClick={() => setCapture((v) => v + 1)}>
+                      PNG
                     </button>
-                  ))}
-                  <button onClick={() => setFit((v) => v + 1)}>Fit</button>
-                  <button onClick={() => setCapture((v) => v + 1)}>PNG</button>
-                </div>
-                <small className="fl-schematic-label">
-                  Estimated schematic
-                </small>
-              </>
+                  </div>
+                  <small className="fl-schematic-label">
+                    Estimated schematic
+                  </small>
+                </>
+              )}
+            {data?.well.pason && (
+              <div
+                className="fl-source-switch"
+                aria-label="Visualization source"
+              >
+                <button
+                  aria-pressed={pason.view === "pason"}
+                  onClick={() => pason.select("pason")}
+                >
+                  Pason
+                </button>
+                <button
+                  aria-pressed={pason.view === "estimated"}
+                  onClick={() => pason.select("estimated")}
+                >
+                  Estimated
+                </button>
+              </div>
             )}
-          {data?.well.pason && (
-            <div className="fl-source-switch" aria-label="Visualization source">
-              <button
-                aria-pressed={pason.view === "pason"}
-                onClick={() => pason.select("pason")}
-              >
-                Pason
-              </button>
-              <button
-                aria-pressed={pason.view === "estimated"}
-                onClick={() => pason.select("estimated")}
-              >
-                Estimated
-              </button>
-            </div>
-          )}
+          </div>
         </section>
         <aside className="fl-sidebar" aria-label="Well information">
           <div
@@ -843,7 +860,7 @@ export default function FluidLab({
                         disabled={busy}
                         onClick={() =>
                           void run(async () => {
-                            await api.cancelImport(job.id);
+                            await api.cancelImport(job!.wellId, job.id);
                             await refresh();
                           })
                         }
@@ -899,7 +916,7 @@ export default function FluidLab({
                                 await generate();
                                 return;
                               }
-                              await api.retryImport(j.id);
+                              await api.retryImport(j.wellId, j.id);
                               setJob({ ...j, status: "queued" });
                             })
                           }
@@ -912,7 +929,7 @@ export default function FluidLab({
                           disabled={busy}
                           onClick={() =>
                             void run(async () => {
-                              await api.completeImport(j.id);
+                              await api.completeImport(j.wellId, j.id);
                               setJob({ ...j, status: "queued" });
                             })
                           }
@@ -1149,7 +1166,7 @@ export default function FluidLab({
                   : processing
                     ? () =>
                         void api
-                          .cancelImport(job!.id)
+                          .cancelImport(job!.wellId, job!.id)
                           .then(refresh)
                           .catch((e) => setPollError(message(e)))
                     : undefined

@@ -1,13 +1,6 @@
 /* eslint-disable react/no-unknown-property -- Three.js elements use their own JSX properties. */
-import {
-  Component,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
+import { useThree } from "@react-three/fiber";
 import { OrbitControls, Line, Html, Grid } from "@react-three/drei";
 import { Vector3, CatmullRomCurve3, TubeGeometry } from "three";
 import type { OrbitControls as OrbitControlType } from "three-stdlib";
@@ -27,25 +20,7 @@ export interface SceneProps {
   fit: number;
   capture: number;
 }
-class SceneBoundary extends Component<
-  { children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    return this.state.failed ? (
-      <div className="fl-scene-fallback">
-        <strong>3D view unavailable</strong>
-        <p>Your costs, mud data, and chat remain available.</p>
-      </div>
-    ) : (
-      this.props.children
-    );
-  }
-}
+
 export function branchPaths(
   branches: Branch[],
   data: Dataset,
@@ -280,7 +255,7 @@ function Controls({
     />
   );
 }
-function World(props: SceneProps) {
+export default function EstimatedScene(props: SceneProps) {
   const { data, branches, selected, select, mode, report, product } = props;
   const paths = useMemo(() => branchPaths(branches, data), [branches, data]);
   const bounds = useMemo(
@@ -419,27 +394,5 @@ function World(props: SceneProps) {
         bounds={bounds}
       />
     </>
-  );
-}
-export default function WellScene(props: SceneProps) {
-  return (
-    <SceneBoundary>
-      <Suspense
-        fallback={<div className="fl-scene-fallback">Preparing well…</div>}
-      >
-        <Canvas
-          camera={{
-            position: [1200, 600, 1200],
-            fov: 45,
-            near: 0.1,
-            far: 100000,
-          }}
-          gl={{ antialias: true, preserveDrawingBuffer: true }}
-          dpr={[1, 1.5]}
-        >
-          <World {...props} />
-        </Canvas>
-      </Suspense>
-    </SceneBoundary>
   );
 }

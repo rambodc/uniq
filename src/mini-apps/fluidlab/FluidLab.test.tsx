@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
@@ -20,6 +20,7 @@ vi.mock("./api", () => ({
   getImport: vi.fn(),
   retryImport: vi.fn(),
 }));
+vi.mock("./SceneViewport", () => ({ default: ({ children }: {children: ReactNode}) => <div>{children}</div> }));
 vi.mock("./WellScene", () => ({
   default: () => <div data-testid="scene">3D scene</div>,
 }));
@@ -378,7 +379,7 @@ describe("FluidLab workspace", () => {
       (b) => b.textContent === "Cancel import",
     );
     await act(async () => cancel!.click());
-    expect(api.cancelImport).toHaveBeenCalledWith("job");
+    expect(api.cancelImport).toHaveBeenCalledWith("well", "job");
     expect(host.textContent).toContain("Processing cancelled");
   });
   it("does not generate geometry merely by opening a well without a saved view", async () => {

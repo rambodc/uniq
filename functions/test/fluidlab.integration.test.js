@@ -151,11 +151,11 @@ test(
         }),
       );
       assert.equal(parallelJob.job.status, "uploading");
-      await cancelFluidImport.run(request({ importId: parallelJob.job.id }));
+      await cancelFluidImport.run(request({ wellId: parallelWell.well.id, importId: parallelJob.job.id }));
       await deleteFluidWell.run(request({ wellId: parallelWell.well.id }));
-      const jobRef = db.doc(`fluidImports/${importId}`);
+      const jobRef = db.doc(`fluidWells/${id}/imports/${importId}`);
       await jobRef.update({ status: "processing", runId: "old-worker" });
-      await cancelFluidImport.run(request({ importId }));
+      await cancelFluidImport.run(request({ wellId: id, importId }));
       await assert.rejects(
         db.runTransaction((tx) => assertImportRun(tx, jobRef, "old-worker")),
         /cancelled/,
@@ -178,14 +178,14 @@ test(
       );
 
       assert.equal(
-        (await cancelFluidImport.run(request({ importId }))).status,
+        (await cancelFluidImport.run(request({ wellId: id, importId }))).status,
         "cancelled",
       );
       const next = await beginFluidImport.run(
         request({ ...upload, mutationId: randomUUID() }),
       );
-      await cancelFluidImport.run(request({ importId: next.job.id }));
-      await db.doc(`fluidImports/${importId}`).update({ status: "ready" });
+      await cancelFluidImport.run(request({ wellId: id, importId: next.job.id }));
+      await db.doc(`fluidWells/${id}/imports/${importId}`).update({ status: "ready" });
       await assert.rejects(
         beginFluidImport.run(request({ ...upload, mutationId: randomUUID() })),
         /already been imported/,
@@ -238,7 +238,7 @@ test(
           other,
         ),
       );
-      await cancelFluidImport.run(request({ importId: secondJob.job.id }));
+      await cancelFluidImport.run(request({ wellId: secondWell.well.id, importId: secondJob.job.id }));
       await deleteFluidWell.run(request({ wellId: secondWell.well.id }));
       await db
         .doc(`users/${other}`)
@@ -322,7 +322,7 @@ test(
       importId = randomUUID(),
       runId = randomUUID();
     const base = db.doc(`fluidWells/${id}`);
-    const jobRef = db.collection("fluidImports").doc(importId);
+    const jobRef = base.collection("imports").doc(importId);
     try {
       await createFluidWell.run(
         request({ name: "Automatic geometry", mutationId: id }),
@@ -356,7 +356,7 @@ test(
         (await getFluidWell.run(request({ wellId: id }))).well.version,
         result.version,
       );
-      const childRef = db.collection("fluidImports").doc(result.geometryJobId);
+      const childRef = base.collection("imports").doc(result.geometryJobId);
       const child = (await childRef.get()).data();
       assert.equal(child.status, "queued");
       assert.equal(child.version, result.version);
@@ -369,30 +369,30 @@ test(
       );
       assert.deepEqual(await publish(...args), result);
       assert.equal(
-        (await db.collection("fluidImports").where("wellId", "==", id).get())
+        (await base.collection("imports").get())
           .size,
         2,
       );
       await assert.rejects(
-        dispatchLinkedGeometry(uid, importId, async () => {
+        dispatchLinkedGeometry(uid, id, importId, async () => {
           throw new Error("Queue temporarily down");
         }),
         /Queue temporarily down/,
       );
       const dispatched = [];
-      await dispatchLinkedGeometry(uid, importId, async (...args) => {
+      await dispatchLinkedGeometry(uid, id, importId, async (...args) => {
         dispatched.push(args);
       });
-      assert.deepEqual(dispatched, [[uid, result.geometryJobId]]);
+      assert.deepEqual(dispatched, [[uid, id, result.geometryJobId]]);
       // A worker already running, cancelled, or failed must not be dispatched again.
       for (const status of ["processing", "failed", "cancelled"]) {
         await childRef.update({ status });
-        await dispatchLinkedGeometry(uid, importId, async () => {
+        await dispatchLinkedGeometry(uid, id, importId, async () => {
           assert.fail("Duplicate dispatch");
         });
       }
       await childRef.update({ status: "queued" });
-      await cancelFluidImport.run(request({ importId: result.geometryJobId }));
+      await cancelFluidImport.run(request({ wellId: id, importId: result.geometryJobId }));
       assert.equal((await base.get()).data().importLock, null);
       await assert.rejects(
         db.runTransaction((tx) => assertImportRun(tx, childRef, "old")),
@@ -408,7 +408,7 @@ test(
         }),
       );
       await assert.rejects(
-        retryFluidImport.run(request({ importId: result.geometryJobId })),
+        retryFluidImport.run(request({ wellId: id, importId: result.geometryJobId })),
         /dataset changed/,
       );
       // Subsequent imports refresh geometry while keeping the existing view available.
@@ -417,7 +417,7 @@ test(
         { importLock: secondId, lockUntil: Date.now() + 3600000 },
         { merge: true },
       );
-      await db.collection("fluidImports").doc(secondId).set({
+      await base.collection("imports").doc(secondId).set({
         owner: uid,
         wellId: id,
         status: "processing",
@@ -441,7 +441,7 @@ test(
       );
     } finally {
       for (const j of (
-        await db.collection("fluidImports").where("wellId", "==", id).get()
+        await base.collection("imports").get()
       ).docs)
         await db.recursiveDelete(j.ref);
       await db.recursiveDelete(base);

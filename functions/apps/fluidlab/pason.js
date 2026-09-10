@@ -3,7 +3,7 @@ import { Timestamp, FieldValue } from "firebase-admin/firestore";
 import { db, storage } from "../../core/firebase.js";
 import { callable } from "../../core/config.js";
 import { requireMiniApp } from "../../core/auth.js";
-import { validUpload, validId } from "../well-viewer/library.js";
+import { validUpload, validId } from "./pason-validation.js";
 const invoke = (handler) =>
   onCall(callable, async (r) => {
     const { uid } = await requireMiniApp(r, "fluidlab");

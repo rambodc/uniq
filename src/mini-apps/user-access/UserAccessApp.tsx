@@ -17,7 +17,6 @@ import type {
 
 const grants: { id: ManagedMiniAppId; label: string }[] = [
   { id: "fluidlab", label: "FluidLab" },
-  { id: "well-viewer", label: "Well Viewer" },
   { id: "contact-form", label: "Contact Form" },
 ];
 function UserAccessRow({

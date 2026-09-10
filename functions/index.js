@@ -16,13 +16,6 @@ export { previewInvite } from "./apps/user-access/preview-invite.js";
 export { acceptInvite } from "./apps/user-access/accept-invite.js";
 
 
-export { beginWellUpload } from "./apps/well-viewer/begin-upload.js";
-export { completeWellUpload } from "./apps/well-viewer/complete-upload.js";
-export { listSavedWells } from "./apps/well-viewer/list-wells.js";
-export { getSavedWell } from "./apps/well-viewer/get-well.js";
-export { renameSavedWell } from "./apps/well-viewer/rename-well.js";
-export { deleteSavedWell } from "./apps/well-viewer/delete-well.js";
-export { cleanupSavedWells } from "./apps/well-viewer/cleanup.js";
 
 export { listFluidWells, createFluidWell, renameFluidWell, getFluidWell, getFluidSources, getFluidHistory, beginFluidImport, completeFluidImport, retryFluidImport, cancelFluidImport, getFluidImport, processFluidImport, saveFluidWell, restoreFluidVersion, deleteFluidWell, getFluidChat, askFluidChat, cleanupFluidImports } from "./apps/fluidlab/service.js";
 

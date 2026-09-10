@@ -18,7 +18,7 @@ paths = subprocess.check_output(command, text=True).splitlines()
 wanted = []
 if any(p.startswith("functions/") or p in ("scripts/configure-fluidlab-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml") for p in paths):
     wanted.append("Production: Firebase Functions")
-if any(p in ("firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-well-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml") for p in paths):
+if any(p in ("firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml") for p in paths):
     wanted.append("Production: Firebase Rules")
 end = time.monotonic() + 1800
 while wanted and time.monotonic() < end:

@@ -13,18 +13,18 @@ vi.mock("./auth/InviteAccept", () => ({ default: () => null }));
 vi.mock("./mini-apps/account/AccountApp", () => ({ default: () => null }));
 vi.mock("./mini-apps/contact-form/ContactFormApp", () => ({ default: () => null }));
 vi.mock("./mini-apps/user-access/UserAccessApp", () => ({ default: () => null }));
-vi.mock("./mini-apps/well-viewer/WellViewer", () => ({ default: () => <span>Well Viewer workspace</span> }));
+vi.mock("./mini-apps/fluidlab/FluidLab", () => ({ default: () => <span>FluidLab workspace</span> }));
 import App from "./App";
 
 const user: PortalUser = { schemaVersion: 1, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "user", status: "active", enabledMiniApps: [] };
-const render = (path = "/apps/well-viewer") => renderToString(<MemoryRouter initialEntries={[path]}><App/></MemoryRouter>);
+const render = (path = "/apps/fluidlab") => renderToString(<MemoryRouter initialEntries={[path]}><App/></MemoryRouter>);
 
 beforeEach(() => { session.user = null; session.loading = false; });
-describe("private Well Viewer route", () => {
+describe("private FluidLab route", () => {
   it("waits for authentication before rendering the workspace", () => {
     session.loading = true;
     expect(render()).toContain("Opening your UniqEnergy portal");
-    expect(render()).not.toContain("Loading Well Viewer");
+    expect(render()).not.toContain("Loading FluidLab");
   });
   it("sends signed-out visitors to sign-in", () => {
     expect(render()).toContain("Redirect to <!-- -->/signin");
@@ -34,12 +34,12 @@ describe("private Well Viewer route", () => {
     expect(render()).toContain("Redirect to <!-- -->/portal");
   });
   it("rejects disabled users even with a grant", () => {
-    session.user = { ...user, status: "disabled", enabledMiniApps: ["well-viewer"] };
+    session.user = { ...user, status: "disabled", enabledMiniApps: ["fluidlab"] };
     expect(render()).toContain("Redirect to <!-- -->/signin");
   });
   it.each(["admin", "assigned"])("opens the workspace for %s", (kind) => {
-    session.user = kind === "admin" ? { ...user, role: "admin" } : { ...user, enabledMiniApps: ["well-viewer"] };
-    expect(render()).toMatch(/Loading Well Viewer|Well Viewer workspace/);
+    session.user = kind === "admin" ? { ...user, role: "admin" } : { ...user, enabledMiniApps: ["fluidlab"] };
+    expect(render()).toMatch(/Loading FluidLab|FluidLab workspace/);
     expect(render()).not.toContain("Redirect to");
   });
   it("has no viewer or redirect at the removed public URL", () => {

@@ -1,6 +1,6 @@
 import { getToken } from "firebase/app-check";
 import { ref, uploadBytesResumable } from "firebase/storage";
-import { auth, appCheck, wellStorage } from "../../core/firebase";
+import { auth, appCheck, wellStorage } from "../../../core/firebase";
 export const cancelled = () => new DOMException("Cancelled", "AbortError");
 export const ensureActive = (signal: AbortSignal) => {
   if (signal.aborted) throw cancelled();

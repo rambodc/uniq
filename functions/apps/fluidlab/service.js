@@ -26,7 +26,7 @@ import {
 
 const key = defineSecret("OPENAI_API_KEY");
 const wells = () => db.collection("fluidWells");
-const imports = () => db.collection("fluidImports");
+const imports = (wellId) => wells().doc(validId(wellId)).collection("imports");
 const lockFor = (wellId) => wells().doc(validId(wellId));
 const conversation = (ref, uid) => ref.collection("chats").doc(uid);
 const bucket = () => storage.bucket();
@@ -108,7 +108,7 @@ export async function publish(
   if (old.exists) return old.data();
   if (importRun)
     await db.runTransaction((tx) =>
-      assertImportRun(tx, imports().doc(importRun.id), importRun.runId),
+      assertImportRun(tx, imports(wellId).doc(importRun.id), importRun.runId),
     );
   const version = randomUUID(),
     path = `fluidlab/${wellId}/versions/${version}.json`;
@@ -136,7 +136,11 @@ export async function publish(
       tx.get(lockFor(wellId)),
     ]);
     if (importRun)
-      await assertImportRun(tx, imports().doc(importRun.id), importRun.runId);
+      await assertImportRun(
+        tx,
+        imports(wellId).doc(importRun.id),
+        importRun.runId,
+      );
     if (m.exists) return;
     if (!w.exists || w.data().status === "deleting")
       throw new HttpsError("not-found", "Well not found.");
@@ -148,7 +152,7 @@ export async function publish(
     if (geometryJobId) {
       if (lock.data()?.importLock !== importRun.id)
         throw new HttpsError("aborted", "Import ownership changed.");
-      tx.create(imports().doc(geometryJobId), {
+      tx.create(imports(wellId).doc(geometryJobId), {
         owner: uid,
         wellId,
         kind: "geometry",
@@ -184,7 +188,7 @@ export async function publish(
     });
     tx.set(op, result);
     if (importRun)
-      tx.update(imports().doc(importRun.id), {
+      tx.update(imports(wellId).doc(importRun.id), {
         status: dataset.issues.length ? "partial" : "ready",
         stage: "complete",
         message: `${dataset.records.length} records available`,
@@ -304,7 +308,7 @@ export const getFluidHistory = wrap(async (_uid, d) => {
   const { ref } = await sharedWell(d.wellId);
   const [versions, jobs] = await Promise.all([
     ref.collection("versions").get(),
-    imports().where("wellId", "==", d.wellId).get(),
+    imports(d.wellId).get(),
   ]);
   return {
     versions: versions.docs
@@ -324,7 +328,7 @@ export const getFluidHistory = wrap(async (_uid, d) => {
 export const beginFluidImport = wrap(async (uid, d) => {
   await sharedWell(d.wellId);
   const id = validId(d.mutationId),
-    ref = imports().doc(id);
+    ref = imports(d.wellId).doc(id);
   const existing = await ref.get();
   if (existing.exists) return { job: { id, ...existing.data() } };
   if (!Array.isArray(d.files) || !d.files.length || d.files.length > 5)
@@ -351,8 +355,7 @@ export const beginFluidImport = wrap(async (uid, d) => {
   });
   if (total > 50 * 1024 * 1024)
     throw new Error("Combined uploads must be 50 MB or smaller.");
-  const previous = await imports()
-    .where("wellId", "==", d.wellId)
+  const previous = await imports(d.wellId)
     .where("status", "in", ["ready", "partial"])
     .get();
   if (
@@ -407,7 +410,7 @@ async function queueDerivedAnalysis(uid, d, kind) {
       "This well changed. Refresh before starting analysis.",
     );
   const id = validId(d.mutationId),
-    ref = imports().doc(id);
+    ref = imports(d.wellId).doc(id);
   const job = {
     owner: uid,
     kind,
@@ -456,7 +459,7 @@ async function queueDerivedAnalysis(uid, d, kind) {
       { merge: true },
     );
   });
-  await enqueue(uid, id);
+  await enqueue(uid, d.wellId, id);
   return { job: { id, ...(await ref.get()).data() } };
 }
 export const generateFluidGeometry = wrap((uid, d) =>
@@ -465,27 +468,28 @@ export const generateFluidGeometry = wrap((uid, d) =>
 export const analyzeFluidLosses = wrap((uid, d) =>
   queueDerivedAnalysis(uid, d, "losses"),
 );
-async function enqueue(uid, id) {
+async function enqueue(uid, wellId, id) {
   await getFunctions()
     .taskQueue(`locations/${REGION}/functions/processFluidImport`)
-    .enqueue({ uid, importId: id }, { dispatchDeadlineSeconds: 1800 });
+    .enqueue({ uid, wellId, importId: id }, { dispatchDeadlineSeconds: 1800 });
 }
 // The completed import is the durable outbox. A task redelivery after a crash
 // dispatches its linked job instead of repeating extraction or publication.
 export async function dispatchLinkedGeometry(
   uid,
+  wellId,
   importId,
   dispatch = enqueue,
 ) {
-  const snap = await imports().doc(importId).get();
+  const snap = await imports(wellId).doc(importId).get();
   const job = snap.data();
   if (!job?.geometryJobId || !["ready", "partial"].includes(job.status)) return;
-  const geometry = await imports().doc(job.geometryJobId).get();
+  const geometry = await imports(wellId).doc(job.geometryJobId).get();
   if (geometry.data()?.status === "queued")
-    await dispatch(uid, job.geometryJobId);
+    await dispatch(uid, wellId, job.geometryJobId);
 }
 export const completeFluidImport = wrap(async (uid, d) => {
-  const ref = imports().doc(validId(d.importId)),
+  const ref = imports(d.wellId).doc(validId(d.importId)),
     snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Import not found.");
   const job = snap.data();
@@ -508,11 +512,11 @@ export const completeFluidImport = wrap(async (uid, d) => {
     tx.update(ref, { status: "queued", stage: "queued", updatedAt: now() });
     return true;
   });
-  if (queued) await enqueue(uid, d.importId);
+  if (queued) await enqueue(uid, d.wellId, d.importId);
   return { status: "queued" };
 });
 export const retryFluidImport = wrap(async (uid, d) => {
-  const ref = imports().doc(validId(d.importId)),
+  const ref = imports(d.wellId).doc(validId(d.importId)),
     snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Import not found.");
   if (!["failed", "partial", "cancelled"].includes(snap.data().status))
@@ -543,11 +547,11 @@ export const retryFluidImport = wrap(async (uid, d) => {
     );
     tx.update(ref, { status: "queued", runId: null, updatedAt: now() });
   });
-  await enqueue(uid, d.importId);
+  await enqueue(uid, d.wellId, d.importId);
   return { status: "queued" };
 });
 export const cancelFluidImport = wrap(async (_uid, d) => {
-  const ref = imports().doc(validId(d.importId));
+  const ref = imports(d.wellId).doc(validId(d.importId));
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Import not found.");
@@ -576,7 +580,7 @@ export const cancelFluidImport = wrap(async (_uid, d) => {
   return { status: "cancelled" };
 });
 export const getFluidImport = wrap(async (_uid, d) => {
-  const snap = await imports().doc(validId(d.importId)).get();
+  const snap = await imports(d.wellId).doc(validId(d.importId)).get();
   if (!snap.exists) throw new HttpsError("not-found", "Import not found.");
   return { job: { id: snap.id, ...snap.data() } };
 });
@@ -603,10 +607,10 @@ export const processFluidImport = onTaskDispatched(
     rateLimits: { maxConcurrentDispatches: 2 },
   },
   async (request) => {
-    const { uid, importId } = request.data;
+    const { uid, wellId, importId } = request.data;
     validId(uid);
     validId(importId);
-    const ref = imports().doc(importId);
+    const ref = imports(wellId).doc(importId);
     let job;
     const runId = randomUUID();
     const acquired = await db.runTransaction(async (tx) => {
@@ -626,7 +630,7 @@ export const processFluidImport = onTaskDispatched(
       return true;
     });
     if (!acquired) {
-      await dispatchLinkedGeometry(uid, importId);
+      await dispatchLinkedGeometry(uid, wellId, importId);
       return;
     }
     const started = Date.now();
@@ -789,7 +793,7 @@ export const processFluidImport = onTaskDispatched(
           );
       });
     }
-    await dispatchLinkedGeometry(uid, importId);
+    await dispatchLinkedGeometry(uid, wellId, importId);
   },
 );
 
@@ -825,7 +829,7 @@ export const deleteFluidWell = wrap(async (_uid, d) => {
   const ref = wells().doc(validId(d.wellId));
   const found = await ref.get();
   if (!found.exists) return { ok: true };
-  const jobs = await imports().where("wellId", "==", d.wellId).get();
+  const jobs = await imports(d.wellId).get();
   for (const job of jobs.docs) {
     if (["queued", "processing", "uploading"].includes(job.data().status)) {
       throw new Error("Wait for the active import before deleting this well.");
@@ -843,7 +847,6 @@ export const deleteFluidWell = wrap(async (_uid, d) => {
   });
   await revokePasonUploads(ref);
   await bucket().deleteFiles({ prefix: `fluidlab/${d.wellId}/` });
-  for (const job of jobs.docs) await db.recursiveDelete(job.ref);
   await db.recursiveDelete(ref);
   return { ok: true };
 });
@@ -1104,10 +1107,11 @@ export const cleanupFluidImports = onSchedule(
   async () => {
     await cleanupPasonUploads();
     const apps = await db
-      .collection("fluidImports")
+      .collectionGroup("imports")
       .where("status", "in", ["uploading", "queued", "processing"])
       .get();
     for (const snap of apps.docs) {
+      if (!/^fluidWells\/[^/]+\/imports\/[^/]+$/.test(snap.ref.path)) continue;
       const job = snap.data();
       if (Date.parse(job.updatedAt) < Date.now() - 3600000) {
         await snap.ref.update({

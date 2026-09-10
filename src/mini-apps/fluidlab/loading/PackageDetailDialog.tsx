@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import type {
   OperationalDetail,
   WellPackageManifest,
-} from "../../mini-apps/well-viewer/well-package";
+} from "../pason/well-package";
 export default function PackageDetailDialog({
   manifest,
   onCancel,

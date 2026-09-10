@@ -18,11 +18,10 @@ UniqEnergy’s public website and invitation-only enterprise mini-app portal.
 ## Mini apps and access
 
 - **FluidLab** — owner-private spreadsheet imports, saved schematic 3D wells, inventory/cost analysis, source review, and AI chat at `/apps/fluidlab/wells/:wellId`
-- **Well Viewer** — permission-controlled portal mini app at `/apps/well-viewer`, with an owner-private saved-well library, rename/delete, and original ZIP uploads up to 1 GB
 - **User Access** — administrator-only invitation and access management
 - **Account** — always available to authenticated users
 
-Administrators automatically receive every managed mini app. Ordinary users need explicit grants for each managed app, including `well-viewer`. There is no public signup route.
+Administrators automatically receive every managed mini app. Ordinary users need explicit grants for each managed app, including `fluidlab`. There is no public signup route.
 
 ## Enterprise and FluidLab data
 
@@ -37,7 +36,7 @@ contactInquiries/{inquiryId}
 
 Enterprise account records use `schemaVersion: 1`; the rebuilt FluidLab uses schema version 2. Legacy FluidLab project data is inactive and is not migrated. Original spreadsheets and immutable dataset snapshots live in private Storage, and versioned normalized records and job metadata live in Firestore.
 
-Well Viewer extracts the survey TXT, ETS XML, and drilling CSV locally from a well ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
+Fluid Labs extracts the survey TXT, ETS XML, and drilling CSV locally from a well ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
 
 ## Local validation
 
@@ -109,23 +108,19 @@ Production release procedure:
 
 Do not run `npm run deploy`, `firebase deploy`, or any other local command that changes production. The npm script exists for legacy compatibility only and is not an authorized release path.
 
-## Saved well library
+## Pason attachments
 
-Original ZIPs live at `users/{uid}/well-viewer/{wellId}/original.zip`; metadata lives at `users/{uid}/miniApps/well-viewer/wells/{wellId}`. Admins cannot browse other users’ wells. Processing runs in a cancellable worker; originals are downloaded and reparsed on each open, with no stored viewing copy.
+Fluid Labs owns the ZIP parser, worker, survey renderer, and controls. Shared original ZIPs live under `fluidlab/{wellId}/pason/`; attachment reservations and metadata live under `fluidWells/{wellId}`. Every active Fluid Labs user can manage the shared wells, while chat histories remain personal. Parsed packages are cached for the current well session.
 
-Upload reservations expire after 24 hours. The hourly cleanup function removes abandoned uploads and retries interrupted deletions. Upload completion checks object size and ownership metadata and removes public download tokens before marking a well ready. Standard ZIP only: at most 1,000 entries, 5 MB survey TXT, 15 MB ETS XML, 2 GB streamed CSV, 5 million CSV rows, and 100,000 depth bands.
-
-Storage CORS and cross-service rule permissions are configured by the Rules GitHub Actions workflow. Release Functions and Rules successfully before publishing a frontend that depends on new library capabilities. Rules CI runs both Storage authorization tests and the real Firestore/Storage library lifecycle test; the production worker is tested after building the site.
-
-Initial project setup requires enabling `cloudscheduler.googleapis.com`, granting `roles/cloudscheduler.admin` to `github-deployer@uniqenergy-de71c.iam.gserviceaccount.com`, and granting `roles/firebaserules.firestoreServiceAgent` to `service-357883281274@gcp-sa-firebasestorage.iam.gserviceaccount.com`. The existing deployment account cannot bootstrap these project permissions. Once provisioned, the Rules workflow verifies the existing binding without requesting IAM policy writes.
+ZIP uploads are limited to 1 GB and exact uploader reservations. Storage rules are checked in the emulator; production rendering and worker parsing are checked during the frontend build.
 
 ## FluidLab import and analysis
 
-FluidLab opens a persistent 3D workspace with Costs, Mud, and Chat in a resizable overlay sidebar (a bottom sheet on mobile). Well selection and uploads live in the header. Existing datasets, original sources, accepted corrections, and version snapshots remain readable.
+FluidLab opens a persistent 3D workspace with Wells, Costs, Mud, Review, and Chat in a resizable overlay sidebar (a bottom sheet on mobile). Well selection and uploads live in Wells. Existing datasets, original sources, accepted corrections, and version snapshots remain readable.
 
 The backend parses XLSX/XLS/CSV/TSV with pinned SheetJS CE. A compact workbook-wide AI request maps tables; code expands rows and columns, converts supported units, and performs decimal calculations. Each bounded batch permits one essential-mapping repair. Large inputs use at most two concurrent mapping requests. Original notes remain unchanged and are retrieved by Chat when relevant. Table import does not interpret narratives. There is no second AI audit, geometry editor, or estimated branch-cost allocation.
 
-Jobs have `kind: import | geometry` (older jobs default to import). After a successful import without existing geometry, publication atomically creates a linked geometry job and transfers the user lock. The completed import acts as a durable dispatch outbox: task redelivery dispatches its queued child rather than rerunning extraction. Data is available before generation. Existing geometry is reused until the user chooses Update 3D from reports. Opening a well never triggers AI generation. Geometry uses the selected dataset version and fails on stale revisions. Both kinds retain checkpoints, cancellation, worker ownership checks, and private Firebase task processing. The default model remains `gpt-5.4`.
+Jobs live under `fluidWells/{wellId}/imports` and have `kind: import | geometry | losses`. After a successful import without existing geometry, publication atomically creates a linked geometry job and transfers the well lock. The completed import acts as a durable dispatch outbox: task redelivery dispatches its queued child rather than rerunning extraction. Data is available before generation. Existing geometry is reused until the user chooses Update 3D from reports. Opening a well never triggers AI generation. Geometry uses the selected dataset version and fails on stale revisions. Both kinds retain checkpoints, cancellation, worker ownership checks, and private Firebase task processing. The default model remains `gpt-5.4`.
 
 Uploads remain limited to five files, 20 MiB each, 50 MiB combined, and 100,000 populated cells. Unknown prices, currencies, units, and conflicting inventory values are flagged; usable data opens without a confirmation wizard.
 

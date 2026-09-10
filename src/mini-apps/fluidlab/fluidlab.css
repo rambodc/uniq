@@ -892,11 +892,11 @@
 .fl-mobile-icon {
   display: none;
 }
-.fl-detail .well-section,
-.fl-detail .well-meta {
+.fl-detail .fl-pason-section,
+.fl-detail .fl-pason-meta {
   margin: 16px 0;
 }
-.fl-detail .well-camera-dock {
+.fl-detail .fl-pason-camera-dock {
   position: static;
   transform: none;
   max-width: 100%;
@@ -905,7 +905,7 @@
   flex-wrap: wrap;
   margin: 18px 0;
 }
-.well-import-dialog::backdrop {
+.fl-pason-import-dialog::backdrop {
   background: rgba(2, 14, 20, 0.88);
   backdrop-filter: blur(8px);
 }
@@ -1051,35 +1051,72 @@
   }
 }
 
-.fl-detail .well-key-hint {
+.fl-detail .fl-pason-key-hint {
   position: static;
   transform: none;
   flex-basis: 100%;
   text-align: center;
   order: -1;
 }
-.fl-detail .well-camera-dock {
+.fl-detail .fl-pason-camera-dock {
   left: auto;
   bottom: auto;
   width: 100%;
 }
-.fl-detail .well-camera-dock .well-joystick {
+.fl-detail .fl-pason-camera-dock .fl-pason-joystick {
   flex: 1;
   min-width: 120px;
 }
-.fl-detail .well-camera-dock input {
+.fl-detail .fl-pason-camera-dock input {
   width: 80px;
   padding: 5px;
 }
 .fl-detail-top {
   display: flex;
 }
-.fl-detail .well-leg-list button {
+.fl-detail .fl-pason-leg-list button {
   justify-content: flex-start;
 }
-.fl-detail .well-leg-list em {
+.fl-detail .fl-pason-leg-list em {
   margin-left: auto;
 }
-.fl-detail .well-engineering > div > button {
+.fl-detail .fl-pason-engineering > div > button {
   justify-content: flex-start;
+}
+
+.fl-viewport-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  z-index: 22;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.fl-viewport-toolbar .fl-source-switch,
+.fl-viewport-toolbar .fl-view-tools {
+  position: static;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+.fl-viewport-toolbar .fl-source-switch {
+  order: -1;
+}
+.fl-viewport-toolbar .fl-schematic-label {
+  position: static;
+  flex-basis: 100%;
+  text-align: right;
+}
+.fl-scene-transition {
+  transition: opacity 180ms ease;
+  background: #03131d;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-scene-transition {
+    transition: none;
+  }
 }

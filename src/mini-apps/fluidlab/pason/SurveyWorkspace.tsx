@@ -38,7 +38,7 @@ function SceneLoading({ onChange }: { onChange: (loading: boolean) => void }) {
 const Scene = lazy(() => import("./WellScene"));
 const shouldIgnoreShortcut = (target: EventTarget | null) =>
   (target as HTMLElement | null)?.closest(
-    "input, textarea, select, button, [contenteditable='true'], dialog, [role='dialog'], [role='slider'], .well-panel, .fl-sidebar",
+    "input, textarea, select, button, [contenteditable='true'], dialog, [role='dialog'], [role='slider'], .fl-pason-panel, .fl-sidebar",
   );
 const nearestStation = (leg: SurveyLeg, md: number) =>
   leg.stations.reduce(
@@ -150,7 +150,8 @@ export function useSurveyNavigation(
       stop();
   }, [currentMd, keyboardDepthDirection, leg, navigationIntensity, stop]);
   useEffect(() => {
-    if (document.activeElement?.classList.contains("well-depth-input")) return;
+    if (document.activeElement?.classList.contains("fl-pason-depth-input"))
+      return;
     setDepthInput(metresToSurveyDisplay(currentMd, imperial).toFixed(1));
   }, [currentMd, imperial]);
   useEffect(() => {
@@ -353,14 +354,14 @@ export function SurveyDetails({
   return (
     <>
       {" "}
-      <div className="well-panel-heading">
+      <div className="fl-pason-panel-heading">
         <div>
           <span>Survey data</span>
           <strong>{name || survey.name}</strong>
           {survey.dossierId && <small>Dossier {survey.dossierId}</small>}
         </div>
       </div>
-      <section className="well-summary">
+      <section className="fl-pason-summary">
         <div>
           <span>Legs</span>
           <b>{survey.legs.length}</b>
@@ -376,14 +377,14 @@ export function SurveyDetails({
           <b>{survey.sourceUnit === "imperial" ? "Imperial" : "Metric"}</b>
         </div>
       </section>
-      <p className="well-import-meta">
+      <p className="fl-pason-import-meta">
         {survey.operationalImport.validObservations.toLocaleString()}{" "}
         observations summarized into{" "}
         {survey.operationalImport.depthBandCount.toLocaleString()} depth bands
         at {survey.operationalImport.depthResolutionM} m.
       </p>
       {showWarnings && survey.warnings.length > 0 && (
-        <details className="well-warnings">
+        <details className="fl-pason-warnings">
           <summary>
             {survey.warnings.length} import warning
             {survey.warnings.length === 1 ? "" : "s"}
@@ -393,7 +394,7 @@ export function SurveyDetails({
           ))}
         </details>
       )}
-      <div className="well-leg-list">
+      <div className="fl-pason-leg-list">
         {survey.legs.map((item, index) => (
           <button
             key={item.id}
@@ -415,7 +416,7 @@ export function SurveyDetails({
           </button>
         ))}
       </div>
-      <section className="well-engineering">
+      <section className="fl-pason-engineering">
         <header>
           <div>
             <span>Physical well model</span>
@@ -457,7 +458,7 @@ export function SurveyDetails({
           ))}
         </div>
       </section>
-      <section className="well-cross-section">
+      <section className="fl-pason-cross-section">
         <header>
           <span>Cross-section at current MD</span>
           <b>
@@ -466,7 +467,7 @@ export function SurveyDetails({
               : "No confirmed hole size"}
           </b>
         </header>
-        <div className="well-rings" aria-hidden="true">
+        <div className="fl-pason-rings" aria-hidden="true">
           <i
             className="hole"
             style={{
@@ -514,7 +515,7 @@ export function SurveyDetails({
         </dl>
       </section>
       {station && (
-        <section className="well-station">
+        <section className="fl-pason-station">
           <header>
             <Gauge />
             <div>
@@ -562,7 +563,7 @@ export function SurveyDetails({
           </dl>
         </section>
       )}
-      <section className="well-operations">
+      <section className="fl-pason-operations">
         <header>
           <Gauge />
           <div>
@@ -577,9 +578,10 @@ export function SurveyDetails({
         {operations && (
           <>
             {operations.ambiguousLeg && (
-              <p className="well-correlation-note">
-                This depth overlaps multiple survey legs. Values are well-depth
-                observations and are not assigned to a specific branch.
+              <p className="fl-pason-correlation-note">
+                This depth overlaps multiple survey legs. Values are
+                fl-pason-depth observations and are not assigned to a specific
+                branch.
               </p>
             )}
             <small>
@@ -606,7 +608,7 @@ export function SurveyDetails({
           </>
         )}
       </section>
-      <p className="well-disclaimer">
+      <p className="fl-pason-disclaimer">
         Trajectory coordinates come from the survey TXT. Hole and casing radii
         use ETS XML dimensions at true relative scale. Operational values are
         processed from the saved ZIP when you open the well.
@@ -634,10 +636,10 @@ export function SurveyControls({
   } = navigation;
   if (!survey || !leg) return null;
   return (
-    <div className="well-camera-dock">
+    <div className="fl-pason-camera-dock">
       <div
         ref={joystick}
-        className="well-joystick"
+        className="fl-pason-joystick"
         role="slider"
         tabIndex={0}
         aria-label="Well depth navigation"
@@ -655,7 +657,7 @@ export function SurveyControls({
         {...joystickEvents}
       >
         <span>Shallower</span>
-        <div className="well-joystick-track">
+        <div className="fl-pason-joystick-track">
           <i
             style={{
               left: `calc(${50 + navigationIntensity * 50}% - ${11 + navigationIntensity * 11}px)`,
@@ -669,7 +671,7 @@ export function SurveyControls({
       <label>
         <span>MD</span>
         <input
-          className="well-depth-input"
+          className="fl-pason-depth-input"
           inputMode="decimal"
           value={depthInput}
           onChange={(event) => setDepthInput(event.target.value)}
@@ -692,7 +694,7 @@ export function SurveyControls({
         <Maximize2 />
         <span>Fit Well</span>
       </button>
-      <span className="well-key-hint" aria-hidden="true">
+      <span className="fl-pason-key-hint" aria-hidden="true">
         ↑↓ Zoom · ←→ Depth · Shift 4×
       </span>
     </div>
