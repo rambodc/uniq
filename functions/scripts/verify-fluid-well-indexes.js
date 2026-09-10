@@ -9,7 +9,7 @@ const wanted = config.indexes.filter(i => i.collectionGroup === "fluidWells");
 const fields = (i) => JSON.stringify(i.fields.filter(f => f.fieldPath !== "__name__"));
 for (let attempt = 0; ; attempt++) {
   const token = execFileSync("gcloud", ["auth", "print-access-token"], { encoding: "utf8" }).trim();
-  const response = await fetch("https://firestore.googleapis.com/v1/projects/uniqenergy-de71c/databases/(default)/collectionGroups/-/indexes?pageSize=1000", { headers: { Authorization: `Bearer ${token}` } });
+  const response = await fetch("https://firestore.googleapis.com/v1/projects/uniqenergy-de71c/databases/(default)/collectionGroups/fluidWells/indexes", { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) throw new Error(`Index verification failed: ${response.status}`);
   const { indexes = [] } = await response.json();
   if (wanted.every(w => indexes.some(i => i.name.includes("/collectionGroups/fluidWells/") && i.queryScope === w.queryScope && fields(i) === fields(w) && i.state === "READY"))) break;
