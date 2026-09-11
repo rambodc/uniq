@@ -813,19 +813,15 @@ export default function FluidLab({
                     )}
                     {wellDetails.selected && (
                       <>
-                        <WellInformation
-                          well={wellDetails.selected}
-                          locationMap={
-                            <WellMap
-                              wells={[wellDetails.selected]}
-                              selected={wellId}
-                              onSelect={choose}
-                              onExpanded={setMapExpanded}
-                              individual
-                              retry={wellDetails.retry}
-                            />
-                          }
+                        <WellMap
+                          wells={[wellDetails.selected]}
+                          selected={wellId}
+                          onSelect={choose}
+                          onExpanded={setMapExpanded}
+                          individual
+                          retry={wellDetails.retry}
                         />
+                        <WellInformation well={wellDetails.selected} />
                       </>
                     )}
                     {data && (

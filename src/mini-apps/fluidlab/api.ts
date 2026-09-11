@@ -216,3 +216,6 @@ export const prepareWellDetails = (wellId: string) =>
       "version" | "revision" | "details" | "location" | "detailsVersion"
     > & { wellId: string }
   >("prepareFluidWellDetails", { wellId });
+
+export const newChatSession = (wellId: string, mutationId: string) =>
+  call("newFluidChatSession", { wellId, mutationId });

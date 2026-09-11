@@ -1,13 +1,7 @@
-import { Fragment, type ReactNode } from "react";
-import { Building2, CalendarDays, FileText, MapPin } from "lucide-react";
+import { Fragment } from "react";
+import { Building2, CalendarDays, MapPin } from "lucide-react";
 import type { Well } from "./model";
-export default function WellInformation({
-  well,
-  locationMap,
-}: {
-  well: Well;
-  locationMap?: ReactNode;
-}) {
+export default function WellInformation({ well }: { well: Well }) {
   const facts = well.details?.facts || {};
   const sections = [
     {
@@ -43,7 +37,6 @@ export default function WellInformation({
         ["releasedDate", "Released date"],
       ],
     },
-    { title: "Notes", icon: FileText, fields: [["wellNotes", "Well notes"]] },
   ];
   return (
     <>
@@ -80,7 +73,6 @@ export default function WellInformation({
                 )}
               </dl>
             </section>
-            {title === "Identity & location" && locationMap}
           </Fragment>
         ) : null,
       )}

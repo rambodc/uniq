@@ -20,6 +20,7 @@ import {
   retryFluidImport,
   listFluidWells,
   getFluidChat,
+  newFluidChatSession,
   renameFluidWell,
 } from "../apps/fluidlab/service.js";
 const enabled =
@@ -151,7 +152,9 @@ test(
         }),
       );
       assert.equal(parallelJob.job.status, "uploading");
-      await cancelFluidImport.run(request({ wellId: parallelWell.well.id, importId: parallelJob.job.id }));
+      await cancelFluidImport.run(
+        request({ wellId: parallelWell.well.id, importId: parallelJob.job.id }),
+      );
       await deleteFluidWell.run(request({ wellId: parallelWell.well.id }));
       const jobRef = db.doc(`fluidWells/${id}/imports/${importId}`);
       await jobRef.update({ status: "processing", runId: "old-worker" });
@@ -184,8 +187,12 @@ test(
       const next = await beginFluidImport.run(
         request({ ...upload, mutationId: randomUUID() }),
       );
-      await cancelFluidImport.run(request({ wellId: id, importId: next.job.id }));
-      await db.doc(`fluidWells/${id}/imports/${importId}`).update({ status: "ready" });
+      await cancelFluidImport.run(
+        request({ wellId: id, importId: next.job.id }),
+      );
+      await db
+        .doc(`fluidWells/${id}/imports/${importId}`)
+        .update({ status: "ready" });
       await assert.rejects(
         beginFluidImport.run(request({ ...upload, mutationId: randomUUID() })),
         /already been imported/,
@@ -213,6 +220,8 @@ test(
       await wellRef
         .collection("chats")
         .doc(uid)
+        .collection("sessions")
+        .doc("main")
         .collection("messages")
         .doc("personal")
         .set({
@@ -229,6 +238,44 @@ test(
         (await getFluidChat.run(request({ wellId: id }))).messages.length,
         1,
       );
+      await newFluidChatSession.run(
+        request({ wellId: id, mutationId: "fresh-session" }),
+      );
+      assert.equal(
+        (await getFluidChat.run(request({ wellId: id }))).messages.length,
+        0,
+      );
+      assert.equal(
+        (await wellRef.collection("chats").doc(other).get()).exists,
+        false,
+      );
+      await newFluidChatSession.run(
+        request({ wellId: id, mutationId: "fresh-session" }),
+      );
+      await newFluidChatSession.run(
+        request({ wellId: id, mutationId: "second-session" }),
+      );
+      await newFluidChatSession.run(
+        request({ wellId: id, mutationId: "fresh-session" }),
+      );
+      assert.equal(
+        (await wellRef.collection("chats").doc(uid).get()).data().activeSession,
+        "second-session",
+      );
+      await wellRef
+        .collection("chats")
+        .doc(uid)
+        .set({ chatUntil: Date.now() + 60000 }, { merge: true });
+      await assert.rejects(
+        newFluidChatSession.run(
+          request({ wellId: id, mutationId: "blocked-session" }),
+        ),
+        (e) => e.code === "resource-exhausted",
+      );
+      await wellRef
+        .collection("chats")
+        .doc(uid)
+        .set({ chatUntil: 0 }, { merge: true });
       const secondWell = await createFluidWell.run(
         request({ name: "Second well", mutationId: randomUUID() }, other),
       );
@@ -238,7 +285,9 @@ test(
           other,
         ),
       );
-      await cancelFluidImport.run(request({ wellId: secondWell.well.id, importId: secondJob.job.id }));
+      await cancelFluidImport.run(
+        request({ wellId: secondWell.well.id, importId: secondJob.job.id }),
+      );
       await deleteFluidWell.run(request({ wellId: secondWell.well.id }));
       await db
         .doc(`users/${other}`)
@@ -368,11 +417,7 @@ test(
         result.geometryJobId,
       );
       assert.deepEqual(await publish(...args), result);
-      assert.equal(
-        (await base.collection("imports").get())
-          .size,
-        2,
-      );
+      assert.equal((await base.collection("imports").get()).size, 2);
       await assert.rejects(
         dispatchLinkedGeometry(uid, id, importId, async () => {
           throw new Error("Queue temporarily down");
@@ -392,7 +437,9 @@ test(
         });
       }
       await childRef.update({ status: "queued" });
-      await cancelFluidImport.run(request({ wellId: id, importId: result.geometryJobId }));
+      await cancelFluidImport.run(
+        request({ wellId: id, importId: result.geometryJobId }),
+      );
       assert.equal((await base.get()).data().importLock, null);
       await assert.rejects(
         db.runTransaction((tx) => assertImportRun(tx, childRef, "old")),
@@ -408,7 +455,9 @@ test(
         }),
       );
       await assert.rejects(
-        retryFluidImport.run(request({ wellId: id, importId: result.geometryJobId })),
+        retryFluidImport.run(
+          request({ wellId: id, importId: result.geometryJobId }),
+        ),
         /dataset changed/,
       );
       // Subsequent imports refresh geometry while keeping the existing view available.
@@ -440,9 +489,7 @@ test(
         "existing",
       );
     } finally {
-      for (const j of (
-        await base.collection("imports").get()
-      ).docs)
+      for (const j of (await base.collection("imports").get()).docs)
         await db.recursiveDelete(j.ref);
       await db.recursiveDelete(base);
       await db.recursiveDelete(db.doc(`users/${uid}`));

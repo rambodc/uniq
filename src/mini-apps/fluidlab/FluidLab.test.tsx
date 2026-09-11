@@ -16,6 +16,7 @@ vi.mock("./api", () => ({
   getWell: vi.fn(),
   getHistory: vi.fn(),
   getChat: vi.fn(),
+  newChatSession: vi.fn(),
   askChat: vi.fn(),
   getSources: vi.fn(),
   saveWell: vi.fn(),
@@ -305,6 +306,9 @@ describe("FluidLab workspace", () => {
       vi.mocked(api.askChat).mock.calls[0][1],
     );
     expect(host.querySelector(".fl-thinking")).toBeTruthy();
+    expect(
+      (host.querySelector(".fl-new-session") as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect(host.querySelector(".fl-prompts")).toBeNull();
     await act(async () =>
       history([
@@ -321,6 +325,9 @@ describe("FluidLab workspace", () => {
     );
     expect(host.querySelectorAll(".fl-question")).toHaveLength(2);
     expect(host.querySelector(".fl-thinking")).toBeTruthy();
+    expect(
+      (host.querySelector(".fl-new-session") as HTMLButtonElement).disabled,
+    ).toBe(true);
     await click('button[aria-label="Mud"]');
     expect(
       host.querySelector(".fl-main")?.classList.contains("fl-chat-active"),
@@ -728,4 +735,64 @@ it("shows questions immediately, preserves drafts on failure and retries the sam
   expect(host.querySelectorAll(".fl-question")).toHaveLength(1);
   expect(host.querySelector(".fl-answer")?.textContent).toBe("Gamma is 12 API");
   expect(input.value).toBe("My next question");
+});
+
+it("starts a fresh chat and ignores history loaded from the previous session", async () => {
+  let history!: (m: Awaited<ReturnType<typeof api.getChat>>) => void;
+  vi.mocked(api.getChat).mockImplementationOnce(
+    () =>
+      new Promise((r) => {
+        history = r;
+      }),
+  );
+  vi.mocked(api.newChatSession).mockResolvedValue({ sessionId: "fresh" });
+  await render();
+  await click('button[aria-label="Chat"]');
+  await click(".fl-new-session");
+  await act(async () =>
+    history([
+      {
+        id: "old",
+        question: "Old conversation",
+        answer: "Old answer",
+        citations: [],
+        highlights: [],
+        version: "v1",
+        createdAt: "",
+      },
+    ]),
+  );
+  expect(host.querySelector(".fl-question")).toBeNull();
+  expect(host.querySelector(".fl-prompts")).not.toBeNull();
+  expect(api.newChatSession).toHaveBeenCalledWith("well", expect.any(String));
+  await click('button[aria-label="Mud"]');
+  await click('button[aria-label="Chat"]');
+  expect(host.querySelector(".fl-question")).toBeNull();
+});
+it("keeps the current conversation when starting a session fails and retries idempotently", async () => {
+  vi.mocked(api.getChat).mockResolvedValue([
+    {
+      id: "old",
+      question: "Keep this question",
+      answer: "Answer",
+      citations: [],
+      highlights: [],
+      version: "v1",
+      createdAt: "",
+    },
+  ]);
+  vi.mocked(api.newChatSession)
+    .mockRejectedValueOnce(new Error("Try again"))
+    .mockResolvedValueOnce({ sessionId: "fresh" });
+  await render();
+  await click('button[aria-label="Chat"]');
+  await click(".fl-new-session");
+  expect(host.querySelector(".fl-question")?.textContent).toBe(
+    "Keep this question",
+  );
+  await click(".fl-new-session");
+  expect(vi.mocked(api.newChatSession).mock.calls[0]).toEqual(
+    vi.mocked(api.newChatSession).mock.calls[1],
+  );
+  expect(host.querySelector(".fl-question")).toBeNull();
 });

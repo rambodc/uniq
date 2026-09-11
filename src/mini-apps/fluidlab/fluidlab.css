@@ -1566,3 +1566,17 @@
     padding: 12px;
   }
 }
+
+.fl-chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 19px;
+  border-bottom: 1px solid #2b464e;
+  flex-shrink: 0;
+}
+.fl-chat-toolbar > span {
+  color: #9bb8bd;
+  font-size: 0.85rem;
+}

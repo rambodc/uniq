@@ -163,5 +163,6 @@ it("renders spreadsheet text safely and preserves offsets, leading zeros and unk
   expect(host.textContent).toContain("GMT-0600");
   expect(host.textContent).not.toContain("1901 m");
   expect(host.querySelector("script")).toBeNull();
-  expect(host.textContent).toContain("<script>");
+  expect(host.textContent).not.toContain("<script>");
+  expect(host.textContent).not.toContain("Well notes");
 });

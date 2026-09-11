@@ -275,16 +275,16 @@ export const getFluidWell = wrap(async (uid, d) => {
   };
 });
 export const getFluidSources = wrap(async (uid, d) => {
-  const { dataset } = await load(uid, d.wellId, d.version);
+  const { dataset, ref } = await load(uid, d.wellId, d.version);
+  const chat = conversation(ref, uid);
   const ids = Array.isArray(d.ids) ? d.ids.slice(0, 1000) : null;
   const query = String(d.query || "").toLowerCase();
   const messages = ids
     ? (
-        await wells()
-          .doc(d.wellId)
-          .collection("chats")
-          .doc(uid)
-          .collection("messages")
+        await sessionMessages(
+          chat,
+          (await chat.get()).data()?.activeSession || "main",
+        )
           .where(
             "version",
             "==",
@@ -937,17 +937,44 @@ export function chatTool(dataset, name, args) {
     return dataset.sources.filter((s) => args.ids?.includes(s.id)).slice(0, 20);
   throw new Error("Unknown read-only tool.");
 }
+const sessionMessages = (chat, sessionId) =>
+  chat.collection("sessions").doc(sessionId).collection("messages");
 export const getFluidChat = wrap(async (uid, d) => {
   const { ref } = await sharedWell(d.wellId);
+  const chat = conversation(ref, uid),
+    snapshot = await chat.get();
   return {
     messages: (
-      await conversation(ref, uid)
-        .collection("messages")
+      await sessionMessages(chat, snapshot.data()?.activeSession || "main")
         .orderBy("createdAt", "asc")
         .limitToLast(100)
         .get()
     ).docs.map((s) => ({ id: s.id, ...s.data() })),
   };
+});
+export const newFluidChatSession = wrap(async (uid, d) => {
+  const { ref } = await sharedWell(d.wellId);
+  const chat = conversation(ref, uid),
+    sessionId = validId(d.mutationId);
+  await db.runTransaction(async (tx) => {
+    const session = chat.collection("sessions").doc(sessionId);
+    const [snapshot, previous, currentWell] = await Promise.all([
+      tx.get(chat),
+      tx.get(session),
+      tx.get(ref),
+    ]);
+    if (!currentWell.exists || currentWell.data().status === "deleting")
+      throw new HttpsError("not-found", "Well not found.");
+    if (previous.exists) return;
+    if (snapshot.data()?.chatUntil > Date.now())
+      throw new HttpsError(
+        "resource-exhausted",
+        "Wait for the current answer before starting a new session.",
+      );
+    tx.create(session, { createdAt: now() });
+    tx.set(chat, { activeSession: sessionId }, { merge: true });
+  });
+  return { sessionId };
 });
 export const askFluidChat = wrap(
   async (uid, d) => {
@@ -962,7 +989,9 @@ export const askFluidChat = wrap(
     if (d.version !== well.version)
       throw new Error("Dataset changed. Reload before asking a question.");
     const chat = conversation(ref, uid);
-    const message = chat.collection("messages").doc(d.mutationId),
+    const sessionId = (await chat.get()).data()?.activeSession || "main";
+    const messages = sessionMessages(chat, sessionId);
+    const message = messages.doc(d.mutationId),
       existing = await message.get();
     if (existing.exists && existing.data().status === "ready") {
       if (
@@ -976,6 +1005,11 @@ export const askFluidChat = wrap(
     }
     await db.runTransaction(async (tx) => {
       const w = await tx.get(chat);
+      if ((w.data()?.activeSession || "main") !== sessionId)
+        throw new HttpsError(
+          "aborted",
+          "Chat session changed. Ask again in the new session.",
+        );
       if (w.data()?.chatUntil > Date.now())
         throw new HttpsError(
           "resource-exhausted",
@@ -985,11 +1019,7 @@ export const askFluidChat = wrap(
     });
     try {
       const history = (
-        await chat
-          .collection("messages")
-          .orderBy("createdAt", "asc")
-          .limitToLast(8)
-          .get()
+        await messages.orderBy("createdAt", "asc").limitToLast(8).get()
       ).docs
         .map((s) => s.data())
         .filter(

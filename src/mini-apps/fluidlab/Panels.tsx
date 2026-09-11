@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import Decimal from "decimal.js";
 import {
   ArrowUp,
+  Plus,
   FileText,
   TrendingDown,
   MessageCircle,
@@ -18,7 +19,7 @@ import {
   Droplets,
   CalendarDays,
 } from "lucide-react";
-import { askChat, getChat } from "./api";
+import { askChat, getChat, newChatSession } from "./api";
 import {
   compatiblePackage,
   exportCsv,
@@ -476,6 +477,8 @@ export function Chat({
     };
   };
   const sending = useRef(false);
+  const sessionEpoch = useRef(0);
+  const resetId = useRef<string | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]),
     [question, setQuestion] = useState(""),
     [busy, setBusy] = useState(false),
@@ -484,15 +487,16 @@ export function Chat({
     textarea = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     let alive = true;
+    const epoch = sessionEpoch.current;
     getChat(data.well.id)
       .then((m) => {
-        if (alive)
+        if (alive && epoch === sessionEpoch.current)
           setMessages((current) => [
             ...new Map([...m, ...current].map((x) => [x.id, x])).values(),
           ]);
       })
       .catch((e) => {
-        if (alive) setError(e.message);
+        if (alive && epoch === sessionEpoch.current) setError(e.message);
       });
     return () => {
       alive = false;
@@ -502,6 +506,30 @@ export function Chat({
     if (visible)
       bottom.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy, visible]);
+  const startSession = async () => {
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    setError("");
+    sessionEpoch.current++;
+    resetId.current ||= crypto.randomUUID();
+    try {
+      await newChatSession(data.well.id, resetId.current);
+      setMessages([]);
+      setQuestion("");
+      resetId.current = null;
+      textarea.current?.focus();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not start a new session. Please retry.",
+      );
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  };
   const ask = async (text: string, retry?: DisplayMessage) => {
     if (sending.current || !text.trim()) return;
     sending.current = true;
@@ -553,6 +581,17 @@ export function Chat({
   };
   return (
     <div className="fl-chat">
+      <div className="fl-chat-toolbar">
+        <span>Conversation</span>
+        <button
+          className="fl-new-session"
+          disabled={busy}
+          title="Start fresh without earlier messages"
+          onClick={() => void startSession()}
+        >
+          <Plus size={17} aria-hidden="true" /> New session
+        </button>
+      </div>
       <div className="fl-chat-feed">
         <small>YOUR WELL ANALYST</small>
         <h1 className="fl-card-heading">

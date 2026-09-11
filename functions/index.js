@@ -28,3 +28,5 @@ export { saveFluidPasonAnalysis } from "./apps/fluidlab/pason-data.js";
 export { resolveLsdLocation, listLsdLocations, updateLsdLocation, removeLsdLocation } from "./apps/lsd-finder/service.js";
 
 export { prepareFluidWellDetails } from "./apps/fluidlab/service.js";
+
+export { newFluidChatSession } from "./apps/fluidlab/service.js";
