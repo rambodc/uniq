@@ -1,3 +1,6 @@
+import WellInformation from "./WellInformation";
+import WellMap from "./WellMap";
+import { useWellDetails } from "./useWellDetails";
 import DrillingFluids, { initialFluidsView } from "./DrillingFluids";
 import Confirmation from "./Confirmation";
 import { useAutoRotation } from "./AutoRotation";
@@ -133,6 +136,8 @@ export default function FluidLab({
     detailTrigger = useRef<HTMLElement | null>(null);
   const library = useWellSearch();
   const { wells, refresh: list } = library;
+  const wellDetails = useWellDetails(wells, data?.well);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const zipFile = useRef<HTMLInputElement>(null);
   const refresh = useCallback(async () => {
     if (!wellId) return;
@@ -392,6 +397,7 @@ export default function FluidLab({
           <SceneViewport
             autoRotate={rotation.enabled}
             motionBlocked={
+              mapExpanded ||
               !!confirmation ||
               loading ||
               busy ||
@@ -647,6 +653,13 @@ export default function FluidLab({
                     <button onClick={() => void list()}>Retry search</button>
                   </p>
                 )}
+                <WellMap
+                  wells={wellDetails.wells}
+                  selected={wellId}
+                  onSelect={choose}
+                  onExpanded={setMapExpanded}
+                  retry={wellDetails.retry}
+                />
                 <div className="fl-list" aria-busy={library.loading}>
                   {wells.map((w) => (
                     <button
@@ -797,6 +810,23 @@ export default function FluidLab({
                           </div>
                         )}
                       </div>
+                    )}
+                    {wellDetails.selected && (
+                      <>
+                        <WellInformation
+                          well={wellDetails.selected}
+                          locationMap={
+                            <WellMap
+                              wells={[wellDetails.selected]}
+                              selected={wellId}
+                              onSelect={choose}
+                              onExpanded={setMapExpanded}
+                              individual
+                              retry={wellDetails.retry}
+                            />
+                          }
+                        />
+                      </>
                     )}
                     {data && (
                       <section className="fl-card fl-well-view">

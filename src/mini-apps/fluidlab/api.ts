@@ -208,3 +208,11 @@ export const analyzeLosses = async (well: Well) =>
       mutationId: crypto.randomUUID(),
     })
   ).job;
+
+export const prepareWellDetails = (wellId: string) =>
+  call<
+    Pick<
+      Well,
+      "version" | "revision" | "details" | "location" | "detailsVersion"
+    > & { wellId: string }
+  >("prepareFluidWellDetails", { wellId });

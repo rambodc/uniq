@@ -1,3 +1,5 @@
+import { integrateWellDetails, wellDetails } from "./well-details.js";
+import { prepareWellLocation } from "./well-location.js";
 import { createPasonReader } from "./pason-data.js";
 import { randomUUID, createHash } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -82,7 +84,11 @@ async function load(_uid, id, version = null) {
   if (!snap.exists)
     throw new HttpsError("not-found", "Dataset version not found.");
   const [bytes] = await bucket().file(snap.data().path).download();
-  return { ref, well: data, dataset: JSON.parse(bytes.toString()) };
+  return {
+    ref,
+    well: data,
+    dataset: integrateWellDetails(JSON.parse(bytes.toString())),
+  };
 }
 async function artifact(path, value) {
   await bucket()
@@ -102,6 +108,7 @@ export async function publish(
   reason,
   importRun = null,
 ) {
+  integrateWellDetails(dataset);
   validId(mutationId);
   const { ref } = await sharedWell(wellId),
     op = ref.collection("mutations").doc(mutationId);
@@ -186,6 +193,8 @@ export async function publish(
       updatedAt: now(),
       updatedBy: uid,
       summary: summarize(dataset),
+      details: wellDetails(dataset),
+      detailsVersion: null,
     });
     tx.set(op, result);
     if (importRun)
@@ -247,7 +256,7 @@ export const getFluidWell = wrap(async (uid, d) => {
   const offset = Math.max(0, Math.floor(Number(d.offset) || 0)),
     records = dataset.records.slice(offset, offset + 200);
   return {
-    well: { id: d.wellId, ...well },
+    well: { id: d.wellId, ...well, details: wellDetails(dataset) },
     records,
     next: offset + 200 < dataset.records.length ? offset + 200 : null,
     ...(offset === 0
@@ -1311,4 +1320,18 @@ export const cleanupFluidImports = onSchedule(
       }
     }
   },
+);
+
+export const prepareFluidWellDetails = wrap(
+  async (uid, d) => {
+    const { ref, well, dataset } = await load(uid, d.wellId);
+    const result = await prepareWellLocation(ref, well, dataset);
+    return {
+      wellId: d.wellId,
+      version: well.version,
+      revision: well.revision,
+      ...result,
+    };
+  },
+  { timeoutSeconds: 60 },
 );

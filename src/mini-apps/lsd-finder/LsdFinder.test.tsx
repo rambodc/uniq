@@ -9,7 +9,7 @@ vi.mock("./api", () => ({
   removeLocation: vi.fn(),
   setVisibility: vi.fn(),
 }));
-vi.mock("./Map", () => ({ default: () => <div data-testid="map" /> }));
+vi.mock("../../shared/maps/LocationMap", () => ({ default: () => <div data-testid="map" /> }));
 import {
   listLocations,
   resolveLocation,

@@ -26,3 +26,5 @@ export { beginFluidPason, completeFluidPason, getFluidPason, cancelFluidPason, r
 export { saveFluidPasonAnalysis } from "./apps/fluidlab/pason-data.js";
 
 export { resolveLsdLocation, listLsdLocations, updateLsdLocation, removeLsdLocation } from "./apps/lsd-finder/service.js";
+
+export { prepareFluidWellDetails } from "./apps/fluidlab/service.js";

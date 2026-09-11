@@ -1,3 +1,4 @@
+import { integrateWellDetails } from "./well-details.js";
 import * as XLSX from "xlsx";
 import OpenAI from "openai";
 import { z } from "zod";
@@ -678,7 +679,7 @@ export async function extractFiles(
       ),
     );
   return {
-    dataset: reconcile(dataset),
+    dataset: reconcile(integrateWellDetails(dataset)),
     usage: { calls: budget.calls, tokens: budget.tokens },
   };
 }

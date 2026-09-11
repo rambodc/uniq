@@ -20,7 +20,7 @@ import {
   X,
   LoaderCircle,
 } from "lucide-react";
-import LocationMap from "./Map";
+import LocationMap from "../../shared/maps/LocationMap";
 import {
   listLocations,
   resolveLocation,

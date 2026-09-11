@@ -56,6 +56,14 @@ jobs:
                   target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
                   if not target:
                       raise SystemExit("No FluidLab exports found")
+              # The location engine is shared only by Fluid Labs and LSD Finder.
+              location_pattern = r'export \{([^}]+)\} from "\./apps/(?:fluidlab|lsd-finder)/[^"\n]+\.js";?'
+              location_exports_unchanged = re.sub(location_pattern, "", current).strip() == re.sub(location_pattern, "", previous).strip()
+              if runtime and location_exports_unchanged and any(p.startswith(("functions/apps/lsd-finder/", "functions/shared/locations/")) for p in runtime) and all(p.startswith(("functions/apps/fluidlab/", "functions/apps/lsd-finder/", "functions/shared/locations/")) or p == "functions/index.js" for p in runtime):
+                  exports = re.findall(location_pattern, current)
+                  target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
+                  if not target:
+                      raise SystemExit("No location app exports found")
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("target=" + target + "\n")
           PYCODE

@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Location } from "./api";
+import "./maps.css";
+export interface MapLocation {
+  canonical: string;
+  label?: string;
+  latitude: number;
+  longitude: number;
+  boundary: number[][][];
+  visible: boolean;
+}
 
 export default function LocationMap({
   locations,
@@ -10,13 +18,15 @@ export default function LocationMap({
   fitAll,
   collapsed,
   focus,
+  fitLocations = false,
 }: {
-  locations: Location[];
+  locations: MapLocation[];
   selected: string | null;
   onSelect: (id: string) => void;
   fitAll: number;
   collapsed: boolean;
   focus: number;
+  fitLocations?: boolean;
 }) {
   const element = useRef<HTMLDivElement>(null),
     map = useRef<L.Map | null>(null),
@@ -24,6 +34,7 @@ export default function LocationMap({
     select = useRef(onSelect),
     lastFit = useRef("");
   const [tileError, setTileError] = useState(false);
+  const [visibleLayout, setVisibleLayout] = useState(0);
   useEffect(() => {
     select.current = onSelect;
   }, [onSelect]);
@@ -51,9 +62,20 @@ export default function LocationMap({
     tiles.on("tileload", () => setTileError(false));
     layer.current = L.layerGroup().addTo(instance);
     map.current = instance;
-    const observer = new ResizeObserver(() =>
-      instance.invalidateSize({ pan: false }),
-    );
+    let firstVisible = false;
+    const observer = new ResizeObserver(() => {
+      instance.invalidateSize({ pan: false });
+      if (
+        !firstVisible &&
+        element.current &&
+        element.current.clientWidth > 0 &&
+        element.current.clientHeight > 0
+      ) {
+        firstVisible = true;
+        lastFit.current = "";
+        setVisibleLayout((v) => v + 1);
+      }
+    });
     observer.observe(element.current);
     return () => {
       observer.disconnect();
@@ -70,8 +92,8 @@ export default function LocationMap({
     const active = locations.find((l) => l.canonical === selected && l.visible);
     for (const location of locations.filter((l) => l.visible)) {
       const marker = L.marker([location.latitude, location.longitude], {
-        title: location.canonical,
-        alt: location.canonical,
+        title: location.label || location.canonical,
+        alt: location.label || location.canonical,
         icon: L.divIcon({
           className: "lsd-pin-wrap",
           html: `<span class="lsd-pin ${location.canonical === selected ? "selected" : ""}"></span>`,
@@ -80,7 +102,7 @@ export default function LocationMap({
         }),
       });
       const label = document.createElement("span");
-      label.textContent = location.canonical;
+      label.textContent = location.label || location.canonical;
       marker
         .bindTooltip(label, { direction: "top", offset: [0, -30] })
         .on("click", () => select.current(location.canonical))
@@ -96,18 +118,28 @@ export default function LocationMap({
           fillOpacity: 0.19,
         },
       ).addTo(group);
-      if (lastFit.current !== `${active.canonical}:${focus}`) {
+      if (
+        !fitLocations &&
+        lastFit.current !==
+          `${active.canonical}:${active.latitude}:${active.longitude}:${focus}`
+      ) {
         instance.fitBounds(polygon.getBounds(), {
           padding: [40, 40],
           maxZoom: 16,
           animate: !matchMedia("(prefers-reduced-motion: reduce)").matches,
         });
-        lastFit.current = `${active.canonical}:${focus}`;
+        lastFit.current = `${active.canonical}:${active.latitude}:${active.longitude}:${focus}`;
       }
     } else lastFit.current = "";
-  }, [locations, selected, focus]);
+  }, [locations, selected, focus, fitLocations, visibleLayout]);
+  const locationKey = fitLocations
+    ? locations
+        .filter((l) => l.visible)
+        .map((l) => `${l.canonical}:${l.latitude}:${l.longitude}`)
+        .join("|")
+    : "";
   useEffect(() => {
-    if (fitAll && map.current) {
+    if ((fitAll || fitLocations) && map.current) {
       const points = locations
         .filter((l) => l.visible)
         .map((l) => [l.latitude, l.longitude] as L.LatLngTuple);
@@ -118,7 +150,7 @@ export default function LocationMap({
         });
       lastFit.current = "";
     }
-  }, [fitAll]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fitAll, locationKey, fitLocations, visibleLayout]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     map.current?.invalidateSize({ pan: false });
   }, [collapsed]);

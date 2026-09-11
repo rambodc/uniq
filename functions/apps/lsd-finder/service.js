@@ -1,3 +1,4 @@
+import { cachedGeometry as geometry } from "../../shared/locations/cache.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { createHash } from "node:crypto";
@@ -5,7 +6,7 @@ import OpenAI from "openai";
 import { db } from "../../core/firebase.js";
 import { requireMiniApp } from "../../core/auth.js";
 import { callable } from "../../core/config.js";
-import { parseLsd, lookupGrid, GRID_VERSION, LocationError } from "./grid.js";
+import { parseLsd, LocationError } from "../../shared/locations/grid.js";
 const key = defineSecret("OPENAI_API_KEY");
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const locations = (uid) => db.collection(`users/${uid}/lsdLocations`);
@@ -33,14 +34,6 @@ function wrap(fn, options = {}) {
       }
     },
   );
-}
-async function geometry(parsed) {
-  const ref = db.doc(`lsdGridCache/${GRID_VERSION}-${parsed.canonical}`),
-    snap = await ref.get();
-  if (snap.exists) return decode(snap.data());
-  const result = await lookupGrid(parsed);
-  await ref.set(encode(result));
-  return result;
 }
 export async function suggestCorrections(input, error, client) {
   const response = await client.responses.create({

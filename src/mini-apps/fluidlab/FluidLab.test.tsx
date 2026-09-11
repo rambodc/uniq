@@ -9,6 +9,7 @@ vi.mock("../../core/firebase", () => ({
 }));
 vi.mock("./api", () => ({
   call: vi.fn(),
+  prepareWellDetails: vi.fn(),
   listWells: vi.fn(),
   createWell: vi.fn(),
   uploadFiles: vi.fn(),

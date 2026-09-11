@@ -108,7 +108,23 @@ export interface LossEntry {
   includedInTotal: boolean;
   conflict: boolean;
 }
+export interface WellDetails {
+  facts: Record<string, Fact>;
+  conflicts: string[];
+}
+export interface WellLocation {
+  status: string;
+  fingerprint: string;
+  canonical?: string;
+  latitude?: number;
+  longitude?: number;
+  boundary?: string;
+  source?: string;
+}
 export interface Well {
+  details?: WellDetails;
+  detailsVersion?: string | null;
+  location?: WellLocation;
   pason?: PasonAttachment;
   id: string;
   name: string;

@@ -1473,3 +1473,96 @@
 .fl-fluid-dates input[type="date"] {
   color-scheme: dark;
 }
+
+.fl-well-information dl {
+  margin: 16px 0 0;
+  display: grid;
+  gap: 16px;
+}
+.fl-well-information dt {
+  color: var(--fl-muted, #9bb8bd);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+.fl-well-information dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.fl-well-information .fl-emphasis {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.fl-well-map {
+  min-width: 0;
+}
+.fl-map-inline {
+  height: 260px;
+  position: relative;
+  isolation: isolate;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 16px;
+}
+.fl-map-inline .lsd-map-frame,
+.fl-map-expanded .lsd-map-frame {
+  height: 100%;
+  width: 100%;
+}
+.fl-map-expanded svg:not(.lucide) {
+  width: auto;
+  height: auto;
+}
+.fl-map-expand {
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+.fl-map-coordinates {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.fl-well-map a {
+  color: #7fdcc9;
+}
+.fl-map-dialog {
+  width: min(1100px, 94vw);
+  max-width: 94vw;
+  padding: 18px;
+  background: #10252c;
+  color: #e0efed;
+  border: 1px solid #34565d;
+  border-radius: 18px;
+}
+.fl-map-dialog::backdrop {
+  background: #001018bb;
+}
+.fl-map-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fl-map-dialog h2 {
+  margin: 0;
+}
+.fl-map-expanded {
+  position: relative;
+  isolation: isolate;
+  height: min(72dvh, 800px);
+  overflow: hidden;
+  border-radius: 12px;
+  margin-top: 16px;
+}
+@media (max-width: 600px) {
+  .fl-map-inline {
+    height: 220px;
+  }
+  .fl-well-map .fl-card-heading {
+    flex-wrap: wrap;
+  }
+  .fl-map-dialog {
+    padding: 12px;
+  }
+}

@@ -6,7 +6,7 @@ import {
   representativePoint,
   contains,
   GRID_VERSION,
-} from "../apps/lsd-finder/grid.js";
+} from "../shared/locations/grid.js";
 import {
   resolveLsdLocation,
   listLsdLocations,
