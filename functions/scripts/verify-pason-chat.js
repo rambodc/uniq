@@ -1,4 +1,4 @@
-// Three bounded live-model questions against synthetic local emulator data only.
+// Five bounded live-model questions against synthetic local emulator data only.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -32,14 +32,12 @@ const req = (data, user = uid) => ({
 });
 const prepare = (data) => saveFluidPasonAnalysis.run(req(data));
 for (const user of [uid, other])
-  await db
-    .doc(`users/${user}`)
-    .set({
-      schemaVersion: 1,
-      email: user + "@test.com",
-      status: "active",
-      enabledMiniApps: ["fluidlab"],
-    });
+  await db.doc(`users/${user}`).set({
+    schemaVersion: 1,
+    email: user + "@test.com",
+    status: "active",
+    enabledMiniApps: ["fluidlab"],
+  });
 await well.set({
   name: "Pason verification",
   status: "ready",
@@ -49,6 +47,7 @@ await well.set({
 });
 try {
   const meta = {
+    schema: 2,
     sourceUnit: "metric",
     depthResolutionM: 0.5,
     sourceRows: 6,
@@ -64,13 +63,72 @@ try {
     lastTimestamp: "2026-09-01",
     values: { torque: { count, sum, minimum, maximum, latest: maximum } },
   });
-  const { runId } = await prepare({ stage: "begin", meta, pageCount: 1 });
+  const { runId } = await prepare({ stage: "begin", meta, pageCount: 2 });
   await prepare({
     stage: "page",
     runId,
     index: 0,
     kind: "operations",
     rows: [bucket(100, 2, 6, 2, 4), bucket(101, 4, 24, 3, 9)],
+  });
+  const fluid = (id, category, name, amount, unit, extra = {}) => ({
+    id,
+    category,
+    name,
+    amount,
+    unit,
+    time: "2025-09-02T12:00:00Z",
+    at: Date.parse("2025-09-02T12:00:00Z"),
+    mdM: 120,
+    event: "",
+    tank: null,
+    fromTank: null,
+    toTank: null,
+    values: [],
+    file: "synthetic.xml",
+    location: id,
+    note: "",
+    uncertain: false,
+    ...extra,
+  });
+  await prepare({
+    stage: "page",
+    runId,
+    index: 1,
+    kind: "fluids",
+    rows: [
+      fluid("pvt1", "tank", "Combined PVT", 40, "m³", {
+        tank: "Combined PVT",
+        event: "volume",
+      }),
+      fluid("pvt2", "tank", "Combined PVT", 38, "m³", {
+        tank: "Combined PVT",
+        event: "volume",
+        time: "2025-09-02T14:00:00Z",
+        at: Date.parse("2025-09-02T14:00:00Z"),
+      }),
+      fluid("transfer", "tank", "Reported transfer", 7, "m³", {
+        event: "transfer",
+        fromTank: "ACTIVE",
+        toTank: "FLOCK TANK",
+        time: "2025-09-02T13:00:00Z",
+        at: Date.parse("2025-09-02T13:00:00Z"),
+        note: "Transferred 7 m³ from active tanks to flock tank.",
+      }),
+      fluid("clay1", "chemical", "CLAY", 2, "SX"),
+      fluid("clay2", "chemical", "CLAY", 25, "kg"),
+      fluid("mud", "sample", "SHAKERS", null, null, {
+        values: [
+          { key: "density", label: "Density", value: 1030, unit: "kg/m³" },
+          {
+            key: "filtration",
+            label: "Filtration / water loss",
+            value: 12,
+            unit: "mL",
+          },
+        ],
+      }),
+    ],
   });
   await prepare({ stage: "finish", runId });
   let total = 0;
@@ -92,18 +150,35 @@ try {
     );
     return result.message;
   };
-  const first = await ask(
-    "From Pason, what are average and maximum torque between MD 100 and 102 metres?",
+  if (!process.argv.includes("--fluids-only")) {
+    const first = await ask(
+      "From Pason, what are average and maximum torque between MD 100 and 102 metres?",
+    );
+    assert.match(first.answer, /5/);
+    assert.match(first.answer, /9/);
+    assert.ok(first.evidence.some((e) => e.source === "Pason extraction"));
+    const second = await ask(
+      "What exact time did that maximum happen, and on which leg?",
+    );
+    assert.match(
+      second.answer,
+      /unknown|cannot|can't|not available|does not|doesn't|not.*(record|contain|retain)|no exact/i,
+    );
+  }
+  const fluids = await ask(
+    "From the Pason fluid records, how much CLAY was used and what are the mud density and filtration readings?",
   );
-  assert.match(first.answer, /5/);
-  assert.match(first.answer, /9/);
-  assert.ok(first.evidence.some((e) => e.source === "Pason extraction"));
-  const second = await ask(
-    "What exact time did that maximum happen, and on which leg?",
+  assert.match(fluids.answer, /25/);
+  assert.match(fluids.answer, /2/);
+  assert.match(fluids.answer, /1,?030/);
+  assert.match(fluids.answer, /12/);
+  assert.ok(fluids.evidence.length);
+  const tanks = await ask(
+    "From the Pason tank records, what is each individual tank's volume and how much fluid was lost downhole?",
   );
   assert.match(
-    second.answer,
-    /cannot|can't|not available|does not|doesn't|not.*(record|contain|retain)|no exact/i,
+    tanks.answer,
+    /unknown|cannot|can't|not.*(determin|report|available|record)|does not|doesn't|no.*(individual|confirmed|documented)/i,
   );
   const dataset = emptyDataset();
   dataset.records = [

@@ -230,6 +230,63 @@ test(
         ).available,
         false,
       );
+      const upgradeMeta = { ...meta, schema: 2 };
+      const upgrade = await call(
+        { stage: "begin", meta: upgradeMeta, pageCount: 1 },
+        other,
+      );
+      assert.equal(
+        (
+          await createPasonReader(well, attachment)("pason_structure", {
+            kind: "overview",
+          })
+        ).statistics.torque.average,
+        3,
+      );
+      await call({ stage: "cancel", runId: upgrade.runId }, other);
+      assert.equal(
+        (
+          await createPasonReader(well, attachment)("pason_structure", {
+            kind: "overview",
+          })
+        ).statistics.torque.average,
+        3,
+      );
+      const next = await call({
+        stage: "begin",
+        meta: upgradeMeta,
+        pageCount: 1,
+      });
+      await call({
+        stage: "page",
+        runId: next.runId,
+        index: 0,
+        kind: "operations",
+        rows,
+      });
+      await call({ stage: "finish", runId: next.runId });
+      const promoted = (await well.get()).data().pason;
+      assert.equal(promoted.analysis.schema, 2);
+      assert.equal(
+        (
+          await createPasonReader(well, promoted)("pason_fluids", {
+            category: null,
+            mode: "summary",
+          })
+        ).counts.constructor,
+        Object,
+      );
+      await assert.rejects(
+        () =>
+          call({
+            stage: "page",
+            runId: upgrade.runId,
+            index: 0,
+            kind: "operations",
+            rows,
+          }),
+        /expired/,
+      );
       await well.update({
         pason: { id: randomUUID(), originalName: "replacement.zip" },
       });

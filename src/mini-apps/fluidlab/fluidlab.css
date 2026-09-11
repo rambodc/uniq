@@ -1347,3 +1347,129 @@
     font-size: 9px;
   }
 }
+
+.fl-drilling-fluids > .fl-muted {
+  overflow-wrap: anywhere;
+}
+.fl-fluid-categories {
+  display: flex;
+  gap: 6px;
+  margin: 20px 0 16px;
+}
+.fl-fluid-categories button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  min-height: 65px;
+  padding: 10px 5px;
+  font-size: 12px;
+}
+.fl-fluid-categories [aria-current="page"] {
+  background: #234b44;
+  border-color: #6acdb8;
+  color: #9bf0da;
+}
+.fl-fluid-dates {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+  align-items: end;
+}
+.fl-fluid-dates label {
+  display: grid;
+  gap: 5px;
+  flex: 1;
+  min-width: 145px;
+  font-size: 12px;
+  color: #afc8cd;
+}
+.fl-fluid-dates input,
+.fl-fluid-dates select {
+  width: 100%;
+  min-width: 0;
+}
+.fl-fluid-hero,
+.fl-fluid-metrics article {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  background: #16363a;
+  border: 1px solid #355c60;
+  border-radius: 14px;
+  margin: 14px 0;
+}
+.fl-fluid-hero > strong {
+  font-size: 36px;
+  color: #8df0d3;
+  overflow-wrap: anywhere;
+}
+.fl-fluid-hero > strong span,
+.fl-fluid-metrics strong span {
+  font-size: 14px;
+}
+.fl-fluid-hero small,
+.fl-fluid-metrics small {
+  color: #adcad0;
+}
+.fl-fluid-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.fl-fluid-metrics article {
+  margin: 0;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.fl-fluid-metrics strong {
+  font-size: 25px;
+  color: #8df0d3;
+}
+.fl-fluid-record {
+  display: grid;
+  gap: 7px;
+  padding: 14px 0;
+  border-bottom: 1px solid #2b444b;
+  overflow-wrap: anywhere;
+}
+.fl-fluid-record > small {
+  color: #9abac1;
+}
+.fl-fluid-evidence {
+  font-size: 12px;
+  color: #9abac1;
+}
+.fl-fluid-product {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.fl-fluid-product-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.fl-fluid-product-list button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+}
+.fl-fluid-product-list button span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.fl-fluid-product-list button b {
+  color: #8df0d3;
+}
+.fl-drilling-fluids .fl-card > summary {
+  cursor: pointer;
+  padding: 5px 0;
+}
+
+.fl-fluid-dates input[type="date"] {
+  color-scheme: dark;
+}

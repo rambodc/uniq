@@ -140,3 +140,126 @@ describe("operational CSV", () => {
     ).toThrow(/supported operational/);
   });
 });
+
+import {
+  parseFluidXml,
+  FluidCsvCollector,
+  finalizeFluids,
+} from "./drilling-fluids";
+describe("reported drilling fluids", () => {
+  const sample =
+    "<MudSample><Time>01:00:00-06:00</Time><Density>1030</Density><FunnelViscosity>34</FunnelViscosity><FluidPh>7</FluidPh><WaterLoss>12</WaterLoss><PVT>40</PVT><Depth>120</Depth><Location>SHAKERS</Location></MudSample>";
+  const body = `<ETS xmlns="http://www.caodc.ca/ETS/v3"><DayTour><Tours><Tour><StartTime>2025-09-02T20:00:00-06:00</StartTime><EndTime>2025-09-03T08:00:00-06:00</EndTime><MudRecord><MudSamples>${sample}${sample}</MudSamples><MudMaterials><MudMaterial><Product>CLAY</Product><Amount>5</Amount><Unit>SX</Unit></MudMaterial><MudMaterial><Product>CLAY</Product><Amount>5</Amount><Unit>SX</Unit></MudMaterial><MudMaterial><Product>CLAY</Product><Amount>2</Amount><Unit>kg</Unit></MudMaterial></MudMaterials></MudRecord><SolidsControls><SolidsControl><EquipmentName>CENTRIFUGE 1</EquipmentName><HoursRun>8</HoursRun><IntakeDensity>1030</IntakeDensity></SolidsControl></SolidsControls></Tour></Tours></DayTour></ETS>`;
+  it("uses tour context across midnight and deduplicates samples/chemical snapshots without conflating units", () => {
+    const result = parseFluidXml(
+      new DOMParser().parseFromString(
+        body.replace(
+          "</Tours>",
+          body.match(/<Tour>[\s\S]*?<\/Tour>/)![0] + "</Tours>",
+        ),
+        "application/xml",
+      ),
+    );
+    const samples = result.records.filter((r) => r.category === "sample");
+    expect(samples).toHaveLength(1);
+    expect(samples[0].time).toBe("2025-09-03T01:00:00-06:00");
+    expect(samples[0].mdM).toBe(120);
+    expect(samples[0].values.find((v) => v.key === "filtration")?.value).toBe(
+      12,
+    );
+    expect(result.records.filter((r) => r.event.includes("loss"))).toHaveLength(
+      0,
+    );
+    expect(
+      result.records.filter((r) => r.category === "chemical"),
+    ).toHaveLength(3);
+    expect(
+      result.records.find((r) => r.category === "solid")?.values[0].value,
+    ).toBe(8);
+    expect(result.records.find((r) => r.tank === "Combined PVT")?.amount).toBe(
+      40,
+    );
+  });
+  it("retains tank notes without depth, named volumes and level units without converting levels to volumes", () => {
+    const parser = new FluidCsvCollector();
+    parser.header(["Tank 1 Volume (m3)", "Tank 2 Level (cm)", "Memos"]);
+    parser.consume(
+      ["10", "23", "Tank 1 included,Tank 2 excluded"],
+      2,
+      "2025/09/02 12:00:00",
+      null,
+    );
+    parser.consume(
+      ["", "", "TRANSFER 7m3 FROM ACTIVE TO FLOCK TANK"],
+      3,
+      "2025/09/02 12:01:00",
+      null,
+    );
+    parser.consume(["-999.25", "", "lost 2m3"], 4, "2025/09/02 12:02:00", null);
+    const result = parser.finish("-06:00");
+    expect(
+      result.records.find((r) => r.tank === "Tank 1" && r.event === "volume")
+        ?.amount,
+    ).toBe(10);
+    expect(result.records.find((r) => r.tank === "Tank 2")?.event).toBe(
+      "level",
+    );
+    expect(
+      result.records.filter((r) => ["included", "excluded"].includes(r.event)),
+    ).toHaveLength(2);
+    expect(result.records.find((r) => r.event === "transfer")).toMatchObject({
+      amount: 7,
+      unit: "m³",
+      mdM: null,
+      fromTank: "ACTIVE",
+      toTank: "FLOCK TANK",
+    });
+    expect(
+      result.records.find((r) => r.event === "unspecified loss")?.uncertain,
+    ).toBe(true);
+  });
+  it("records conflicts and missing timestamps for review instead of choosing values", () => {
+    const result = parseFluidXml(
+      new DOMParser().parseFromString(
+        body
+          .replace(
+            sample + sample,
+            sample + sample.replace("<PVT>40", "<PVT>44"),
+          )
+          .replace("01:00:00-06:00", "15:00:00-06:00"),
+        "application/xml",
+      ),
+    );
+    expect(result.warnings.some((w) => w.includes("uncertain dates"))).toBe(
+      true,
+    );
+    const original = result.records.find(
+      (r) => r.tank === "Combined PVT" && r.at !== null,
+    )!;
+    const conflict = finalizeFluids([
+      original,
+      { ...original, id: "other", amount: 100 },
+    ]);
+    expect(conflict.records.every((r) => r.uncertain)).toBe(true);
+    expect(conflict.warnings.some((w) => w.includes("conflicting"))).toBe(true);
+  });
+});
+it("keeps tank-only CSV readings and explicit gaps even without drilling depths", () => {
+  const parsed = parseOperationalCsv(
+    "YYYY/MM/DD,HH:MM:SS,Tank 1 Volume (m3),Memos\n2025/09/02,12:00:00,10,Tank 1 included\n2025/09/02,12:01:00,-999.25,\n2025/09/02,12:02:00,9,lost 2",
+  );
+  expect(parsed.metadata.validObservations).toBe(0);
+  const collector = new FluidCsvCollector();
+  collector.header(["Tank 1 Volume (m3)", "Memos"]);
+  collector.consume(["10", ""], 2, "2025/09/02 12:00:00", null);
+  collector.consume(["", "lost 2"], 3, "2025/09/02 12:01:00", null);
+  const records = collector.finish("-06:00").records;
+  expect(
+    records.find((r) => r.event === "volume" && r.amount === null),
+  ).toBeTruthy();
+  expect(records.find((r) => r.event === "unspecified loss")).toMatchObject({
+    amount: 2,
+    unit: null,
+    uncertain: true,
+  });
+});

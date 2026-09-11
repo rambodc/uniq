@@ -179,7 +179,7 @@ export function usePason(
         if (!current(w)) return;
         cache.current = saved.id;
         setModel(parsed);
-        if (saved.analysis?.schema !== 1)
+        if (saved.analysis?.schema !== 2)
           await prepareData(w, saved.id, parsed);
         if (!current(w)) return;
         if (selectedView.current === "pason") setView("pason");

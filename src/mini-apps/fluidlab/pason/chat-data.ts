@@ -23,6 +23,7 @@ export function pasonChatPages(model: WellModel) {
   add("casings", model.casings);
   add("bits", model.bitRuns);
   add("operations", model.operationalBuckets);
+  add("fluids", model.drillingFluids?.records || []);
   if (pages.length > 1000)
     throw new Error(
       "This extraction exceeds the chat preparation limit. The Pason viewer remains available.",
@@ -46,6 +47,8 @@ export async function savePasonChatData(
       stage: "begin",
       pageCount: pages.length,
       meta: {
+        schema: 2,
+        warnings: model.drillingFluids?.warnings || [],
         sourceUnit: model.sourceUnit,
         depthResolutionM: model.operationalImport.depthResolutionM,
         sourceRows: model.operationalImport.sourceRows,

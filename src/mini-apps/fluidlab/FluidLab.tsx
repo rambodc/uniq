@@ -1,3 +1,4 @@
+import DrillingFluids, { initialFluidsView } from "./DrillingFluids";
 import Confirmation from "./Confirmation";
 import { useAutoRotation } from "./AutoRotation";
 import SceneViewport from "./SceneViewport";
@@ -81,7 +82,8 @@ const message = (e: unknown) =>
 type Detail =
   | { kind: "record"; record: DataRecord }
   | { kind: "sources"; sources: Source[] }
-  | { kind: "pason" };
+  | { kind: "pason" }
+  | { kind: "fluids" };
 const tabs = [
   ["wells", "All wells", Library],
   ["well", "Well", Layers],
@@ -97,6 +99,8 @@ export default function FluidLab({
   navigate: (url: string) => void;
 }) {
   const rotation = useAutoRotation();
+  const [fluidsView, setFluidsView] = useState(initialFluidsView);
+  const fluidsTrigger = useRef<HTMLButtonElement | null>(null);
   const [confirmation, setConfirmation] = useState<
     "exit" | "remove" | File | null
   >(null);
@@ -147,6 +151,10 @@ export default function FluidLab({
     data && data.well.id === wellId ? data.well.pason : undefined,
     refresh,
   );
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset the attachment-specific sidebar filters when its identity changes.
+    setFluidsView(initialFluidsView);
+  }, [wellId, data?.well.pason?.id]);
   const survey = useSurveyNavigation(
     pason.model,
     pason.view === "pason" && !pason.progress && !busy && !loading,
@@ -326,6 +334,10 @@ export default function FluidLab({
     });
   };
   const back = () => {
+    if (details.at(-1)?.kind === "fluids")
+      requestAnimationFrame(() =>
+        fluidsTrigger.current?.focus({ preventScroll: true }),
+      );
     setDetails((prev) => prev.slice(0, -1));
     if (details.length === 1)
       requestAnimationFrame(() =>
@@ -353,9 +365,11 @@ export default function FluidLab({
     setCreating(false);
     navigate(`/apps/fluidlab/wells/${id}`);
   };
+  const pasonWarnings =
+    pason.model?.warnings ?? data?.well.pason?.warnings ?? [];
   const problemCount =
-    data?.issues.filter((i) => !i.status || i.status === "unresolved").length ||
-    0;
+    (data?.issues.filter((i) => !i.status || i.status === "unresolved")
+      .length || 0) + pasonWarnings.length;
   const contentReady = data && data.well.id === wellId;
   return (
     <div className="fluidlab-app">
@@ -981,13 +995,12 @@ export default function FluidLab({
                           openSources={(ids) => void openSources(ids)}
                         />
                       )}
-                      {!!data?.well.pason?.warnings.length && (
+                      {!!pasonWarnings.length && (
                         <details className="fl-card">
                           <summary>
-                            Pason attachment · {data.well.pason.warnings.length}{" "}
-                            notices
+                            Pason attachment · {pasonWarnings.length} notices
                           </summary>
-                          {data.well.pason.warnings.map((w, i) => (
+                          {pasonWarnings.map((w, i) => (
                             <p key={i}>{w}</p>
                           ))}
                         </details>
@@ -1107,7 +1120,7 @@ export default function FluidLab({
                 {contentReady ? (
                   <>
                     {data.well.pason &&
-                      data.well.pason.analysis?.schema !== 1 && (
+                      data.well.pason.analysis?.schema !== 2 && (
                         <div className="fl-card">
                           <p>
                             Make this well’s extracted Pason information
@@ -1186,6 +1199,25 @@ export default function FluidLab({
                       <p className="fl-muted">{data?.well.name}</p>
                       {pason.model ? (
                         <>
+                          <button
+                            className="fl-pason-tools-entry"
+                            ref={fluidsTrigger}
+                            onClick={() =>
+                              setDetails((prev) => [
+                                ...prev,
+                                { kind: "fluids" },
+                              ])
+                            }
+                          >
+                            <Droplets aria-hidden="true" />
+                            <span>
+                              <strong>Drilling Fluids</strong>
+                              <small>
+                                Tanks, mud properties and chemical usage
+                              </small>
+                            </span>
+                            <ChevronRight aria-hidden="true" />
+                          </button>
                           {pason.view === "pason" ? (
                             <div data-camera-tools>
                               <SurveyControls navigation={survey} />
@@ -1233,6 +1265,16 @@ export default function FluidLab({
                         </button>
                       )}
                     </>
+                  ) : detail.kind === "fluids" ? (
+                    pason.model ? (
+                      <DrillingFluids
+                        model={pason.model}
+                        state={fluidsView}
+                        onChange={setFluidsView}
+                      />
+                    ) : (
+                      <p>Open Pason to load drilling-fluid records.</p>
+                    )
                   ) : detail.kind === "sources" ? (
                     <>
                       <h1>Supporting evidence</h1>

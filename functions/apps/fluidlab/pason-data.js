@@ -1,3 +1,4 @@
+import { queryFluidRecords } from "./fluid-records.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -48,6 +49,34 @@ const bit = z.object({
   depthOutM: depth.nullable(),
 });
 const schemas = {
+  fluids: z.object({
+    id: z.string().max(1500),
+    category: z.enum(["sample", "chemical", "tank", "solid", "pump", "note"]),
+    time: text.nullable(),
+    at: number.nullable(),
+    mdM: depth.nullable(),
+    name: text,
+    event: text,
+    tank: text.nullable(),
+    fromTank: text.nullable(),
+    toTank: text.nullable(),
+    amount: number.nullable(),
+    unit: z.string().max(60).nullable(),
+    values: z
+      .array(
+        z.object({
+          key: text,
+          label: text,
+          value: number.nullable(),
+          unit: z.string().max(60).nullable(),
+        }),
+      )
+      .max(12),
+    file: text,
+    location: text,
+    note: text,
+    uncertain: z.boolean(),
+  }),
   legs: z.object({
     id: text,
     name: text,
@@ -100,6 +129,8 @@ const schemas = {
 };
 const metaSchema = z
   .object({
+    schema: z.union([z.literal(1), z.literal(2)]).default(1),
+    warnings: z.array(text).max(80).default([]),
     sourceUnit: z.enum(["metric", "imperial"]),
     depthResolutionM: z.union([z.literal(0.25), z.literal(0.5), z.literal(1)]),
     sourceRows: z.number().int().nonnegative().max(5000000),
@@ -198,8 +229,9 @@ export const saveFluidPasonAnalysis = onCall(
         const w = await tx.get(well),
           old = await tx.get(root);
         checkWell(w, attachmentId);
-        if (w.data().pason.analysis?.schema === 1) return { ready: true };
-        const pending = old.data();
+        if ((w.data().pason.analysis?.schema || 0) >= meta.schema)
+          return { ready: true };
+        const pending = old.data()?.pending;
         if (
           pending?.status === "writing" &&
           pending.expiresAt > Date.now() &&
@@ -209,7 +241,19 @@ export const saveFluidPasonAnalysis = onCall(
             "resource-exhausted",
             "Another user is preparing Pason chat. Try again shortly.",
           );
-        tx.set(root, {
+        tx.set(
+          root,
+          {
+            pending: {
+              runId,
+              owner: uid,
+              status: "writing",
+              expiresAt: Date.now() + 15 * 60000,
+            },
+          },
+          { merge: true },
+        );
+        tx.set(root.collection("runs").doc(runId), {
           runId,
           owner: uid,
           status: "writing",
@@ -227,19 +271,27 @@ export const saveFluidPasonAnalysis = onCall(
       return { ready: !!result.ready, runId: result.runId || null };
     }
     const runId = validId(d.runId);
+    const run = root.collection("runs").doc(runId);
     if (d.stage === "cancel") {
       const remove = await db.runTransaction(async (tx) => {
         const w = await tx.get(well),
-          s = await tx.get(root);
+          s = await tx.get(run),
+          pointer = await tx.get(root);
         checkWell(w, attachmentId);
         const state = s.data();
         if (
+          pointer.data()?.pending?.runId !== runId ||
           state?.runId !== runId ||
           state.owner !== uid ||
           state.status !== "writing"
         )
           return false;
-        tx.update(root, { status: "cancelled" });
+        tx.update(run, { status: "cancelled" });
+        tx.set(
+          root,
+          { pending: { runId, status: "cancelled" } },
+          { merge: true },
+        );
         return true;
       });
       if (remove) await db.recursiveDelete(root.collection("runs").doc(runId));
@@ -251,10 +303,12 @@ export const saveFluidPasonAnalysis = onCall(
         key = String(index).padStart(3, "0");
       return db.runTransaction(async (tx) => {
         const w = await tx.get(well),
-          s = await tx.get(root);
+          s = await tx.get(run),
+          pointer = await tx.get(root);
         checkWell(w, attachmentId);
         const state = s.data();
         if (
+          pointer.data()?.pending?.runId !== runId ||
           state?.runId !== runId ||
           state.owner !== uid ||
           state.status !== "writing" ||
@@ -279,7 +333,7 @@ export const saveFluidPasonAnalysis = onCall(
         );
         const info = pageInfo(d.kind, rows, state.meta.depthResolutionM);
         const { stats, ...manifest } = info;
-        tx.update(root, {
+        tx.update(run, {
           [`pages.${key}`]: manifest,
           summary: combine(state.summary || {}, stats),
           bytes,
@@ -291,11 +345,13 @@ export const saveFluidPasonAnalysis = onCall(
     if (d.stage === "finish") {
       return db.runTransaction(async (tx) => {
         const w = await tx.get(well),
-          s = await tx.get(root);
+          s = await tx.get(run),
+          pointer = await tx.get(root);
         checkWell(w, attachmentId);
         if (w.data().pason.analysis?.runId === runId) return { ready: true };
         const state = s.data();
         if (
+          pointer.data()?.pending?.runId !== runId ||
           state?.runId !== runId ||
           state.owner !== uid ||
           state.status !== "writing" ||
@@ -315,10 +371,19 @@ export const saveFluidPasonAnalysis = onCall(
             "Pason observation counts do not match.",
           );
         const summary = state.summary;
-        tx.update(root, { status: "ready", summary });
+        tx.update(run, { status: "ready", summary });
+        tx.set(root, { ...state, status: "ready", pending: null });
         tx.update(well, {
+          "pason.warnings": [
+            ...new Set([
+              ...(w.data().pason.warnings || []).filter(
+                (v) => !v.startsWith("Drilling fluids:"),
+              ),
+              ...state.meta.warnings,
+            ]),
+          ].slice(0, 100),
           "pason.analysis": {
-            schema: 1,
+            schema: state.meta.schema,
             runId,
             preparedBy: uid,
             preparedAt: new Date().toISOString(),
@@ -402,7 +467,7 @@ export function createPasonReader(well, attachment) {
   return async (name, args) => {
     if (!attachment)
       return { available: false, note: "This well has no Pason attachment." };
-    if (attachment.analysis?.schema !== 1)
+    if (![1, 2].includes(attachment.analysis?.schema))
       return {
         available: false,
         note: "Pason chat data has not been prepared. Use Prepare Pason for chat, or open the Pason view. No re-upload is needed.",
@@ -414,6 +479,41 @@ export function createPasonReader(well, attachment) {
         available: false,
         note: "Pason preparation changed. Refresh this well.",
       };
+    if (name === "pason_fluids") {
+      if (state.meta.schema !== 2)
+        return {
+          available: false,
+          note: "Open the Pason view to prepare drilling-fluid records. No re-upload needed.",
+        };
+      const entries = Object.entries(state.pages).filter(
+        ([, p]) => p.kind === "fluids",
+      );
+      if (entries.length > 100)
+        throw new Error("Fluid extraction exceeds retrieval limit.");
+      const records = [];
+      for (const [id] of entries) {
+        if (!cache.has(id) && cache.size >= 100)
+          throw new Error("Pason retrieval limit reached.");
+        const promise =
+          cache.get(id) ||
+          root
+            .collection("runs")
+            .doc(state.runId)
+            .collection("pages")
+            .doc(id)
+            .get();
+        cache.set(id, promise);
+        const page = await promise;
+        if (!page.exists)
+          throw new Error("Pason data changed. Refresh the well.");
+        records.push(...page.data().rows);
+      }
+      return {
+        file: attachment.originalName,
+        ...queryFluidRecords(records, args),
+        note: "Pason XML/CSV fluid records, separate from uploaded mud reports. PVT is combined reported volume unless a named tank is specified. Filtration/water loss is a mud test, not downhole loss. No tank-volume allocation or loss balance is inferred. Missing fields/units remain unknown; tour chemical timestamps are tour-end, not exact addition times.",
+      };
+    }
     const from = args.fromMdM ?? null,
       to = args.toMdM ?? null;
     for (const v of [from, to])

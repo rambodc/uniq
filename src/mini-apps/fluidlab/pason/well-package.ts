@@ -1,3 +1,10 @@
+import {
+  FluidCsvCollector,
+  parseFluidXml,
+  finalizeFluids,
+  fluidXmlOffset,
+  type DrillingFluids,
+} from "./drilling-fluids";
 import { strFromU8 } from "fflate";
 import {
   inspectZip,
@@ -91,6 +98,7 @@ export interface OperationalSummary {
   statistics: OperationalStatistic[];
 }
 export interface WellModel extends SurveyFile {
+  drillingFluids?: DrillingFluids;
   packageName: string;
   etsFileName: string;
   csvFileName: string;
@@ -122,6 +130,7 @@ export interface ParseWellPackageOptions {
 }
 
 const number = (value: string | null | undefined) => {
+  if (!value?.trim()) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -213,6 +222,7 @@ export const operationalResolution = (detail: OperationalDetail) =>
   detail === "detailed" ? 0.25 : detail === "balanced" ? 0.5 : 1;
 
 class OperationalCsvAggregator {
+  readonly fluids: FluidCsvCollector;
   private remainder = "";
   private headersParsed = false;
   private rowCount = 0;
@@ -233,7 +243,10 @@ class OperationalCsvAggregator {
   constructor(
     readonly resolutionM: number,
     readonly csvSizeBytes = 0,
-  ) {}
+    file = "Drilling CSV",
+  ) {
+    this.fluids = new FluidCsvCollector(file);
+  }
   push(chunk: Uint8Array, final = false) {
     this.remainder += this.decoder.decode(chunk, { stream: !final });
     if (this.remainder.length > 1_000_000 && !this.remainder.includes("\n"))
@@ -260,16 +273,17 @@ class OperationalCsvAggregator {
         names.findIndex((name) =>
           aliases.some((alias) => name === alias || name.endsWith(` ${alias}`)),
         );
+      this.fluids.header(headers);
       this.dateIndex = find("yyyy/mm/dd", "date");
       this.timeIndex = find("hh:mm:ss", "time");
       this.holeIndex = find("hole depth");
       this.bitIndex = find("bit depth");
-      if (this.holeIndex < 0 || this.bitIndex < 0)
+      if ((this.holeIndex < 0 || this.bitIndex < 0) && !this.fluids.supported)
         throw new WellPackageError(
           "The drilling CSV is missing Hole Depth or Bit Depth.",
         );
       const depthUnit =
-        `${headerUnit(headers[this.bitIndex])} ${headerUnit(headers[this.holeIndex])}`.toLowerCase();
+        `${headerUnit(headers[this.bitIndex] || "")} ${headerUnit(headers[this.holeIndex] || "")}`.toLowerCase();
       this.depthFactor = /\b(ft|feet|foot)\b/.test(depthUnit) ? 0.3048 : 1;
       this.mapped = channelDefinitions.flatMap((definition) => {
         const index = find(...definition.aliases);
@@ -277,7 +291,7 @@ class OperationalCsvAggregator {
           ? []
           : [{ ...definition, index, unit: headerUnit(headers[index]) }];
       });
-      if (!this.mapped.length)
+      if (!this.mapped.length && !this.fluids.supported)
         throw new WellPackageError(
           "The drilling CSV does not contain supported operational channels.",
         );
@@ -292,6 +306,14 @@ class OperationalCsvAggregator {
     const cells = csvCells(line),
       rawHole = usableOperationalNumber(cells[this.holeIndex]),
       rawBit = usableOperationalNumber(cells[this.bitIndex]);
+    this.fluids.consume(
+      cells,
+      this.rowCount + 1,
+      [cells[this.dateIndex] ?? "", cells[this.timeIndex] ?? ""]
+        .filter(Boolean)
+        .join(" "),
+      rawBit !== null && rawBit >= 0 ? rawBit * this.depthFactor : null,
+    );
     if (rawHole == null || rawBit == null || rawHole < 0 || rawBit < 0) return;
     const values: Partial<Record<OperationalChannelId, number>> = {};
     for (const channel of this.mapped) {
@@ -349,7 +371,7 @@ class OperationalCsvAggregator {
   finish() {
     if (!this.headersParsed)
       throw new WellPackageError("The drilling CSV does not contain a header.");
-    if (!this.validCount)
+    if (!this.validCount && !this.fluids.records.length)
       throw new WellPackageError(
         "The drilling CSV contains no usable operational samples.",
       );
@@ -460,6 +482,8 @@ export function parseEtsXml(xml: string) {
     });
   }
   return {
+    drillingFluids: parseFluidXml(document),
+    fluidTimeOffset: fluidXmlOffset(document),
     wellName: text(document.documentElement, "WellName"),
     uniqueWellId: text(document.documentElement, "UniqueWellId"),
     bitRuns,
@@ -620,6 +644,7 @@ async function extractSelected(
     parser = new OperationalCsvAggregator(
       operationalResolution(options.detail),
       manifest.csvSizeBytes,
+      manifest.csvFileName,
     );
   const names = [
     manifest.surveyFileName,
@@ -680,6 +705,7 @@ async function extractSelected(
     surveyText: join(manifest.surveyFileName),
     etsText: join(manifest.etsFileName),
     operations: parser.finish(),
+    fluidCsv: parser.fluids,
   };
 }
 
@@ -692,6 +718,15 @@ export async function parseWellPackage(
   const survey = parseWellSurvey(extracted.surveyText, manifest.surveyFileName),
     ets = parseEtsXml(extracted.etsText),
     operations = extracted.operations;
+  const csvFluids = extracted.fluidCsv.finish(ets.fluidTimeOffset);
+  for (const r of ets.drillingFluids.records) {
+    r.id = r.id.replace("ETS XML", manifest.etsFileName);
+    r.file = manifest.etsFileName;
+  }
+  const drillingFluids = finalizeFluids(
+    [...ets.drillingFluids.records, ...csvFluids.records],
+    [...ets.drillingFluids.warnings, ...csvFluids.warnings],
+  );
   if (!ets.bitRuns.length)
     throw new WellPackageError(
       "The ETS XML does not contain usable bit-size and depth records.",
@@ -731,10 +766,11 @@ export async function parseWellPackage(
     bitRuns: ets.bitRuns,
     holeSections: built.sections,
     casings: ets.casings,
+    drillingFluids,
     operationalChannels: operations.channels,
     operationalBuckets: operations.buckets,
     operationalImport: operations.metadata,
-    warnings,
+    warnings: [...warnings, ...drillingFluids.warnings],
   };
 }
 

@@ -20,21 +20,34 @@ export function Chart({
   points,
   kind = "line",
   depth = false,
+  time = false,
+  markers = [],
+  zeroBaseline = true,
 }: {
   title: string;
   unit: string;
   points: ChartPoint[];
   kind?: "line" | "bar";
   depth?: boolean;
+  time?: boolean;
+  zeroBaseline?: boolean;
+  markers?: { x: number; label: string; context: string }[];
 }) {
+  const [eventIndex, setEventIndex] = useState<number | null>(null);
   const id = useId(),
     [selected, setSelected] = useState<number | null>(null);
   const finite = points.filter(
     (p) => p.value !== null && Number.isFinite(p.value),
   );
   if (!finite.length) return null;
-  const min = Math.min(0, ...finite.map((p) => p.value!)),
-    max = Math.max(0, ...finite.map((p) => p.value!)),
+  const min = Math.min(
+      ...(zeroBaseline ? [0] : []),
+      ...finite.map((p) => p.value!),
+    ),
+    max = Math.max(
+      ...(zeroBaseline ? [0] : []),
+      ...finite.map((p) => p.value!),
+    ),
     range = max - min || 1;
   const xs = points
       .filter((p) => p.x !== null && p.x !== undefined)
@@ -42,14 +55,14 @@ export function Chart({
     xmin = Math.min(...xs),
     xmax = Math.max(...xs);
   const x = (p: ChartPoint, i: number) =>
-    depth
+    depth || time
       ? 50 + ((p.x! - xmin) / (xmax - xmin || 1)) * 400
       : 50 + ((i + 0.5) * 400) / points.length;
   const y = (v: number) => 160 - ((v - min) / range) * 130;
   let path = "",
     connected = false;
   points.forEach((p, i) => {
-    if (p.value === null || (depth && p.x == null)) {
+    if (p.value === null || ((depth || time) && p.x == null)) {
       connected = false;
       return;
     }
@@ -60,6 +73,14 @@ export function Chart({
     n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   return (
     <figure className="fl-chart" aria-labelledby={id}>
+      {eventIndex !== null && (
+        <p role="status">
+          {
+            markers.filter((m) => m.x >= xmin && m.x <= xmax)[eventIndex]
+              ?.context
+          }
+        </p>
+      )}
       <figcaption id={id}>
         {title}
         <small>{unit}</small>
@@ -80,7 +101,7 @@ export function Chart({
           <path d={path} fill="none" className="fl-chart-line" />
         )}
         {points.map((p, i) =>
-          p.value === null || (depth && p.x == null) ? null : (
+          p.value === null || ((depth || time) && p.x == null) ? null : (
             <g
               key={i}
               role="button"
@@ -120,6 +141,40 @@ export function Chart({
             </g>
           ),
         )}
+        {time &&
+          markers
+            .filter((m) => m.x >= xmin && m.x <= xmax)
+            .map((m, i) => (
+              <g
+                key={i}
+                role="button"
+                tabIndex={0}
+                aria-label={`${m.label}: ${m.context}`}
+                onClick={() => setEventIndex(i)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setEventIndex(i);
+                  }
+                }}
+              >
+                <title>{m.context}</title>
+                <line
+                  x1={x({ x: m.x, label: "", value: 0 }, 0)}
+                  x2={x({ x: m.x, label: "", value: 0 }, 0)}
+                  y1="30"
+                  y2="160"
+                  stroke="#d6ab66"
+                  strokeDasharray="3 4"
+                />
+                <circle
+                  cx={x({ x: m.x, label: "", value: 0 }, 0)}
+                  cy="25"
+                  r="5"
+                  fill="#d6ab66"
+                />
+              </g>
+            ))}
         <text x="50" y="185">
           {depth ? `${fmt(xmin)} m MD` : points[0]?.label.slice(0, 25)}
         </text>
