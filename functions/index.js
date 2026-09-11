@@ -24,3 +24,5 @@ export { generateFluidGeometry, analyzeFluidLosses } from "./apps/fluidlab/servi
 export { beginFluidPason, completeFluidPason, getFluidPason, cancelFluidPason, removeFluidPason } from "./apps/fluidlab/pason.js";
 
 export { saveFluidPasonAnalysis } from "./apps/fluidlab/pason-data.js";
+
+export { resolveLsdLocation, listLsdLocations, updateLsdLocation, removeLsdLocation } from "./apps/lsd-finder/service.js";

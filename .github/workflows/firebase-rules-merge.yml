@@ -12,6 +12,22 @@ jobs:
     permissions: { id-token: write, contents: read }
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Check for rule or storage configuration changes
+        id: changes
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          python3 - <<'PYCODE'
+          import os, subprocess
+          before = os.environ.get("BEFORE_SHA", "")
+          changed = True
+          if before and set(before) != {"0"}:
+              paths = set(subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines())
+              changed = bool(paths & {"firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "firebase.json", ".firebaserc"})
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("deploy=" + str(changed).lower() + "\n")
+          PYCODE
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - uses: actions/setup-java@v4
@@ -26,6 +42,7 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Configure Fluid Labs Storage access
+        if: steps.changes.outputs.deploy == 'true'
         run: python3 scripts/configure-fluid-storage.py
       - run: npm ci
       - run: npm ci --prefix functions
@@ -34,7 +51,8 @@ jobs:
         env:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: firebase emulators:exec --only firestore,storage "node --test tests/rules.test.mjs && npm test --prefix functions"
-      - run: firebase deploy --only firestore:rules,firestore:indexes,storage --project uniqenergy-de71c --non-interactive --message "CI rules deploy"
+      - if: steps.changes.outputs.deploy == 'true'
+        run: firebase deploy --only firestore:rules,firestore:indexes,storage --project uniqenergy-de71c --non-interactive --message "CI rules deploy"
       - name: Verify Fluid Labs indexes and real queries
         env:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'

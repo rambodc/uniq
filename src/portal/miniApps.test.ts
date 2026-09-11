@@ -18,3 +18,10 @@ describe("FluidLab access", () => {
     expect(visibleMiniApps(profile).some((app) => app.id === "fluidlab")).toBe(allowed);
   });
 });
+
+it("LSD Finder uses separate assigned access", () => {
+ expect(canAccessMiniApp(user,"lsd-finder")).toBe(false);
+ expect(canAccessMiniApp({...user,enabledMiniApps:["lsd-finder"]},"lsd-finder")).toBe(true);
+ expect(canAccessMiniApp({...user,role:"admin"},"lsd-finder")).toBe(true);
+ expect(canAccessMiniApp({...user,role:"admin",status:"disabled"},"lsd-finder")).toBe(false);
+});

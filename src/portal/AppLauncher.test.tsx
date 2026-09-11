@@ -13,9 +13,11 @@ it("shows image launchers only for assigned and always-visible apps", () => {
   expect(html).toContain('href="/apps/fluidlab"'); expect(html).toContain('/portal-art/fluidlab.webp');
   expect(html).toContain('href="/apps/account"'); expect(html).not.toContain('href="/apps/user-access"'); expect(html).not.toContain('href="/apps/contact-form"');
 });
-it("shows all four app launchers for administrators", () => {
+it("shows all app launchers for administrators", () => {
   session.user = { ...profile, role: "admin" };
   const html = render();
+  expect(html).toContain('href="/apps/lsd-finder"');
+  expect(html).toContain("LSD Finder");
   for (const app of ["fluidlab", "contact-form", "user-access", "account"]) {
     expect(html).toContain(`href="/apps/${app}"`); expect(html).toContain(`/portal-art/${app}.webp`);
   }
