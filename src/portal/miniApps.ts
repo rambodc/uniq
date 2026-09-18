@@ -1,10 +1,11 @@
-import { MapPin, Box, MessagesSquare, Shield, UserRound, type LucideIcon } from "lucide-react";
+import { FileText, MapPin, Box, MessagesSquare, Shield, UserRound, type LucideIcon } from "lucide-react";
 import type { ManagedMiniAppId, PortalUser } from "../core/types";
 
 export type MiniAppId = ManagedMiniAppId | "user-access" | "account";
 export interface MiniAppDefinition { id: MiniAppId; label: string; description: string; path: string; icon: LucideIcon; adminOnly?: boolean; alwaysVisible?: boolean }
 
 export const MINI_APPS: MiniAppDefinition[] = [
+  { id: "invoice-qb", label: "Invoice QB", description: "Review invoice emails and select documents for your shared bill queue.", path: "/apps/invoice-qb", icon: FileText },
   { id: "lsd-finder", label: "LSD Finder", description: "Find Alberta land locations and keep your own map of saved pins.", path: "/apps/lsd-finder", icon: MapPin },
   { id: "fluidlab", label: "FluidLab", description: "Explore your well in 3D, with costs, mud reports, and AI answers alongside.", path: "/apps/fluidlab", icon: Box },
   { id: "contact-form", label: "Contact Form", description: "Review and archive inquiries received from the public contact page.", path: "/apps/contact-form", icon: MessagesSquare },

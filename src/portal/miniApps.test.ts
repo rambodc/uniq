@@ -25,3 +25,10 @@ it("LSD Finder uses separate assigned access", () => {
  expect(canAccessMiniApp({...user,role:"admin"},"lsd-finder")).toBe(true);
  expect(canAccessMiniApp({...user,role:"admin",status:"disabled"},"lsd-finder")).toBe(false);
 });
+
+it("Invoice QB is assigned independently and disabled accounts cannot enter", () => {
+  expect(canAccessMiniApp(user, "invoice-qb")).toBe(false);
+  expect(canAccessMiniApp({ ...user, enabledMiniApps: ["invoice-qb"] }, "invoice-qb")).toBe(true);
+  expect(canAccessMiniApp({ ...user, role: "admin" }, "invoice-qb")).toBe(true);
+  expect(canAccessMiniApp({ ...user, role: "admin", status: "disabled" }, "invoice-qb")).toBe(false);
+});

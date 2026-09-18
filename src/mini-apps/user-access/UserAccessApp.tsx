@@ -16,6 +16,7 @@ import type {
 } from "../../core/types";
 
 const grants: { id: ManagedMiniAppId; label: string }[] = [
+  { id: "invoice-qb", label: "Invoice QB" },
   { id: "fluidlab", label: "FluidLab" },
   { id: "lsd-finder", label: "LSD Finder" },
   { id: "contact-form", label: "Contact Form" },

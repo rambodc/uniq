@@ -30,3 +30,5 @@ export { resolveLsdLocation, listLsdLocations, updateLsdLocation, removeLsdLocat
 export { prepareFluidWellDetails } from "./apps/fluidlab/service.js";
 
 export { newFluidChatSession } from "./apps/fluidlab/service.js";
+
+export { invoiceQbConnection, invoiceQbConnect, invoiceQbOauthCallback, invoiceQbDisconnect, invoiceQbLabels, invoiceQbMessages, invoiceQbMessage, invoiceQbDownload, invoiceQbAdd, invoiceQbQueue, invoiceQbQueueBody, invoiceQbUpdate, invoiceQbRemove } from "./apps/invoice-qb/service.js";

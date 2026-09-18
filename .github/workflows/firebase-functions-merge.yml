@@ -2,7 +2,7 @@ name: "Production: Firebase Functions"
 on:
   push:
     branches: [production]
-    paths: ["functions/**", "scripts/configure-fluidlab-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
+    paths: ["functions/**", "scripts/configure-fluidlab-cloud.py", "scripts/configure-invoice-qb-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
   workflow_dispatch:
 concurrency: { group: functions-production, cancel-in-progress: false }
 jobs:
@@ -26,6 +26,8 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
       - name: Configure FluidLab APIs and secret access
         run: python3 scripts/configure-fluidlab-cloud.py
+      - name: Configure Invoice QB Gmail access
+        run: python3 scripts/configure-invoice-qb-cloud.py
       - run: npm ci --prefix functions
       - run: find functions -path 'functions/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
       - run: npm run lint --prefix functions
@@ -40,8 +42,10 @@ jobs:
           import os, re, subprocess
           before = os.environ.get("BEFORE_SHA", "")
           target = "functions"
+          invoice_tests = True
           if before and set(before) != {"0"}:
               paths = subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines()
+              invoice_tests = any(p.startswith(("functions/apps/invoice-qb/", "functions/test/invoice-qb")) for p in paths)
               runtime = [p for p in paths if p.startswith("functions/") and not p.startswith(("functions/test/", "functions/scripts/"))]
               with open("functions/index.js") as source:
                   current = source.read()
@@ -64,9 +68,28 @@ jobs:
                   target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
                   if not target:
                       raise SystemExit("No location app exports found")
+              invoice_paths = {"functions/index.js", "functions/core/config.js"}
+              if runtime and all(p.startswith("functions/apps/invoice-qb/") or p in invoice_paths for p in runtime):
+                  invoice_exports = re.findall(r'export \{([^}]+)\} from "\./apps/invoice-qb/[^"\n]+\.js";?', current)
+                  names = [name.strip() for group in invoice_exports for name in group.split(",")]
+                  if "functions/core/config.js" in runtime:
+                      enterprise_exports = re.findall(r'export \{([^}]+)\} from "\./apps/(?:account|user-access)/[^"\n]+\.js";?', current)
+                      names += [name.strip() for group in enterprise_exports for name in group.split(",")]
+                  target = ",".join("functions:" + name for name in names)
+                  if not target:
+                      raise SystemExit("No Invoice QB exports found")
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("target=" + target + "\n")
+              output.write("invoice_tests=" + str(invoice_tests).lower() + "\n")
           PYCODE
+      - uses: actions/setup-java@v4
+        if: steps.affected.outputs.invoice_tests == 'true'
+        with: { distribution: temurin, java-version: 21 }
+      - name: Test Invoice QB with isolated emulators
+        if: steps.affected.outputs.invoice_tests == 'true'
+        run: >-
+          firebase emulators:exec --project demo-invoice-qb --only firestore,storage
+          'FIREBASE_CONFIG='\''{"projectId":"demo-invoice-qb","storageBucket":"demo-invoice-qb.appspot.com"}'\'' node --test functions/test/invoice-qb.integration.test.js'
       - if: ${{ steps.affected.outputs.target != '' }}
         run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
       - name: Configure FluidLab task dispatch

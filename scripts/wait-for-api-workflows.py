@@ -16,7 +16,7 @@ else:
     command = ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha]
 paths = subprocess.check_output(command, text=True).splitlines()
 wanted = []
-if any(p.startswith("functions/") or p in ("scripts/configure-fluidlab-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml") for p in paths):
+if any(p.startswith("functions/") or p in ("scripts/configure-fluidlab-cloud.py", "scripts/configure-invoice-qb-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml") for p in paths):
     wanted.append("Production: Firebase Functions")
 if any(p in ("functions/scripts/verify-fluid-well-indexes.js", "firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml") for p in paths):
     wanted.append("Production: Firebase Rules")
