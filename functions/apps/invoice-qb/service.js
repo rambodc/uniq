@@ -14,7 +14,7 @@ async function config() {
   const project = getApp().options.projectId || process.env.GCLOUD_PROJECT;
   const { access_token: token } = await getApp().options.credential.getAccessToken();
   const response = await fetch(`https://secretmanager.googleapis.com/v1/projects/${project}/secrets/INVOICE_QB_CONFIG/versions/latest:access`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new HttpsError("failed-precondition", "Gmail setup is incomplete. Ask an administrator to configure Invoice QB.");
+  if (!response.ok) throw new HttpsError("failed-precondition", "Gmail setup is incomplete. An administrator must configure the Invoice QB secret and grant runtime access.");
   let value;
   try { value = JSON.parse(Buffer.from((await response.json()).payload.data, "base64").toString()); } catch { throw new HttpsError("failed-precondition", "Invoice QB configuration is invalid."); }
   if (!value.clientId || !value.clientSecret || !value.redirectUri?.startsWith("https://") || Buffer.from(value.encryptionKey || "", "base64").length !== 32) throw new HttpsError("failed-precondition", "Invoice QB configuration is incomplete.");

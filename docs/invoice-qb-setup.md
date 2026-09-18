@@ -15,7 +15,7 @@ Invoice QB is a shared, read-only Gmail browser and bill-candidate queue. It doe
 
    This uses the server authorization-code flow. JavaScript origins are not required for this flow.
 7. In Workspace Admin Console, **Security → Access and data control → API controls → Manage third-party app access**, allow the OAuth client for the dedicated mailbox if your organization restricts app access. Limit access to the users/organizational units that need it.
-8. In the **Firebase project `uniqenergy-de71c`**, open **Security → Secret Manager → INVOICE_QB_CONFIG → New version**. The deployment workflow creates the secret and grants the runtime access. Paste a JSON object with these fields, using your actual values:
+8. In the **Firebase project `uniqenergy-de71c`**, open **Security → Secret Manager**. Create a secret named **INVOICE_QB_CONFIG** (or add a new version if it already exists). Paste a JSON object with these fields, using your actual values:
 
    ```json
    {
@@ -28,8 +28,9 @@ Invoice QB is a shared, read-only Gmail browser and bill-candidate queue. It doe
    ```
 
    Generate a random encryption key using `openssl rand -base64 32` on a trusted machine. Put the result only in the secret. Do not commit or send the secret values in chat. `workspaceDomain` is your mailbox domain, with no `@` or URL prefix. Keep the encryption key unchanged when rotating the OAuth client secret. To change the encryption key, disconnect the mailbox first, update the secret, wait at least 60 seconds, then reconnect.
-9. Open **Portal → Invoice QB → Connection → Connect Gmail** while signed into the portal as an active admin. Choose the dedicated mailbox and grant read access. The callback returns to the configured `PUBLIC_APP_URL`, defaulting to `https://uniqenergy-de71c.web.app`.
-10. Confirm the displayed connected address. Grant **Invoice QB** in **User Access** only to the teammates who should see that mailbox.
+9. On that secret's **Permissions** tab, grant **Secret Manager Secret Accessor** to `357883281274-compute@developer.gserviceaccount.com`. This is the Cloud Functions runtime identity. The deployment account does not have permission to enable Gmail API; the Google administrator completes these setup steps. The deployment check intentionally permits a disconnected release.
+10. Open **Portal → Invoice QB → Connection → Connect Gmail** while signed into the portal as an active admin. Choose the dedicated mailbox and grant read access. The callback returns to the configured `PUBLIC_APP_URL`, defaulting to `https://uniqenergy-de71c.web.app`.
+11. Confirm the displayed connected address. Grant **Invoice QB** in **User Access** only to the teammates who should see that mailbox.
 
 Config is checked at runtime and cached for at most 60 seconds. No redeployment is needed after adding a valid secret version. The app remains usable for existing queued documents while Gmail is disconnected or not configured.
 
