@@ -19,12 +19,17 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           python3 - <<'PYCODE'
-          import os, subprocess
+          import json, os, subprocess
           before = os.environ.get("BEFORE_SHA", "")
           changed = True
           if before and set(before) != {"0"}:
               paths = set(subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines())
-              changed = bool(paths & {"firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "firebase.json", ".firebaserc"})
+              changed = bool(paths & {"firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", ".firebaserc"})
+              if "firebase.json" in paths:
+                  previous = json.loads(subprocess.check_output(["git", "show", before + ":firebase.json"], text=True))
+                  with open("firebase.json") as config:
+                      current = json.load(config)
+                  changed = changed or any(previous.get(key) != current.get(key) for key in ("firestore", "storage"))
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("deploy=" + str(changed).lower() + "\n")
           PYCODE

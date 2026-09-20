@@ -1,0 +1,180 @@
+.event-document {
+  --event-bg: #121b2a;
+  --event-panel: #192336;
+  --event-text: #f5f1e9;
+  --event-muted: #b8c1cc;
+  --event-accent: #d9b47c;
+  --event-line: #ffffff18;
+  background: var(--event-bg);
+  color: var(--event-text);
+  border-radius: 24px;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.event-light {
+  --event-bg: #fafaf7;
+  --event-panel: #eeefe9;
+  --event-text: #172735;
+  --event-muted: #576673;
+  --event-accent: #627e76;
+  --event-line: #17273520;
+}
+.event-gold {
+  --event-bg: #241d17;
+  --event-panel: #30271e;
+  --event-text: #fcf0d9;
+  --event-muted: #cfbea4;
+  --event-accent: #e8bd79;
+  --event-line: #e8bd7926;
+}
+.event-hero {
+  position: relative;
+  min-height: 280px;
+  display: flex;
+  align-items: flex-end;
+  background: radial-gradient(ellipse at top right, #bfa57628, transparent 70%);
+}
+.event-hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.event-hero:has(img):after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent, #08111aee);
+}
+.event-hero:has(img) {
+  color: white;
+}
+.event-hero-content {
+  position: relative;
+  z-index: 1;
+  padding: 48px 38px;
+}
+.event-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--event-accent);
+}
+.event-hero h1 {
+  font-size: clamp(32px, 7cqw, 64px);
+  line-height: 1.06;
+  letter-spacing: -0.055em;
+  margin: 22px 0;
+}
+.event-hero p {
+  font-size: 17px;
+  line-height: 1.7;
+  max-width: 650px;
+  white-space: pre-line;
+}
+.event-section {
+  padding: 32px 38px;
+  border-top: 1px solid var(--event-line);
+}
+.event-section h2 {
+  font-size: 24px;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  margin: 12px 0;
+}
+.event-section p {
+  color: var(--event-muted);
+  line-height: 1.65;
+}
+.event-time {
+  display: flex;
+  gap: 20px;
+  background: var(--event-panel);
+}
+.event-time > svg {
+  flex-shrink: 0;
+  color: var(--event-accent);
+  margin-top: 10px;
+}
+.event-map {
+  width: 100%;
+  height: 240px;
+  border: 0;
+  border-radius: 16px;
+  margin: 14px 0;
+}
+.event-section a {
+  color: var(--event-accent);
+  font-weight: 600;
+}
+.event-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.event-gallery figure {
+  margin: 0;
+}
+.event-gallery img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  border-radius: 14px;
+}
+.event-gallery figcaption {
+  font-size: 13px;
+  padding-top: 9px;
+  color: var(--event-muted);
+}
+.event-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--event-line);
+}
+.event-item h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.event-item p {
+  margin-bottom: 0;
+}
+.event-section details {
+  padding: 17px 0;
+  border-bottom: 1px solid var(--event-line);
+}
+.event-section summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.event-copy {
+  white-space: pre-line;
+}
+.event-missing {
+  padding: 16px;
+  border: 1px dashed var(--event-accent);
+  border-radius: 12px;
+  font-size: 14px !important;
+}
+.event-section .event-missing {
+  color: var(--event-accent);
+}
+@container (max-width:500px) {
+  .event-section {
+    padding: 25px 22px;
+  }
+  .event-hero-content {
+    padding: 36px 22px;
+  }
+  .event-gallery {
+    grid-template-columns: 1fr;
+  }
+  .event-time {
+    gap: 12px;
+  }
+  .event-time h2 {
+    font-size: 20px;
+  }
+}

@@ -9,11 +9,13 @@ import {
 } from "../core/api";
 import { usePortalAuth } from "../portal/AuthContext";
 import "./auth.css";
+import CodeEntry, { Resend } from "./CodeEntry";
 export default function EnterpriseAuth() {
   const { user, loading, refresh } = usePortalAuth(),
     [params] = useSearchParams();
   const [email, setEmail] = useState(""),
     [challenge, setChallenge] = useState(""),
+    [resendAt, setResendAt] = useState(0),
     [code, setCode] = useState(""),
     [first, setFirst] = useState(""),
     [last, setLast] = useState(""),
@@ -34,6 +36,7 @@ export default function EnterpriseAuth() {
     try {
       const result = await requestLoginCode(email.trim());
       setChallenge(result.challengeId);
+      setResendAt(Date.now() + 60000);
       setCode("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send code.");
@@ -118,20 +121,16 @@ export default function EnterpriseAuth() {
             </label>
           </>
         ) : challenge ? (
-          <label>
-            <span>Sign-in code</span>
-            <div>
-              <input
-                required
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              />
-            </div>
-          </label>
+          <CodeEntry
+            value={code}
+            onChange={setCode}
+            disabled={busy}
+            onComplete={() => {
+              document
+                .querySelector<HTMLFormElement>(".auth-card")
+                ?.requestSubmit();
+            }}
+          />
         ) : (
           <label>
             <span>Email address</span>
@@ -157,9 +156,7 @@ export default function EnterpriseAuth() {
         </button>
         {challenge && !needsName && (
           <div className="auth-links">
-            <button type="button" disabled={busy} onClick={() => void send()}>
-              Send another code
-            </button>
+            <Resend at={resendAt} busy={busy} onClick={() => void send()} />
             <button
               type="button"
               disabled={busy}

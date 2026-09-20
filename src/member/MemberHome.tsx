@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
-import { MapPin, ArrowUpRight, CalendarDays } from "lucide-react";
+import { UserRound, MapPin, ArrowUpRight, CalendarDays } from "lucide-react";
 import { usePortalAuth } from "../portal/AuthContext";
 import { myParties, when, type Party } from "../mini-apps/uex/api";
 import "./member.css";
@@ -49,6 +49,11 @@ export default function MemberHome() {
   return (
     <main className="member-main">
       <section className="member-hero">
+        <img
+          className="member-round-mark"
+          src="/brand/uniqenergy-mark-64.png"
+          alt="UniqEnergy"
+        />
         <span className="member-eyebrow">YOUR UNIQACCOUNT</span>
         <h1>Welcome, {user?.firstName}.</h1>
         <p>A place for your tools, your invitations, and what comes next.</p>
@@ -58,18 +63,30 @@ export default function MemberHome() {
           <h2>Your tools</h2>
           <span>Ready when you are</span>
         </div>
-        <Link to="/apps/lsd-finder" className="member-tool">
-          <div className="member-tool-icon">
-            <MapPin size={38} />
-          </div>
-          <div>
-            <h3>LSD Finder</h3>
-            <p>
-              Find Alberta land locations and keep your own map of saved pins.
-            </p>
-          </div>
-          <ArrowUpRight />
-        </Link>
+        <div className="member-apps">
+          <Link to="/member/account" className="member-tool">
+            <div className="member-tool-icon">
+              <UserRound size={38} />
+            </div>
+            <div>
+              <h3>Account</h3>
+              <p>Your profile and sign-in settings.</p>
+            </div>
+            <ArrowUpRight />
+          </Link>
+          <Link to="/apps/lsd-finder" className="member-tool">
+            <div className="member-tool-icon">
+              <MapPin size={38} />
+            </div>
+            <div>
+              <h3>LSD Finder</h3>
+              <p>
+                Find Alberta land locations and keep your own map of saved pins.
+              </p>
+            </div>
+            <ArrowUpRight />
+          </Link>
+        </div>
       </section>
       <section className="member-section">
         <div className="member-section-title">

@@ -41,11 +41,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/wait-for-api-workflows.py
       - run: firebase deploy --only hosting --project uniqenergy-de71c --non-interactive --message "CI hosting deploy"
-
-      - name: Open the replacement account experience
-        env:
-          ACCOUNT_CUTOVER: RESET_UNIQACCOUNT_V2
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: |
-          npm ci --prefix functions
-          node functions/platform/account-cutover.js finish

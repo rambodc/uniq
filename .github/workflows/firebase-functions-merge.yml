@@ -78,6 +78,10 @@ jobs:
                   target = ",".join("functions:" + name for name in names)
                   if not target:
                       raise SystemExit("No Invoice QB exports found")
+              uex_paths = {"functions/index.js", "functions/services/email.js"}
+              if runtime and all(p.startswith(("functions/apps/uex/", "functions/apps/account/")) or p in uex_paths for p in runtime):
+                  groups = re.findall(r'export \{([^}]+)\} from "\./apps/(?:uex|account)/[^"\n]+\.js";?', current)
+                  target = ",".join("functions:" + name.strip() for group in groups for name in group.split(","))
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("target=" + target + "\n")
               output.write("invoice_tests=" + str(invoice_tests).lower() + "\n")
@@ -92,38 +96,19 @@ jobs:
       - name: Rehearse accounts and UEX with isolated emulators
         env:
           FIREBASE_CONFIG: '{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}'
-        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test functions/test/uex-account.test.js'
-      - name: Begin one-time account cutover
-        env:
-          ACCOUNT_CUTOVER: RESET_UNIQACCOUNT_V2
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: node functions/platform/account-cutover.js start
+        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js'
       - name: Configure email-code authentication
         run: python3 scripts/configure-account-auth.py
       - if: ${{ steps.affected.outputs.target != '' }}
         run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
+      - name: Retire superseded UEX form endpoints
+        if: contains(steps.affected.outputs.target, 'functions:uexBuilder') || steps.affected.outputs.target == 'functions'
+        run: node functions/scripts/retire-uex-form.js
       - name: Configure FluidLab task dispatch
-        if: ${{ steps.affected.outputs.target != '' }}
+        if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
         run: python3 scripts/configure-fluidlab-cloud.py --after-deploy
       - name: Index shared well names
-        if: ${{ steps.affected.outputs.target != '' }}
+        if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
         env:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: node functions/scripts/index-fluid-well-names.js
-
-      - name: Drain pre-cutover requests and reset accounts once
-        env:
-          ACCOUNT_CUTOVER: RESET_UNIQACCOUNT_V2
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: |
-          node --input-type=module <<'JS'
-          import { db } from './functions/core/firebase.js';
-          const state = (await db.doc('platform/accountCutover').get()).data();
-          if (!state?.completedAt) {
-            // Retired Functions can have requests running up to 30 minutes.
-            // Wait out requests admitted before the account lockdown.
-            const remaining = Math.max(0, state.drainUntil - Date.now());
-            await new Promise(resolve => setTimeout(resolve, remaining));
-          }
-          JS
-          node functions/platform/account-cutover.js reset

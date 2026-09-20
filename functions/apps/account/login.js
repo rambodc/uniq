@@ -33,61 +33,79 @@ export function checkCode(challenge, supplied, now) {
     )
   );
 }
+export async function issueLoginCode(request, address, dedupeKey = null) {
+  await requireAvailable();
+  const id = randomBytes(24).toString("hex"),
+    code = String(randomInt(0, 1000000)).padStart(6, "0"),
+    now = Date.now();
+  const emailRef = db.doc(`loginLimits/email-${hash(address)}`),
+    ipRef = db.doc(
+      `loginLimits/ip-${hash(request.rawRequest.ip || "unknown")}`,
+    ),
+    ref = db.doc(`loginChallenges/${id}`);
+  const dedupe = dedupeKey ? db.doc(`loginRequests/${hash(dedupeKey)}`) : null;
+  const reused = await db.runTransaction(async (tx) => {
+    if (dedupe) {
+      const prior = (await tx.get(dedupe)).data();
+      if (prior && prior.expiresAt > now) {
+        const challenge = (
+          await tx.get(db.doc(`loginChallenges/${prior.challengeId}`))
+        ).data();
+        if (challenge && !challenge.consumed) return prior;
+      }
+    }
+    const [e, i] = await tx.getAll(emailRef, ipRef);
+    for (const [snap, limit, cooldown] of [
+      [e, 5, 60000],
+      [i, 30, 0],
+    ]) {
+      const old = snap.data() || {},
+        fresh = now - (old.started || 0) >= 3600000;
+      if (now - (old.last || 0) < cooldown || (!fresh && old.count >= limit))
+        throw new HttpsError(
+          "resource-exhausted",
+          "Please wait before requesting another code.",
+        );
+      tx.set(snap.ref, {
+        started: fresh ? now : old.started,
+        last: now,
+        count: fresh ? 1 : old.count + 1,
+      });
+    }
+    if (dedupe)
+      tx.set(dedupe, {
+        challengeId: id,
+        expiresAt: now + 600000,
+        resendAt: now + 60000,
+      });
+    tx.create(ref, {
+      email: address,
+      digest: digest(id, code),
+      attempts: 0,
+      expiresAt: now + 600000,
+      consumed: false,
+    });
+  });
+  if (reused) return reused;
+  try {
+    await sendEmail({
+      to: address,
+      subject: "Your UniqAccount sign-in code",
+      text: `Your UniqAccount code is ${code}. It expires in 10 minutes. Do not share this code. If you did not request it, ignore this email.`,
+    });
+  } catch {
+    await ref.delete();
+    if (dedupe) await dedupe.delete();
+    throw new HttpsError(
+      "unavailable",
+      "The code could not be sent. Please try again shortly.",
+    );
+  }
+  return { challengeId: id, expiresAt: now + 600000, resendAt: now + 60000 };
+}
 export const requestLoginCode = onCall(
   { ...callable, secrets: EMAIL_SECRETS },
-  async (request) => {
-    await requireAvailable();
-    const address = email(request.data?.email),
-      id = randomBytes(24).toString("hex"),
-      code = String(randomInt(0, 1000000)).padStart(6, "0"),
-      now = Date.now();
-    const emailRef = db.doc(`loginLimits/email-${hash(address)}`),
-      ipRef = db.doc(
-        `loginLimits/ip-${hash(request.rawRequest.ip || "unknown")}`,
-      ),
-      ref = db.doc(`loginChallenges/${id}`);
-    await db.runTransaction(async (tx) => {
-      const [e, i] = await tx.getAll(emailRef, ipRef);
-      for (const [snap, limit, cooldown] of [
-        [e, 5, 60000],
-        [i, 30, 0],
-      ]) {
-        const old = snap.data() || {},
-          fresh = now - (old.started || 0) >= 3600000;
-        if (now - (old.last || 0) < cooldown || (!fresh && old.count >= limit))
-          throw new HttpsError(
-            "resource-exhausted",
-            "Please wait before requesting another code.",
-          );
-        tx.set(snap.ref, {
-          started: fresh ? now : old.started,
-          last: now,
-          count: fresh ? 1 : old.count + 1,
-        });
-      }
-      tx.create(ref, {
-        email: address,
-        digest: digest(id, code),
-        attempts: 0,
-        expiresAt: now + 600000,
-        consumed: false,
-      });
-    });
-    try {
-      await sendEmail({
-        to: address,
-        subject: "Your UniqAccount sign-in code",
-        text: `Your UniqAccount code is ${code}. It expires in 10 minutes. Do not share this code. If you did not request it, ignore this email.`,
-      });
-    } catch {
-      await ref.delete();
-      throw new HttpsError(
-        "unavailable",
-        "The code could not be sent. Please try again shortly.",
-      );
-    }
-    return { challengeId: id };
-  },
+  (request) => issueLoginCode(request, email(request.data?.email)),
 );
 export const verifyLoginCode = onCall(
   { ...callable, secrets: EMAIL_SECRETS },

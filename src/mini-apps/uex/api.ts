@@ -1,3 +1,4 @@
+import type { PageDocument, Asset } from "./EventDocument";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../../core/firebase";
 export interface Guest {
@@ -22,6 +23,8 @@ export interface Party {
   status: "draft" | "published" | "cancelled";
   archived: boolean;
   coverUrl?: string;
+  document?: PageDocument;
+  assets?: Asset[];
   guest?: Guest;
 }
 export async function call<T>(name: string, data: unknown = {}): Promise<T> {

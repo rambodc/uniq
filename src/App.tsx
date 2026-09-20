@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes, useNavigate, useParams, useLocation } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
 import PublicSite from "./public/PublicSite";
+import InvitationEntry from "./auth/InvitationEntry";
 import EnterpriseAuth from "./auth/EnterpriseAuth";
 import MemberHome, { MemberLayout } from "./member/MemberHome";
 import PartyPage from "./member/PartyPage";
@@ -25,7 +26,7 @@ function FluidLabEditor() { const { wellId = "" } = useParams(), navigate = useN
 function RouteMetadata() {
  const { pathname } = useLocation();
  useEffect(() => {
-  const privatePage = /^\/(signin|member|portal|apps)(\/|$)/.test(pathname);
+  const privatePage = /^\/(signin|join|member|portal|apps)(\/|$)/.test(pathname);
   let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
   if (privatePage) {
    if (!robots) { robots = document.createElement("meta"); robots.name = "robots"; document.head.append(robots); }
@@ -37,6 +38,7 @@ function RouteMetadata() {
 }
 export default function App() {
  return <AuthProvider><RouteMetadata/><Routes>
+ <Route path="/join/:token" element={<InvitationEntry/>}/>
  <Route path="/signin" element={<EnterpriseAuth/>}/>
  <Route element={<Protected/>}>
   <Route element={<MemberLayout/>}><Route path="/member" element={<MemberHome/>}/><Route path="/member/account" element={<AccountApp/>}/><Route path="/member/parties/:id" element={<PartyPage/>}/></Route>

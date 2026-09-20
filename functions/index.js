@@ -26,4 +26,7 @@ export { newFluidChatSession } from "./apps/fluidlab/service.js";
 
 export { invoiceQbConnection, invoiceQbConnect, invoiceQbOauthCallback, invoiceQbDisconnect, invoiceQbLabels, invoiceQbMessages, invoiceQbMessage, invoiceQbDownload, invoiceQbAdd, invoiceQbQueue, invoiceQbQueueBody, invoiceQbUpdate, invoiceQbRemove } from "./apps/invoice-qb/service.js";
 export { requestLoginCode, verifyLoginCode, revokeMySessions } from "./apps/account/login.js";
-export { uexListParties, uexSaveParty, uexUploadCover, uexGuests, uexAddGuests, uexRevokeGuest, uexSendEmails, uexMyParties, uexGetMyParty, uexRsvp } from "./apps/uex/service.js";
+export { uexListParties, uexGuests, uexAddGuests, uexRevokeGuest, uexSendEmails, uexMyParties, uexGetMyParty, uexRsvp } from "./apps/uex/service.js";
+
+export { uexInvitationEntry, uexConfirmGuestNames } from "./apps/uex/onboarding.js";
+export { uexCreateDraft, uexBuilder, uexBuilderMessage, uexBuilderAction, uexAsset } from "./apps/uex/builder.js";

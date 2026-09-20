@@ -3,8 +3,19 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db, storage } from "../../core/firebase.js";
 import { callable } from "../../core/config.js";
 import { requireMiniApp, requireUser } from "../../core/auth.js";
-import { email, text, docId } from "../../core/values.js";
+import { email, text, docId, optionalText } from "../../core/values.js";
 import { EMAIL_SECRETS, sendEmail } from "../../services/email.js";
+import { invitationLink } from "./onboarding.js";
+import { guestProjection } from "./document.js";
+import { signedAssets } from "./builder.js";
+const escapeHtml = (value) =>
+  String(value || "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
 const parties = db.collection("uexParties");
 const refFor = (id) => parties.doc(docId(id, "party"));
 const keyFor = (address) => createHash("sha256").update(address).digest("hex");
@@ -66,6 +77,7 @@ const publicGuest = (p, g) => ({
     Date.parse(p.startsAt) <= Date.now(),
 });
 async function withCover(p) {
+  if (p.assets) p = { ...p, assets: await signedAssets(p.assets) };
   if (!p.coverPath) return { ...p, coverUrl: null };
   const [url] = await storage
     .bucket()
@@ -76,45 +88,18 @@ async function withCover(p) {
   return { ...safe, coverUrl: url };
 }
 export const uexListParties = wrap(async () => {
-  const snapshot = await parties.orderBy("startsAt", "desc").get();
+  const snapshot = await parties.get();
   return {
     parties: await Promise.all(
-      snapshot.docs.map((d) => withCover({ ...d.data(), id: d.id })),
+      snapshot.docs.map((d) =>
+        withCover({
+          ...d.data(),
+          name: d.data().draft?.title || d.data().name,
+          id: d.id,
+        }),
+      ),
     ),
   };
-});
-export const uexSaveParty = wrap(async (d, current) => {
-  const values = partyValues(d),
-    ref = d.id ? refFor(d.id) : parties.doc();
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (d.id && !snap.exists)
-      throw new HttpsError("not-found", "Party not found.");
-    if (
-      snap.exists &&
-      Date.parse(snap.data().endsAt) <= Date.now() &&
-      Object.keys(values).some(
-        (key) => key !== "archived" && values[key] !== snap.data()[key],
-      )
-    )
-      throw new HttpsError(
-        "failed-precondition",
-        "Past parties are read-only; you can archive them.",
-      );
-    tx.set(
-      ref,
-      {
-        ...values,
-        updatedAt: new Date().toISOString(),
-        updatedBy: current.uid,
-        ...(!snap.exists
-          ? { createdBy: current.uid, createdAt: new Date().toISOString() }
-          : {}),
-      },
-      { merge: true },
-    );
-  });
-  return { id: ref.id };
 });
 export function imageType(bytes) {
   if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255)
@@ -130,34 +115,6 @@ export function imageType(bytes) {
     return "image/webp";
   return null;
 }
-export const uexUploadCover = wrap(async (d) => {
-  const ref = refFor(d.id),
-    snap = await ref.get();
-  if (!snap.exists) throw new HttpsError("not-found", "Party not found.");
-  if (Date.parse(snap.data().endsAt) <= Date.now())
-    throw new HttpsError("failed-precondition", "Past parties are read-only.");
-  if (typeof d.base64 !== "string" || d.base64.length > 6990508)
-    throw new HttpsError("invalid-argument", "Choose an image up to 5 MB.");
-  const bytes = Buffer.from(d.base64, "base64"),
-    mime = imageType(bytes);
-  if (!mime || bytes.length > 5 * 1024 * 1024)
-    throw new HttpsError(
-      "invalid-argument",
-      "Choose a JPEG, PNG, or WebP up to 5 MB.",
-    );
-  const path = `uex/${ref.id}/${randomUUID()}`;
-  await storage
-    .bucket()
-    .file(path)
-    .save(bytes, { resumable: false, contentType: mime });
-  await ref.update({ coverPath: path });
-  if (snap.data().coverPath)
-    await storage
-      .bucket()
-      .file(snap.data().coverPath)
-      .delete({ ignoreNotFound: true });
-  return { success: true };
-});
 export const uexGuests = wrap(async (d) => {
   const snap = await invites(d.id).orderBy("email").get();
   return { guests: snap.docs.map((g) => ({ ...g.data(), id: g.id })) };
@@ -175,21 +132,23 @@ export const uexAddGuests = wrap(async (d) => {
       "Invitations are closed for this party.",
     );
   if (!Array.isArray(d.guests) || !d.guests.length || d.guests.length > 100)
-    throw new HttpsError(
-      "invalid-argument",
-      "Add 1–100 named guests at a time.",
-    );
-  const guests = [
-    ...new Map(
-      d.guests.map((g) => {
-        const address = email(g.email);
-        return [
-          address,
-          { email: address, name: text(g.name, "guest name", 160) },
-        ];
-      }),
-    ).values(),
-  ];
+    throw new HttpsError("invalid-argument", "Add 1–100 guests at a time.");
+  const byEmail = new Map();
+  for (const g of d.guests) {
+    const address = email(g.email),
+      previous = byEmail.get(address);
+    const firstName =
+      optionalText(g.firstName, "first name", 80) || previous?.firstName || "";
+    const lastName =
+      optionalText(g.lastName, "last name", 80) || previous?.lastName || "";
+    const name =
+      optionalText(g.name, "guest name", 160) ||
+      [firstName, lastName].filter(Boolean).join(" ") ||
+      previous?.name ||
+      "";
+    byEmail.set(address, { email: address, firstName, lastName, name });
+  }
+  const guests = [...byEmail.values()];
   await db.runTransaction(async (tx) => {
     const refs = guests.map((g) => invites(d.id).doc(keyFor(g.email))),
       snapshots = await tx.getAll(...refs);
@@ -213,7 +172,7 @@ export const uexRevokeGuest = wrap(async (d) => {
 export const uexSendEmails = wrap(
   async (d) => {
     const p = (await refFor(d.id).get()).data();
-    if (!p || p.status === "draft")
+    if (!p || p.status === "draft" || (p.draft && !p.published))
       throw new HttpsError(
         "failed-precondition",
         "Publish the party before sending invitations.",
@@ -261,11 +220,12 @@ export const uexSendEmails = wrap(
       }
       let delivery = "sent";
       try {
-        const url = `${process.env.PUBLIC_APP_URL || "https://uniqenergy-de71c.web.app"}/member/parties/${d.id}`;
+        const url = await invitationLink(d.id, id);
         await sendEmail({
           to: guest.email,
           subject: `${d.kind === "cancellation" ? "Cancelled: " : d.kind === "update" ? "Update: " : "You're invited: "}${p.name}`,
-          text: `Hello ${guest.name},\n\n${p.name}\n${p.description}\n${new Intl.DateTimeFormat("en-CA", { dateStyle: "full", timeStyle: "short", timeZone: p.timezone }).format(new Date(p.startsAt))}\n${p.location}\n\n${d.kind === "cancellation" ? "This party has been cancelled." : "View your party and RSVP:"}\n${url}\n\nSign in with ${guest.email}. This invitation is for you only.`,
+          html: `<div style="font-family:Arial,sans-serif;background:#101827;color:#f7f1e6;padding:40px;border-radius:20px"><p style="color:#d5b47b;letter-spacing:3px">UNIQ EXCLUSIVE</p><h1>${escapeHtml(p.name)}</h1><p>${escapeHtml(p.description)}</p><p>${escapeHtml(new Intl.DateTimeFormat("en-CA", { dateStyle: "full", timeStyle: "short", timeZone: p.timezone }).format(new Date(p.startsAt)))}</p><p>${escapeHtml(p.location)}</p><p>${d.kind === "cancellation" ? "This party has been cancelled." : "Your personal invitation is ready."}</p><a style="display:inline-block;background:#d5b47b;color:#101827;padding:16px 24px;border-radius:12px" href="${url}">Open your invitation</a><p>We’ll send a verification code to your invited email. This link does not grant access to your account.</p></div>`,
+          text: `Hello ${guest.name || "there"},\n\n${p.name}\n${p.description}\n${new Intl.DateTimeFormat("en-CA", { dateStyle: "full", timeStyle: "short", timeZone: p.timezone }).format(new Date(p.startsAt))}\n${p.location}\n\n${d.kind === "cancellation" ? "This party has been cancelled." : "View your party and RSVP:"}\n${url}\n\nSign in with ${guest.email}. This invitation is for you only.`,
         });
       } catch {
         delivery = "failed";
@@ -298,10 +258,16 @@ export const uexMyParties = wrap(async (_d, current) => {
   for (const g of snapshot.docs) {
     if (g.data().revoked) continue;
     const p = await g.ref.parent.parent.get();
-    if (!p.exists || p.data().status === "draft" || p.data().archived) continue;
+    if (
+      !p.exists ||
+      p.data().status === "draft" ||
+      (p.data().draft && !p.data().published) ||
+      p.data().archived
+    )
+      continue;
     result.push(
       await withCover({
-        ...p.data(),
+        ...guestProjection(p.data()),
         id: p.id,
         guest: publicGuest(p.data(), g.data()),
       }),
@@ -321,6 +287,7 @@ export const uexGetMyParty = wrap(async (d, current) => {
     if (
       !p ||
       p.status === "draft" ||
+      (p.draft && !p.published) ||
       !g ||
       g.revoked ||
       g.email !== current.user.email ||
@@ -331,7 +298,7 @@ export const uexGetMyParty = wrap(async (d, current) => {
         "This party is not available to your account.",
       );
     if (!g.uid) tx.update(gref, { uid: current.uid });
-    return { ...p, id: ref.id, guest: publicGuest(p, g) };
+    return { ...guestProjection(p), id: ref.id, guest: publicGuest(p, g) };
   });
   return { party: await withCover(result) };
 }, false);

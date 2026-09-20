@@ -18,7 +18,6 @@ import {
   partyValues,
   ticketValid,
   imageType,
-  uexSaveParty,
   uexAddGuests,
   uexGuests,
   uexSendEmails,
@@ -26,8 +25,8 @@ import {
   uexMyParties,
   uexRsvp,
   uexRevokeGuest,
-  uexUploadCover,
 } from "../apps/uex/service.js";
+import { uexCreateDraft, uexAsset } from "../apps/uex/builder.js";
 import { adminUpdateUserAccess } from "../apps/user-access/update-user-access.js";
 import {
   startCutover,
@@ -35,6 +34,20 @@ import {
   finishCutover,
 } from "../platform/account-cutover.js";
 import { db, auth, storage } from "../core/firebase.js";
+
+// Seed the original party shape to verify existing invitations and tickets survive.
+async function seedLegacyParty(request) {
+  await requireMiniApp(request, "uex");
+  const d = request.data,
+    ref = d.id
+      ? db.doc(`uexParties/${d.id}`)
+      : db.collection("uexParties").doc();
+  await ref.set(
+    { ...partyValues(d), createdAt: new Date().toISOString() },
+    { merge: true },
+  );
+  return { id: ref.id };
+}
 
 test("code challenges reject expired, consumed, exhausted, and incorrect codes", () => {
   const c = {
@@ -124,12 +137,10 @@ test(
     });
     const sha = (s) => createHash("sha256").update(s).digest("hex");
     try {
-      await db
-        .doc("invoiceQbPrivate/connection")
-        .set({
-          refreshToken: "preserved-secret",
-          email: "mailbox@example.com",
-        });
+      await db.doc("invoiceQbPrivate/connection").set({
+        refreshToken: "preserved-secret",
+        email: "mailbox@example.com",
+      });
       await db.doc("contactInquiries/old").set({ message: "discard" });
       await auth.createUser({
         email: "old@example.com",
@@ -224,28 +235,45 @@ test(
             (e) => e.code === "permission-denied",
           );
           await assert.rejects(
-            uexSaveParty.run(guest),
+            uexCreateDraft.run(guest),
             (e) => e.code === "permission-denied",
           );
         },
       );
-      await t.test("simultaneous verified signup creates one identity and one member profile", async () => {
-        const address = "race@example.com";
-        const first = await requestLoginCode.run(publicReq({email: address}));
-        const code1 = sent.at(-1).text.match(/\b\d{6}\b/)[0];
-        await db.doc(`loginLimits/email-${sha(address)}`).delete();
-        const second = await requestLoginCode.run(publicReq({email: address}));
-        const code2 = sent.at(-1).text.match(/\b\d{6}\b/)[0];
-        const results = await Promise.all([
-          verifyLoginCode.run(publicReq({challengeId: first.challengeId, code: code1})),
-          verifyLoginCode.run(publicReq({challengeId: second.challengeId, code: code2})),
-        ]);
-        assert.ok(results.every(result => result.customToken));
-        const profile = await db.collection("users").where("email", "==", address).get();
-        assert.equal(profile.size, 1);
-        assert.equal(profile.docs[0].data().role, "member");
-        assert.equal((await auth.getUserByEmail(address)).uid, profile.docs[0].id);
-      });
+      await t.test(
+        "simultaneous verified signup creates one identity and one member profile",
+        async () => {
+          const address = "race@example.com";
+          const first = await requestLoginCode.run(
+            publicReq({ email: address }),
+          );
+          const code1 = sent.at(-1).text.match(/\b\d{6}\b/)[0];
+          await db.doc(`loginLimits/email-${sha(address)}`).delete();
+          const second = await requestLoginCode.run(
+            publicReq({ email: address }),
+          );
+          const code2 = sent.at(-1).text.match(/\b\d{6}\b/)[0];
+          const results = await Promise.all([
+            verifyLoginCode.run(
+              publicReq({ challengeId: first.challengeId, code: code1 }),
+            ),
+            verifyLoginCode.run(
+              publicReq({ challengeId: second.challengeId, code: code2 }),
+            ),
+          ]);
+          assert.ok(results.every((result) => result.customToken));
+          const profile = await db
+            .collection("users")
+            .where("email", "==", address)
+            .get();
+          assert.equal(profile.size, 1);
+          assert.equal(profile.docs[0].data().role, "member");
+          assert.equal(
+            (await auth.getUserByEmail(address)).uid,
+            profile.docs[0].id,
+          );
+        },
+      );
       await t.test(
         "failed delivery invalidates challenge; five guesses exhaust it",
         async () => {
@@ -291,7 +319,7 @@ test(
             endsAt: new Date(Date.now() + 90000000).toISOString(),
             status: "draft",
           };
-          id = (await uexSaveParty.run(manager(party))).id;
+          id = (await seedLegacyParty(manager(party))).id;
           await uexAddGuests.run(
             manager({
               id,
@@ -306,9 +334,7 @@ test(
             uexGetMyParty.run(asGuest({ id })),
             (e) => e.code === "permission-denied",
           );
-          await uexSaveParty.run(
-            manager({ ...party, id, status: "published" }),
-          );
+          await seedLegacyParty(manager({ ...party, id, status: "published" }));
           assert.equal((await uexMyParties.run(asGuest({}))).parties.length, 1);
           await assert.rejects(
             uexGetMyParty.run(
@@ -340,7 +366,10 @@ test(
             (await uexSendEmails.run(manager(data))).results[0].status,
             "skipped",
           );
-          assert.match(sent.at(-1).text, /\/member\/parties\//);
+          assert.match(
+            sent.at(-1).text,
+            /https:\/\/uniqenergy\.com\/join\/[a-f0-9]{64}/,
+          );
         },
       );
       await t.test(
@@ -390,13 +419,19 @@ test(
         "cover uploads reject unsupported content and large images",
         async () => {
           await assert.rejects(
-            uexUploadCover.run(
-              manager({ id, base64: Buffer.from("<svg/>").toString("base64") }),
+            uexAsset.run(
+              manager({
+                id,
+                action: "upload",
+                base64: Buffer.from("<svg/>").toString("base64"),
+              }),
             ),
             (e) => e.code === "invalid-argument",
           );
           await assert.rejects(
-            uexUploadCover.run(manager({ id, base64: "a".repeat(6990510) })),
+            uexAsset.run(
+              manager({ id, action: "upload", base64: "a".repeat(6990510) }),
+            ),
             (e) => e.code === "invalid-argument",
           );
         },
