@@ -81,10 +81,10 @@ try {
     await db
       .doc(`users/${user}`)
       .set({
-        schemaVersion: 1,
+        schemaVersion: 2,
         email: `${user}@example.com`,
         status: "active",
-        role: "user",
+        role: "employee",
         enabledMiniApps: ["fluidlab"],
       });
   await well.set({
@@ -98,7 +98,7 @@ try {
   await well.collection("versions").doc("v1").set({ path });
   await storage.bucket().file(path).save(JSON.stringify(generated.dataset));
   const request = (user, d) => ({
-    auth: { uid: user, token: { email: `${user}@example.com` } },
+    auth: { uid: user, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: `${user}@example.com` } },
     data: { wellId: id, ...d },
   });
   const result = await askFluidChat.run(

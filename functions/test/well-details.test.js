@@ -225,13 +225,14 @@ test(
       path = `fluidlab/${wellId}/versions/v.json`,
       cache = db.doc(`lsdGridCache/${GRID_VERSION}-11-02-062-04-W4M`);
     const request = (id) => ({
-      auth: { uid: id, token: { email: id + "@example.com" } },
+      auth: { uid: id, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: id + "@example.com" } },
       data: { wellId, uid: "ignored" },
     });
     try {
       for (const id of [uid, other])
         await db.doc("users/" + id).set({
-          schemaVersion: 1,
+          schemaVersion: 2,
+          role: "employee",
           status: "active",
           email: id + "@example.com",
           enabledMiniApps: ["fluidlab"],

@@ -4,9 +4,9 @@ import { normalizeMiniApps, publicUser } from "../core/auth.js";
 import { validContactInquiry } from "../apps/contact/validation.js";
 import { filterContactInquiries, publicContactInquiry, validContactAction, validContactListRequest } from "../apps/contact/inbox.js";
 
-test("enterprise users expose only normalized version-one access data", () => {
+test("enterprise users expose only normalized version-two access data", () => {
   assert.deepEqual(normalizeMiniApps(["fluidlab", "unknown", "contact-form", "fluidlab"]), ["fluidlab", "contact-form"]);
-  assert.deepEqual(publicUser("u1", { email: "a@example.com", role: "invalid", status: "invalid", enabledMiniApps: ["fluidlab", "contact-form"] }), { schemaVersion: 1, uid: "u1", email: "a@example.com", firstName: "", lastName: "", role: "user", status: "active", enabledMiniApps: ["fluidlab", "contact-form"] });
+  assert.deepEqual(publicUser("u1", { email: "a@example.com", role: "invalid", status: "invalid", enabledMiniApps: ["fluidlab", "contact-form"] }), { schemaVersion: 2, uid: "u1", email: "a@example.com", firstName: "", lastName: "", role: "member", status: "disabled", enabledMiniApps: ["fluidlab", "contact-form"] });
 });
 
 test("contact inbox validates filters and treats legacy records as active", () => {

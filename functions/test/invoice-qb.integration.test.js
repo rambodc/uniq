@@ -25,11 +25,11 @@ test("emulator: OAuth, shared permissions, atomic candidates, retained documents
     if (target.endsWith("/labels")) return Response.json({ labels: [{ id: "INBOX", name: "Inbox" }] });
     return originalFetch(url, options);
   });
-  const request = (uid, data = {}) => ({ auth: { uid, token: { email: `${uid}@example.com` } }, data });
+  const request = (uid, data = {}) => ({ auth: { uid, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: `${uid}@example.com` } }, data });
   const admin = request("invoice-admin"), member = request("invoice-member"), outsider = request("invoice-outsider");
   const callback = async (state) => { let location; await service.invoiceQbOauthCallback({ query: { state, code: "code" } }, { set() {}, redirect(value) { location = value; } }); return location; };
   try {
-    for (const [uid, role, enabledMiniApps] of [["invoice-admin", "admin", []], ["invoice-member", "user", ["invoice-qb"]], ["invoice-outsider", "user", []]]) await db.doc(`users/${uid}`).set({ schemaVersion: 1, email: `${uid}@example.com`, status: "active", role, enabledMiniApps });
+    for (const [uid, role, enabledMiniApps] of [["invoice-admin", "admin", []], ["invoice-member", "employee", ["invoice-qb"]], ["invoice-outsider", "member", []]]) await db.doc(`users/${uid}`).set({ schemaVersion: 2, email: `${uid}@example.com`, status: "active", role, enabledMiniApps });
     await assert.rejects(service.invoiceQbQueue.run({ data: {} }), (e) => e.code === "unauthenticated");
     await assert.rejects(service.invoiceQbQueue.run(outsider), (e) => e.code === "permission-denied");
     await assert.rejects(service.invoiceQbConnect.run(member), (e) => e.code === "permission-denied");

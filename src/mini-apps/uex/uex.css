@@ -1,0 +1,168 @@
+.uex-admin {
+  max-width: 1250px;
+}
+.uex-admin .portal-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.uex-party-list {
+  display: grid;
+  gap: 15px;
+}
+.uex-summary {
+  padding: 25px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border: 1px solid var(--portal-line);
+  border-radius: 16px;
+  background: var(--portal-card);
+  color: var(--portal-text);
+  text-align: left;
+  cursor: pointer;
+}
+.uex-summary > svg {
+  color: #b68a47;
+  width: 35px;
+  height: 35px;
+}
+.uex-summary > span {
+  flex: 1;
+}
+.uex-summary b {
+  font-size: 22px;
+}
+.uex-summary small,
+.uex-guest-list small {
+  display: block;
+  margin-top: 7px;
+  color: var(--portal-muted);
+  font-size: 12px;
+}
+.uex-summary em {
+  text-transform: capitalize;
+  font-style: normal;
+  font-size: 12px;
+}
+.uex-empty {
+  padding: 70px 20px;
+  text-align: center;
+  color: var(--portal-muted);
+}
+.uex-editor {
+  padding: 28px;
+  border: 1px solid var(--portal-line);
+  border-radius: 18px;
+  background: var(--portal-card);
+}
+.uex-admin textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--portal-line);
+  border-radius: 9px;
+  background: var(--portal-bg);
+  color: var(--portal-text);
+  font: inherit;
+  resize: vertical;
+}
+.uex-admin .uex-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.uex-check input {
+  width: auto;
+}
+.uex-guests {
+  margin-top: 40px;
+}
+.uex-guests h2 {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.uex-counts {
+  display: flex;
+  gap: 15px;
+  margin: 20px 0;
+  text-transform: capitalize;
+}
+.uex-counts span {
+  padding: 16px;
+  border: 1px solid var(--portal-line);
+  border-radius: 10px;
+  flex: 1;
+}
+.uex-counts b {
+  font-size: 24px;
+  margin-right: 8px;
+}
+.uex-send {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 30px 0 15px;
+}
+.uex-send select {
+  padding: 12px;
+  border: 1px solid var(--portal-line);
+  border-radius: 8px;
+  background: var(--portal-card);
+  color: var(--portal-text);
+}
+.uex-guest-list article {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--portal-line);
+}
+.uex-guest-list article > div {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.uex-guest-list article > span {
+  font-size: 13px;
+  text-transform: capitalize;
+}
+.uex-guest-list button {
+  background: transparent;
+  border: 1px solid var(--portal-line);
+  padding: 9px;
+  border-radius: 8px;
+  color: var(--portal-text);
+  cursor: pointer;
+}
+.uex-admin button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+@media (max-width: 650px) {
+  .uex-editor {
+    padding: 18px;
+  }
+  .uex-guest-list article {
+    flex-wrap: wrap;
+  }
+  .uex-guest-list article > span {
+    width: 100%;
+    padding-left: 30px;
+  }
+  .uex-counts {
+    gap: 6px;
+  }
+  .uex-counts span {
+    padding: 10px;
+    font-size: 12px;
+  }
+  .uex-counts b {
+    display: block;
+  }
+  .uex-send > * {
+    width: 100%;
+  }
+}

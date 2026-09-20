@@ -3,9 +3,12 @@ service firebase.storage {
   match /b/{bucket}/o {
     function hasFluidAccess(uid) {
       let user = firestore.get(/databases/(default)/documents/users/$(uid)).data;
-      return request.auth != null && request.auth.uid == uid && user.schemaVersion == 1
+      return request.auth != null && request.auth.uid == uid && user.schemaVersion == 2
+        && request.auth.token.email_verified == true
+        && request.auth.token.auth_time > user.get('sessionsRevokedBefore', 0)
+        && request.time.toMillis() / 1000 - request.auth.token.auth_time < 31536000
         && user.status == 'active' && user.email == request.auth.token.email
-        && (user.role == 'admin' || 'fluidlab' in user.enabledMiniApps);
+        && (user.role == 'admin' || (user.role == 'employee' && 'fluidlab' in user.enabledMiniApps));
     }
     match /fluidlab/{wellId}/imports/{importId}/{fileId} {
       function job() { return firestore.get(/databases/(default)/documents/fluidWells/$(wellId)/imports/$(importId)).data; }

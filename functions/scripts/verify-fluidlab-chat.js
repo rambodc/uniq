@@ -27,7 +27,8 @@ const uid = "fluid-live-check",
 const user = db.doc(`users/${uid}`),
   well = db.collection("fluidWells").doc(wellId);
 await user.set({
-  schemaVersion: 1,
+  schemaVersion: 2,
+  role: "employee",
   email: "fluid-live-check@example.com",
   status: "active",
   enabledMiniApps: ["fluidlab"],
@@ -43,7 +44,7 @@ await well.collection("versions").doc(version).set({ path });
 await storage.bucket().file(path).save(JSON.stringify(dataset));
 try {
   const result = await askFluidChat.run({
-    auth: { uid, token: { email: "fluid-live-check@example.com" } },
+    auth: { uid, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: "fluid-live-check@example.com" } },
     data: {
       wellId,
       version,

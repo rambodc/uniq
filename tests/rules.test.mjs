@@ -31,11 +31,11 @@ test("Storage denies unrelated browser uploads and downloads", async () => {
 });
 
 const bucket = "gs://uniqenergy-de71c.firebasestorage.app";
-const client = (uid) => environment.authenticatedContext(uid, { email: `${uid}@example.com` }).storage(bucket);
+const client = (uid) => environment.authenticatedContext(uid, { email: `${uid}@example.com`, email_verified: true, auth_time: Math.floor(Date.now()/1000) }).storage(bucket);
 
 async function seedFluid(uid,changes={},jobChanges={}) {
   await environment.withSecurityRulesDisabled(async context=>{
-    await setDoc(doc(context.firestore(),`users/${uid}`),{schemaVersion:1,email:`${uid}@example.com`,role:"user",status:"active",enabledMiniApps:["fluidlab"],...changes});
+    await setDoc(doc(context.firestore(),`users/${uid}`),{schemaVersion:2,email:`${uid}@example.com`,role:"employee",status:"active",enabledMiniApps:["fluidlab"],...changes});
     await setDoc(doc(context.firestore(),`fluidWells/well/imports/${uid}`),{owner:uid,wellId:"well",status:"uploading",expiresAt:Timestamp.fromMillis(Date.now()+60000),files:[{size:3}],...jobChanges});
   });
 }

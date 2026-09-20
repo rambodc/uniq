@@ -9,14 +9,14 @@ vi.mock("./portal/AuthContext", () => ({ AuthProvider: ({ children }: { children
 vi.mock("react-router-dom", async (original) => ({ ...await original<typeof import("react-router-dom")>(), Navigate: ({ to }: { to: string }) => <span>Redirect to {to}</span> }));
 vi.mock("./public/PublicSite", () => ({ default: () => <span>Public site</span> }));
 vi.mock("./auth/EnterpriseAuth", () => ({ default: () => null }));
-vi.mock("./auth/InviteAccept", () => ({ default: () => null }));
+
 vi.mock("./mini-apps/account/AccountApp", () => ({ default: () => null }));
 vi.mock("./mini-apps/contact-form/ContactFormApp", () => ({ default: () => null }));
 vi.mock("./mini-apps/user-access/UserAccessApp", () => ({ default: () => null }));
 vi.mock("./mini-apps/fluidlab/FluidLab", () => ({ default: () => <span>FluidLab workspace</span> }));
 import App from "./App";
 
-const user: PortalUser = { schemaVersion: 1, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "user", status: "active", enabledMiniApps: [] };
+const user: PortalUser = { schemaVersion: 2, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "employee", status: "active", enabledMiniApps: [] };
 const render = (path = "/apps/fluidlab") => renderToString(<MemoryRouter initialEntries={[path]}><App/></MemoryRouter>);
 
 beforeEach(() => { session.user = null; session.loading = false; });

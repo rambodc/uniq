@@ -13,7 +13,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { db, storage } from "../../core/firebase.js";
 import { callable, REGION } from "../../core/config.js";
-import { requireMiniApp } from "../../core/auth.js";
+import { requireMiniApp, requireAvailable } from "../../core/auth.js";
 import { analyzeLosses, lossEntries, lossFingerprint } from "./losses.js";
 import { nameSearch, searchWells } from "./search.js";
 import { cleanupPasonUploads, revokePasonUploads } from "./pason.js";
@@ -617,6 +617,7 @@ export const processFluidImport = onTaskDispatched(
     rateLimits: { maxConcurrentDispatches: 2 },
   },
   async (request) => {
+    await requireAvailable();
     const { uid, wellId, importId } = request.data;
     validId(uid);
     validId(importId);
@@ -669,7 +670,7 @@ export const processFluidImport = onTaskDispatched(
       if (
         !user ||
         user.status !== "active" ||
-        (user.role !== "admin" && !user.enabledMiniApps?.includes("fluidlab"))
+        (user.role !== "admin" && !(user.role === "employee" && user.enabledMiniApps?.includes("fluidlab")))
       )
         throw new Error("FluidLab access was revoked.");
       const files = [];
@@ -1323,6 +1324,7 @@ export const askFluidChat = wrap(
 export const cleanupFluidImports = onSchedule(
   { schedule: "every 60 minutes", region: REGION },
   async () => {
+    await requireAvailable();
     await cleanupPasonUploads();
     const apps = await db
       .collectionGroup("imports")

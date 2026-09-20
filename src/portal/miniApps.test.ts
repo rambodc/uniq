@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PortalUser } from "../core/types";
 import { canAccessMiniApp, visibleMiniApps } from "./miniApps";
 
-const user: PortalUser = { schemaVersion: 1, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "user", status: "active", enabledMiniApps: [] };
+const user: PortalUser = { schemaVersion: 2, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "employee", status: "active", enabledMiniApps: [] };
 
 describe("FluidLab access", () => {
   it.each([
@@ -20,8 +20,8 @@ describe("FluidLab access", () => {
 });
 
 it("LSD Finder uses separate assigned access", () => {
- expect(canAccessMiniApp(user,"lsd-finder")).toBe(false);
- expect(canAccessMiniApp({...user,enabledMiniApps:["lsd-finder"]},"lsd-finder")).toBe(true);
+ expect(canAccessMiniApp({...user,role:"member"},"lsd-finder")).toBe(true);
+
  expect(canAccessMiniApp({...user,role:"admin"},"lsd-finder")).toBe(true);
  expect(canAccessMiniApp({...user,role:"admin",status:"disabled"},"lsd-finder")).toBe(false);
 });

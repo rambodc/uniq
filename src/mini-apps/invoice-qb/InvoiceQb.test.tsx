@@ -46,7 +46,7 @@ it("supports separate candidates and preserves selection when saving fails", asy
   expect(boxes[0].checked).toBe(true);
 });
 it("uses pagination and hides admin connection controls from team members", async () => {
-  session.user = { role: "user" };
+  session.user = { role: "employee" };
   vi.mocked(api.messages).mockResolvedValueOnce({ messages: [summary], cursor: "page2" });
   await render();
   expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Connection")).toBe(false);

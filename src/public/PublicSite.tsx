@@ -1,3 +1,4 @@
+import { usePortalAuth } from "../portal/AuthContext";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   lazy,
@@ -1003,6 +1004,7 @@ function Footer({
 
 export default function App() {
   const portalNavigate = useNavigate();
+  const { user: account } = usePortalAuth();
   const [path, setPath] = useState(() => {
     const normalized = validPath(location.pathname);
     if (normalized !== location.pathname)
@@ -1040,7 +1042,7 @@ export default function App() {
     setPath(normalized);
     window.scrollTo(0, 0);
   }, []);
-  const lab = useCallback(() => portalNavigate("/portal"), [portalNavigate]);
+  const lab = useCallback(() => portalNavigate(account ? account.role === "member" ? "/member" : "/portal" : "/signin"), [portalNavigate, account]);
   useEffect(() => {
     const route = seoByPath.get(path);
     if (route) applySeo(route);

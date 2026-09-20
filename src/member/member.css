@@ -1,0 +1,352 @@
+.member-shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(ellipse at 90% 0, #0a3941 0, transparent 45%), #051720;
+  color: #edf9f7;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.member-nav {
+  max-width: 1240px;
+  margin: auto;
+  padding: 24px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #ffffff15;
+  gap: 20px;
+}
+.member-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: white;
+  font-size: 21px;
+  font-weight: 750;
+}
+.member-logo img {
+  width: 36px;
+}
+.member-nav nav {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.member-nav nav a,
+.member-back {
+  color: #aec6cd;
+  text-decoration: none;
+  font-size: 14px;
+}
+.member-nav a:hover,
+.member-back:hover {
+  color: #45e4be;
+}
+.member-main {
+  max-width: 1180px;
+  margin: auto;
+  padding: 64px 32px 90px;
+}
+.member-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: #4fe1ba;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.member-hero h1 {
+  font-size: clamp(36px, 5vw, 62px);
+  letter-spacing: -0.055em;
+  margin: 18px 0;
+}
+.member-hero p {
+  font-size: 17px;
+  color: #9eb5bd;
+  line-height: 1.7;
+}
+.member-section {
+  margin-top: 55px;
+}
+.member-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.member-section-title h2 {
+  font-size: 22px;
+  margin: 0;
+}
+.member-section-title > span {
+  color: #73919c;
+  font-size: 12px;
+}
+.member-tool {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 28px;
+  border: 1px solid #ffffff20;
+  border-radius: 20px;
+  text-decoration: none;
+  color: white;
+  background: linear-gradient(110deg, #103833, #0b242d);
+}
+.member-tool-icon {
+  padding: 20px;
+  border-radius: 16px;
+  color: #60e7bd;
+  background: #ffffff08;
+}
+.member-tool h3 {
+  font-size: 23px;
+  margin: 0 0 9px;
+}
+.member-tool p {
+  margin: 0;
+  color: #a2bbc0;
+  line-height: 1.6;
+}
+.member-tool > svg {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.party-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 24px;
+}
+.party-card {
+  border: 1px solid #ffffff20;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #0b242e;
+  text-decoration: none;
+  color: white;
+  transition: transform 0.2s;
+}
+.party-card:hover {
+  transform: translateY(-3px);
+}
+.party-cover {
+  height: 210px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(
+    ellipse at top right,
+    #a46f36,
+    #273633 65%,
+    #10252a
+  );
+  overflow: hidden;
+}
+.party-cover > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.party-cover > span {
+  font-size: 10px;
+  letter-spacing: 0.4em;
+  color: #f6d6a7;
+}
+.party-cover > b {
+  font-size: 88px;
+  letter-spacing: -0.07em;
+  color: #f6e4c8;
+  font-weight: 400;
+}
+.party-card-body {
+  padding: 24px;
+}
+.party-card h3 {
+  font-size: 27px;
+  margin: 13px 0;
+}
+.party-card p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #acc2c9;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.party-link {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
+  color: #5ce4bd;
+  font-size: 13px;
+}
+.member-empty {
+  padding: 44px;
+  border: 1px dashed #ffffff25;
+  border-radius: 20px;
+  color: #9bb5bf;
+}
+.member-empty > svg {
+  color: #4acdad;
+}
+.member-empty h3 {
+  color: #e5f3f3;
+  font-weight: 500;
+}
+.member-footer {
+  border-top: 1px solid #ffffff12;
+  padding: 30px;
+  text-align: center;
+  font-size: 12px;
+  color: #78959e;
+}
+.party-page {
+  padding-top: 32px;
+}
+.party-banner {
+  height: 300px;
+  border-radius: 24px;
+  margin: 28px 0 40px;
+}
+.party-banner > b {
+  font-size: 130px;
+}
+.party-details {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 45px;
+}
+.party-details h1 {
+  font-size: clamp(35px, 5vw, 58px);
+  letter-spacing: -0.04em;
+  margin: 15px 0 28px;
+}
+.party-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: #b8cdd1;
+  line-height: 1.7;
+}
+.party-meta svg {
+  width: 20px;
+  flex-shrink: 0;
+  color: #49dab6;
+}
+.party-description {
+  white-space: pre-wrap;
+  line-height: 1.85;
+  color: #b6cbd0;
+  margin-top: 30px;
+}
+.guest-ticket {
+  padding: 32px;
+  border: 1px solid #7fcaaf44;
+  border-radius: 20px;
+  background: #0d2a30;
+  align-self: start;
+}
+.guest-ticket > svg {
+  color: #52e6bc;
+}
+.guest-ticket h2 {
+  font-size: 23px;
+}
+.guest-ticket p {
+  color: #aec8cb;
+  line-height: 1.6;
+}
+.rsvp-status {
+  display: inline-block;
+  padding: 7px 12px;
+  background: #45deb51a;
+  color: #73eccb;
+  border-radius: 20px;
+  text-transform: capitalize;
+  font-size: 12px;
+}
+.guest-ticket small {
+  display: block;
+  margin-top: 26px;
+  color: #85a9af;
+}
+.ticket-reference {
+  display: block;
+  margin: 12px 0;
+  font-size: 18px;
+  letter-spacing: 0.05em;
+  overflow-wrap: anywhere;
+}
+.rsvp-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 25px;
+}
+.rsvp-actions button,
+.member-shell button {
+  padding: 12px 18px;
+  border: 1px solid #3bb59b;
+  border-radius: 10px;
+  background: #38d4ae;
+  color: #05271f;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rsvp-actions .secondary {
+  background: transparent;
+  color: #b5d3cf;
+  border-color: #ffffff25;
+}
+.member-shell button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.member-shell a:focus-visible,
+.member-shell button:focus-visible {
+  outline: 3px solid #69f5d1;
+  outline-offset: 4px;
+}
+@media (max-width: 700px) {
+  .member-nav {
+    padding: 18px;
+    align-items: flex-start;
+  }
+  .member-logo {
+    font-size: 16px;
+  }
+  .member-nav nav {
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .member-nav nav a {
+    font-size: 12px;
+  }
+  .member-main {
+    padding: 36px 18px 60px;
+  }
+  .member-tool {
+    padding: 20px;
+    gap: 15px;
+  }
+  .member-tool-icon {
+    padding: 12px;
+  }
+  .member-tool p {
+    font-size: 13px;
+  }
+  .member-section-title > span {
+    display: none;
+  }
+  .party-details {
+    grid-template-columns: 1fr;
+    gap: 25px;
+  }
+  .party-banner {
+    height: 230px;
+  }
+  .member-empty {
+    padding: 25px;
+  }
+}

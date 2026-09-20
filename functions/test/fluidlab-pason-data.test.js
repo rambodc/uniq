@@ -100,14 +100,15 @@ test(
       attachmentId = randomUUID();
     const well = db.doc(`fluidWells/${id}`);
     const req = (user, data) => ({
-      auth: { uid: user, token: { email: user + "@test.com" } },
+      auth: { uid: user, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: user + "@test.com" } },
       data: { wellId: id, attachmentId, ...data },
     });
     const call = (data, user = uid) =>
       saveFluidPasonAnalysis.run(req(user, data));
     for (const user of [uid, other, denied])
       await db.doc(`users/${user}`).set({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        role: "employee",
         email: user + "@test.com",
         status: "active",
         enabledMiniApps: user === denied ? [] : ["fluidlab"],

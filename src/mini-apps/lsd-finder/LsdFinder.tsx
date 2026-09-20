@@ -156,7 +156,7 @@ export default function LsdFinder() {
   return (
     <main className={`lsd-app ${collapsed ? "is-collapsed" : ""}`}>
       <header className="lsd-header">
-        <Link to="/portal" aria-label="Back to portal">
+        <Link to="/member" aria-label="Back to portal">
           <ArrowLeft />
         </Link>
         <MapPin aria-hidden="true" />

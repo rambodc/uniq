@@ -134,7 +134,7 @@ test(
       other = "lsd-" + randomUUID(),
       canonical = "10-02-062-04-W4M";
     const request = (data = {}, id = uid) => ({
-      auth: { uid: id, token: { email: id + "@example.com" } },
+      auth: { uid: id, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: id + "@example.com" } },
       data,
     });
     const cache = db.doc(`lsdGridCache/${GRID_VERSION}-${canonical}`);
@@ -143,10 +143,11 @@ test(
         await db
           .doc("users/" + id)
           .set({
-            schemaVersion: 1,
+            schemaVersion: 2,
+            role: "member",
             status: "active",
             email: id + "@example.com",
-            enabledMiniApps: ["lsd-finder"],
+            enabledMiniApps: [],
           });
       await cache.set({
         canonical,
@@ -176,7 +177,7 @@ test(
         updateLsdLocation.run(request({ canonical, visible: false }, other)),
         (e) => e.code === "not-found",
       );
-      await db.doc("users/" + other).update({ enabledMiniApps: [] });
+      await db.doc("users/" + other).update({ status: "disabled" });
       await assert.rejects(
         listLsdLocations.run(request({}, other)),
         (e) => e.code === "permission-denied",

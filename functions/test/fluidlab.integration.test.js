@@ -27,7 +27,7 @@ const enabled =
   !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.STORAGE_EMULATOR_HOST;
 const uid = `fluid-test-${randomUUID()}`;
 const request = (data = {}, user = uid) => ({
-  auth: { uid: user, token: { email: `${user}@example.com` } },
+  auth: { uid: user, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: `${user}@example.com` } },
   data,
 });
 test(
@@ -35,7 +35,8 @@ test(
   { skip: !enabled },
   async () => {
     await db.doc(`users/${uid}`).set({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      role: "employee",
       email: `${uid}@example.com`,
       status: "active",
       enabledMiniApps: ["fluidlab"],
@@ -199,10 +200,10 @@ test(
       );
       const other = `${uid}-other`;
       await db.doc(`users/${other}`).set({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        role: "admin",
         email: `${other}@example.com`,
         status: "active",
-        role: "admin",
       });
       assert.equal(
         (await getFluidWell.run(request({ wellId: id }, other))).well.id,
@@ -291,7 +292,7 @@ test(
       await deleteFluidWell.run(request({ wellId: secondWell.well.id }));
       await db
         .doc(`users/${other}`)
-        .update({ role: "user", enabledMiniApps: [] });
+        .update({ role: "employee", enabledMiniApps: [] });
       await assert.rejects(
         getFluidWell.run(request({ wellId: id }, other)),
         /access|enabled|permission/i,
@@ -362,10 +363,10 @@ test(
   { skip: !enabled },
   async () => {
     await db.doc(`users/${uid}`).set({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      role: "admin",
       email: `${uid}@example.com`,
       status: "active",
-      role: "admin",
     });
     const id = randomUUID(),
       importId = randomUUID(),

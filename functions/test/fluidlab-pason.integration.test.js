@@ -15,7 +15,7 @@ import { nameSearch, searchWells } from "../apps/fluidlab/search.js";
 const enabled =
   !!process.env.FIRESTORE_EMULATOR_HOST && !!process.env.STORAGE_EMULATOR_HOST;
 const req = (uid, data) => ({
-  auth: { uid, token: { email: `${uid}@test.com` } },
+  auth: { uid, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: `${uid}@test.com` } },
   data,
 });
 test(
@@ -28,7 +28,8 @@ test(
       wellId = randomUUID();
     for (const uid of [owner, other, denied])
       await db.doc(`users/${uid}`).set({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        role: "employee",
         email: `${uid}@test.com`,
         status: "active",
         enabledMiniApps: uid === denied ? [] : ["fluidlab"],
@@ -171,7 +172,8 @@ test(
     await db
       .doc(`users/${uid}`)
       .set({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        role: "employee",
         email: `${uid}@test.com`,
         status: "active",
         enabledMiniApps: ["fluidlab"],

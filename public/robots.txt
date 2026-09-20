@@ -4,6 +4,5 @@ Disallow: /portal
 Disallow: /apps/
 Disallow: /account
 Disallow: /signin
-Disallow: /forgot-password
-Disallow: /invite/
+Disallow: /member
 Sitemap: https://uniqenergy.com/sitemap.xml

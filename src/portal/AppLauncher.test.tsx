@@ -5,7 +5,7 @@ import type { PortalUser } from "../core/types";
 const session = vi.hoisted(() => ({ user: null as PortalUser | null }));
 vi.mock("./AuthContext", () => ({ usePortalAuth: () => session }));
 import AppLauncher from "./AppLauncher";
-const profile: PortalUser = { schemaVersion: 1, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "user", status: "active", enabledMiniApps: ["fluidlab"] };
+const profile: PortalUser = { schemaVersion: 2, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "employee", status: "active", enabledMiniApps: ["fluidlab"] };
 const render = () => renderToString(<MemoryRouter><AppLauncher/></MemoryRouter>);
 beforeEach(() => { session.user = { ...profile }; });
 it("shows image launchers only for assigned and always-visible apps", () => {
@@ -16,8 +16,8 @@ it("shows image launchers only for assigned and always-visible apps", () => {
 it("shows all app launchers for administrators", () => {
   session.user = { ...profile, role: "admin" };
   const html = render();
-  expect(html).toContain('href="/apps/lsd-finder"');
-  expect(html).toContain("LSD Finder");
+  expect(html).not.toContain('href="/apps/lsd-finder"');
+  expect(html).toContain("UEX");
   for (const app of ["fluidlab", "contact-form", "user-access", "account"]) {
     expect(html).toContain(`href="/apps/${app}"`); expect(html).toContain(`/portal-art/${app}.webp`);
   }

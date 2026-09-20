@@ -1,42 +1,22 @@
-# UniqEnergy Website and Enterprise Portal
+# UniqEnergy and UniqAccount
 
-UniqEnergy’s public website and invitation-only enterprise mini-app portal.
+Public website, passwordless member accounts, employee tools, and UEX parties.
 
-## Architecture
+## Architecture and access
 
-- React 19, TypeScript, Vite, React Router, Three.js
-- Firebase Hosting, Email/Password Authentication, callable Functions, Firestore, Storage, and App Check
-- Public marketing site under `src/public`
-- Enterprise authentication and invitation acceptance under `src/auth`
-- Portal launcher, layout, guards, and mini-app registry under `src/portal`
-- Product surfaces under `src/mini-apps/<app-id>`
-- Callable backend handlers under `functions/apps/<app-id>`, with explicitly exported handlers
-- Shared backend infrastructure under `functions/core` and integrations under `functions/services`
+React, TypeScript, Vite and Firebase Hosting. All account/application data access is through App Check-protected Functions; browser Firestore access is denied. Firebase custom authentication follows verification of a six-digit code delivered through the existing SMTP sender.
 
-`functions/index.js` is deployment-only and explicitly re-exports every handler. Browser Firestore access is denied. Library metadata and other application operations use authenticated callable Functions. Well ZIP transfers use owner-restricted Storage rules tied to active portal access.
+- `/signin`: public signup and signin. Codes last 10 minutes, permit five attempts, and work once. Email resend cooldown is 60 seconds, with email/IP hourly limits.
+- `/member`: focused member home, LSD Finder, and individually invited parties. Employees/admins can switch here from `/portal`.
+- `/portal`: employee tools. Admins have all tools; employees require grants for FluidLab, Invoice QB, Contact Form, and UEX management.
+- `/apps/user-access`: admins promote already-registered members, set grants, and disable accounts. The last active admin cannot be removed.
+- `/member/parties/:id`: named guest RSVP and ticket; a URL never grants admission. Only the verified invited email can open the page.
 
-## Mini apps and access
+Account records use schema version 2 and roles `member`, `employee`, `admin`. Signup always creates a member. Sessions last at most 365 days, subject to revocation/disable; roles and grants are read server-side on each request. Member names are collected once after email verification.
 
-- **FluidLab** — owner-private spreadsheet imports, saved schematic 3D wells, inventory/cost analysis, source review, and AI chat at `/apps/fluidlab/wells/:wellId`
-- **User Access** — administrator-only invitation and access management
-- **Account** — always available to authenticated users
+UEX managers share all parties. Parties have manually assigned names, timezone-aware dates, descriptions, locations, and optional covers. Invitation emails and updates are explicit actions, with per-recipient delivery status. Duplicate guest emails do not create duplicate tickets. Guests see only their own RSVP/ticket; past and archived parties are read-only. Archived parties leave the home feed. No payments, games, plus-ones, QR codes, or check-in in v1.
 
-Administrators automatically receive every managed mini app. Ordinary users need explicit grants for each managed app, including `fluidlab`. There is no public signup route.
-
-## Enterprise and FluidLab data
-
-```text
-users/{uid}
-users/{uid}/miniApps/fluidlab/wells/{wellId}
-users/{uid}/miniApps/fluidlab/wells/{wellId}/versions/{versionId}
-users/{uid}/miniApps/fluidlab/imports/{importId}
-invitations/{invitationId}
-contactInquiries/{inquiryId}
-```
-
-Enterprise account records use `schemaVersion: 1`; the rebuilt FluidLab uses schema version 2. Legacy FluidLab project data is inactive and is not migrated. Original spreadsheets and immutable dataset snapshots live in private Storage, and versioned normalized records and job metadata live in Firestore.
-
-Fluid Labs extracts the survey TXT, ETS XML, and drilling CSV locally from a well ZIP package. Raw files and normalized engineering data are never uploaded or persisted.
+Key data: `users/{uid}`, `loginChallenges/{id}`, `loginLimits/{key}`, `uexParties/{id}/guests/{emailHash}`, `fluidWells/{id}`, `contactInquiries`, and `invoiceQbQueue`. Gmail connection authorization remains in `invoiceQbPrivate/connection`.
 
 ## Local validation
 
@@ -64,49 +44,23 @@ OPENAI_API_KEY
 
 Optional function environment values are `SMTP_HOST`, `SMTP_PORT`, and `PUBLIC_APP_URL`. Defaults target Gmail SMTP, port 465, and the production Firebase Hosting URL.
 
-## Controlled enterprise reset
+## One-time account cutover
 
-The reset utility is never run by deployment. It first reports every Auth user, top-level Firestore collection count, and Storage object without deleting anything:
+The production Functions workflow runs the guarded `functions/platform/account-cutover.js` phases. This replaces the old unrestricted reset utility. It locks account services, disables old identities, deploys replacement handlers, drains old requests, deletes the listed account/app collections and app-owned file prefixes, and bootstraps `rambodr@uniquem.ca` as the sole admin. This admin must verify an emailed code before entering and supply their name.
+
+`platform/accountCutover` records reset/completion progress. A rerun after completion cannot delete new data. SMTP secrets, infrastructure, and Gmail mailbox authorization are preserved. Hosting opens account access only after the matching backend/rules workflows succeed and the new frontend is deployed. On failure, leave maintenance enabled and rerun the failed workflow; do not delete the marker or run a local reset.
+
+Authentication setup grants the runtime permission to sign Firebase custom tokens and private cover URLs, and disables the Firebase password provider. Old invite/password endpoints are removed from deployed Functions.
+
+Run the reset/account integration rehearsal against demo-project emulators only:
 
 ```bash
-npm run reset:enterprise --prefix functions
+FIREBASE_CONFIG='{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}' firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test functions/test/uex-account.test.js'
 ```
-
-Permanent deletion requires both an exact environment acknowledgement and explicit confirmation flag:
-
-```bash
-ALLOW_ENTERPRISE_RESET=YES_DELETE_ALL_UNIQENERGY_DATA npm run reset:enterprise --prefix functions -- --confirm-permanent-reset
-```
-
-After the verified reset, create the first user in Firebase Authentication through Firebase Console. Then create `users/{uid}` with:
-
-```json
-{
-  "schemaVersion": 1,
-  "uid": "AUTH_UID",
-  "email": "admin@example.com",
-  "firstName": "Admin",
-  "lastName": "User",
-  "role": "admin",
-  "status": "active",
-  "enabledMiniApps": ["fluidlab"]
-}
-```
-
-Use Firestore timestamps for `createdAt` and `updatedAt`. All subsequent accounts must be created through the User Access invitation workflow.
 
 ## Deployment
 
-Deploy only through the existing GitHub Actions workflows. Pull requests create a Firebase Hosting preview and validate Hosting, Functions, and rules independently. Production deployments occur from the protected `production` branch using Workload Identity Federation. Never deploy or reset production automatically from a local development action.
-
-Production release procedure:
-
-1. Run the relevant local validation commands without deploying.
-2. Commit only the intended changes and push them to `production` through the repository's normal Git workflow.
-3. Let `.github/workflows/firebase-hosting-merge.yml`, `firebase-functions-merge.yml`, or `firebase-rules-merge.yml` perform the applicable deployment.
-4. Monitor the GitHub Actions run through completion and report its result.
-
-Do not run `npm run deploy`, `firebase deploy`, or any other local command that changes production. The npm script exists for legacy compatibility only and is not an authorized release path.
+Commit intended changes and push `production`. GitHub Actions is the only deployment path. Never deploy or reset from a local shell, and do not create preview deployments or PRs unless requested. Hosting waits for affected backend/rules workflows, including the one-time reset. Monitor all matching runs and report their final URLs and results.
 
 ## Pason attachments
 

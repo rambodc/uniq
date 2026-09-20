@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { getApp } from "firebase-admin/app";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { db, storage } from "../../core/firebase.js";
-import { requireAdmin, requireMiniApp } from "../../core/auth.js";
+import { requireAdmin, requireMiniApp, requireAvailable } from "../../core/auth.js";
 import { callable, REGION } from "../../core/config.js";
 import { decrypt, encrypt, hash, identifier, MAX_FILE, MAX_CANDIDATE, parseMessage, publicMessage, searchOptions, selections, sourceKey } from "./model.js";
 
@@ -71,6 +71,7 @@ export const invoiceQbConnect = wrap(async (_data, current) => {
 export const invoiceQbOauthCallback = onRequest({ region: REGION, maxInstances: 2, timeoutSeconds: 60 }, async (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
+    await requireAvailable();
     const state = String(req.query.state || "");
     if (!/^[a-f0-9]{64}$/.test(state)) throw new Error("state");
     const stateRef = db.doc(`invoiceQbOauth/${hash(state)}`);
@@ -84,7 +85,7 @@ export const invoiceQbOauthCallback = onRequest({ region: REGION, maxInstances: 
     if (pending.expires < Date.now()) throw new Error("expired");
     if (req.query.error) return res.redirect(`${appUrl()}/apps/invoice-qb?connection=denied`);
     const adminRef = db.doc(`users/${pending.uid}`), admin = (await adminRef.get()).data();
-    if (admin?.role !== "admin" || admin.status !== "active" || admin.schemaVersion !== 1) throw new Error("admin");
+    if (admin?.role !== "admin" || admin.status !== "active" || admin.schemaVersion !== 2) throw new Error("admin");
     if (typeof req.query.code !== "string") throw new Error("code");
     const c = await config(), tokens = await exchange({ code: req.query.code, grant_type: "authorization_code", redirect_uri: c.redirectUri });
     if (!tokens.refresh_token || !String(tokens.scope || "").split(" ").includes("https://www.googleapis.com/auth/gmail.readonly")) throw new Error("scope");
@@ -191,7 +192,7 @@ export const invoiceQbAdd = wrap(async (data, current) => {
       const refs = docs.flatMap((doc) => doc.documents.map((d) => claims.doc(d.claim)));
       const [saved, user, ...existing] = await tx.getAll(connection, current.ref, ...refs);
       if (saved.data()?.generation !== s.generation) throw new HttpsError("aborted", "Mailbox changed. Refresh and retry.");
-      if (user.data()?.status !== "active" || (user.data()?.role !== "admin" && !user.data()?.enabledMiniApps?.includes("invoice-qb"))) throw new HttpsError("permission-denied", "Invoice QB access was removed.");
+      if (user.data()?.status !== "active" || (user.data()?.role !== "admin" && !(user.data()?.role === "employee" && user.data()?.enabledMiniApps?.includes("invoice-qb")))) throw new HttpsError("permission-denied", "Invoice QB access was removed.");
       if (existing.some((snap) => snap.exists)) throw new HttpsError("already-exists", "One or more selected documents are already in the bill queue. Refresh and select only new documents.");
       for (const doc of docs) {
         tx.create(entries.doc(doc.id), doc);

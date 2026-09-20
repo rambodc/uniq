@@ -2,7 +2,7 @@ name: "Production: Firebase Functions"
 on:
   push:
     branches: [production]
-    paths: ["functions/**", "scripts/configure-fluidlab-cloud.py", "scripts/configure-invoice-qb-cloud.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
+    paths: ["functions/**", "scripts/configure-fluidlab-cloud.py", "scripts/configure-invoice-qb-cloud.py", "scripts/configure-account-auth.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
   workflow_dispatch:
 concurrency: { group: functions-production, cancel-in-progress: false }
 jobs:
@@ -83,13 +83,23 @@ jobs:
               output.write("invoice_tests=" + str(invoice_tests).lower() + "\n")
           PYCODE
       - uses: actions/setup-java@v4
-        if: steps.affected.outputs.invoice_tests == 'true'
         with: { distribution: temurin, java-version: 21 }
       - name: Test Invoice QB with isolated emulators
         if: steps.affected.outputs.invoice_tests == 'true'
         run: >-
           firebase emulators:exec --project demo-invoice-qb --only firestore,storage
           'FIREBASE_CONFIG='\''{"projectId":"demo-invoice-qb","storageBucket":"demo-invoice-qb.appspot.com"}'\'' node --test functions/test/invoice-qb.integration.test.js'
+      - name: Rehearse accounts and UEX with isolated emulators
+        env:
+          FIREBASE_CONFIG: '{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}'
+        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test functions/test/uex-account.test.js'
+      - name: Begin one-time account cutover
+        env:
+          ACCOUNT_CUTOVER: RESET_UNIQACCOUNT_V2
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
+        run: node functions/platform/account-cutover.js start
+      - name: Configure email-code authentication
+        run: python3 scripts/configure-account-auth.py
       - if: ${{ steps.affected.outputs.target != '' }}
         run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
       - name: Configure FluidLab task dispatch
@@ -100,3 +110,20 @@ jobs:
         env:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: node functions/scripts/index-fluid-well-names.js
+
+      - name: Drain pre-cutover requests and reset accounts once
+        env:
+          ACCOUNT_CUTOVER: RESET_UNIQACCOUNT_V2
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
+        run: |
+          node --input-type=module <<'JS'
+          import { db } from './functions/core/firebase.js';
+          const state = (await db.doc('platform/accountCutover').get()).data();
+          if (!state?.completedAt) {
+            // Retired Functions can have requests running up to 30 minutes.
+            // Wait out requests admitted before the account lockdown.
+            const remaining = Math.max(0, state.drainUntil - Date.now());
+            await new Promise(resolve => setTimeout(resolve, remaining));
+          }
+          JS
+          node functions/platform/account-cutover.js reset

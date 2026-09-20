@@ -27,13 +27,14 @@ const uid = randomUUID(),
   well = db.doc(`fluidWells/${id}`),
   path = `fluidlab/${id}/versions/reports.json`;
 const req = (data, user = uid) => ({
-  auth: { uid: user, token: { email: user + "@test.com" } },
+  auth: { uid: user, token: { email_verified: true, auth_time: Math.floor(Date.now()/1000), email: user + "@test.com" } },
   data: { wellId: id, attachmentId, ...data },
 });
 const prepare = (data) => saveFluidPasonAnalysis.run(req(data));
 for (const user of [uid, other])
   await db.doc(`users/${user}`).set({
-    schemaVersion: 1,
+    schemaVersion: 2,
+  role: "employee",
     email: user + "@test.com",
     status: "active",
     enabledMiniApps: ["fluidlab"],

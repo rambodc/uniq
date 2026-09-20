@@ -102,7 +102,7 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 
 test("enterprise routes include the private Well Viewer mini app", async () => {
   const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
-  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/apps/user-access", "/apps/account", "/invite/:token"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/apps/user-access", "/apps/account", "/member/parties/:id"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(app, /path="\/well-viewer"/);
   assert.doesNotMatch(registry, /well-viewer|Well Viewer/);
   assert.doesNotMatch(firebase, /well-viewer/);
@@ -116,7 +116,7 @@ test("enterprise routes include the private Well Viewer mini app", async () => {
 
 test("Well Viewer carries layered search-engine exclusion", async () => {
   const firebase = await read("firebase.json"), robots = await read("public/robots.txt"), main = await read("src/main.tsx"), sitemap = await read("public/sitemap.xml"), routes = await read("src/public/seo-routes.json"), source = await read("src/public/PublicSite.tsx");
-  assert.match(firebase, /"source": "\/@\(invite\|apps\)\/\*\*"[^\n]+"X-Robots-Tag"[^\n]+"noindex, nofollow"/);
+  assert.ok(JSON.parse(firebase).hosting.headers.some(h => h.source === "/@(member|apps)/**" && h.headers.some(v => v.key === "X-Robots-Tag" && v.value === "noindex, nofollow")));
   assert.match(robots, /Disallow: \/apps/);
   assert.doesNotMatch(robots, /well-viewer/);
   assert.doesNotMatch(main, /well-viewer/);
@@ -128,8 +128,8 @@ test("Well Viewer carries layered search-engine exclusion", async () => {
 
 test("enterprise authentication has one portal destination and one profile authority", async () => {
   const app = await read("src/App.tsx"), authPage = await read("src/auth/EnterpriseAuth.tsx"), authContext = await read("src/portal/AuthContext.tsx"), publicSite = await read("src/public/PublicSite.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), firebase = await read("firebase.json");
-  assert.match(publicSite, /portalNavigate\("\/portal"\)/);
-  assert.match(authPage, /<Navigate to="\/portal" replace\/>/);
+  assert.match(publicSite, /account.role === "member"/);
+  assert.match(authPage, /signInWithCustomToken/);
   assert.doesNotMatch(app + authPage + publicSite + fluidlab, /returnTo/);
   assert.match(authContext, /const delays = \[0, 250, 750\]/);
   assert.match(authContext, /await signOut\(auth\)/);
@@ -155,7 +155,7 @@ test("Contact Form is managed through the portal and callable-only backend", asy
 
 test("enterprise clients keep their authorized callable interfaces", async () => {
   const api = await read("src/core/api.ts"), fluid = await read("src/mini-apps/fluidlab/api.ts"), exports = await read("functions/index.js");
-  for (const endpoint of ["getCurrentUser", "adminListUsers", "adminInviteUser", "previewInvite", "acceptInvite"]) assert.match(api, new RegExp(endpoint));
+  for (const endpoint of ["getCurrentUser", "adminListUsers", "requestLoginCode", "verifyLoginCode", "revokeMySessions"]) assert.match(api, new RegExp(endpoint));
   for (const endpoint of ["listFluidWells", "beginFluidImport", "askFluidChat"]) assert.match(fluid + exports, new RegExp(endpoint));
   assert.doesNotMatch(exports, /saveFluidLabProject/);
 });
@@ -165,10 +165,10 @@ test("mini apps use independent navigation and Fluid Labs owns Pason", async () 
   assert.doesNotMatch(layout, /portal-nav|signOut/);
   assert.match(layout, /className="portal-back-button" to="\/portal"/);
   assert.match(layout, /className="portal-brand-mark"/);
-  assert.doesNotMatch(layout, /portal-brand.*to=|Back to mini apps<\/Link>/);
-  assert.match(account, /reauthenticateWithCredential/);
-  assert.match(account, /updatePassword/);
-  assert.match(account, /<details className="account-card account-security">/);
+  assert.doesNotMatch(layout, /<Link[^>]+className="portal-brand/);
+  assert.match(account, /revokeMySessions/);
+  assert.doesNotMatch(account, /updatePassword/);
+  assert.match(account, /Sign out all devices/);
   assert.doesNotMatch(account, /sendPasswordResetEmail|Forgot current password/);
   assert.match(account, /Sign out/);
   assert.match(fluidlab, /All wells panel/);
@@ -187,15 +187,12 @@ test("mini apps use independent navigation and Fluid Labs owns Pason", async () 
   assert.match(controls, /useState<LabelMode>\("off"\)/);
 });
 
-test("forgot-password delivery uses the protected SMTP callable", async () => {
-  const authPage = await read("src/auth/EnterpriseAuth.tsx"), api = await read("src/core/api.ts"), exports = await read("functions/index.js"), handler = await read("functions/apps/account/request-password-reset.js");
-  assert.match(authPage, /requestPasswordReset\(email\.trim\(\)\)/);
-  assert.doesNotMatch(authPage, /sendPasswordResetEmail/);
-  assert.match(api, /"requestPasswordReset"/);
-  assert.match(exports, /request-password-reset\.js/);
-  assert.match(handler, /generatePasswordResetLink/);
+test("passwordless signin uses the protected SMTP callable", async () => {
+  const authPage = await read("src/auth/EnterpriseAuth.tsx"), handler = await read("functions/apps/account/login.js");
+  assert.match(authPage, /requestLoginCode/);
   assert.match(handler, /EMAIL_SECRETS/);
-  assert.match(handler, /passwordResetRequests/);
+  assert.match(handler, /createCustomToken/);
+  assert.doesNotMatch(authPage, /signInWithEmailAndPassword/);
 });
 
 test("browser database access stays denied and storage is limited to private wells", async () => {
