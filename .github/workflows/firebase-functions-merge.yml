@@ -96,14 +96,23 @@ jobs:
       - name: Rehearse accounts and UEX with isolated emulators
         env:
           FIREBASE_CONFIG: '{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}'
-        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js'
+        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js functions/test/uex-restart.test.js'
       - name: Configure email-code authentication
         run: python3 scripts/configure-account-auth.py
+      - name: Block UEX for clean restart
+        env:
+          UEX_RESTART: CLEAN_UEX_20260920
+          GCLOUD_PROJECT: uniqenergy-de71c
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
+        run: node functions/scripts/restart-uex.js begin
       - if: ${{ steps.affected.outputs.target != '' }}
         run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
-      - name: Retire superseded UEX form endpoints
-        if: contains(steps.affected.outputs.target, 'functions:uexBuilder') || steps.affected.outputs.target == 'functions'
-        run: node functions/scripts/retire-uex-form.js
+      - name: Drain and clean UEX once
+        env:
+          UEX_RESTART: CLEAN_UEX_20260920
+          GCLOUD_PROJECT: uniqenergy-de71c
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
+        run: node functions/scripts/restart-uex.js finish
       - name: Configure FluidLab task dispatch
         if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
         run: python3 scripts/configure-fluidlab-cloud.py --after-deploy

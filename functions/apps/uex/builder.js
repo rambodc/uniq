@@ -1,3 +1,5 @@
+import { requireUexReady } from "./restart-guard.js";
+import { error as logError } from "firebase-functions/logger";
 import { randomUUID } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db, storage } from "../../core/firebase.js";
@@ -21,7 +23,10 @@ const wrap = (fn, ai = false) =>
       memory: "512MiB",
       ...(ai ? { secrets: ["OPENAI_API_KEY"] } : {}),
     },
-    async (r) => fn(r.data || {}, await requireMiniApp(r, "uex")),
+    async (r) => {
+      await requireUexReady();
+      return fn(r.data || {}, await requireMiniApp(r, "uex"));
+    },
   );
 function editable(p, revision) {
   if (!p) throw new HttpsError("not-found", "Party not found.");
@@ -33,7 +38,7 @@ function editable(p, revision) {
   if (
     p.archived ||
     p.status === "cancelled" ||
-    (p.endsAt && Date.parse(p.endsAt) <= Date.now())
+    (p.published?.endsAt && Date.parse(p.published.endsAt) <= Date.now())
   )
     throw new HttpsError("failed-precondition", "This party is read-only.");
   if (p.processing?.until > Date.now())
@@ -59,9 +64,6 @@ export { signedAssets };
 export const uexCreateDraft = wrap(async (_d, user) => {
   const ref = db.collection("uexParties").doc();
   await ref.create({
-    name: "Untitled party",
-    startsAt: "",
-    endsAt: "",
     status: "draft",
     archived: false,
     draft: initialDocument(),
@@ -69,6 +71,7 @@ export const uexCreateDraft = wrap(async (_d, user) => {
     revision: 0,
     generated: false,
     assets: [],
+    publishedAssets: [],
     proposal: null,
     history: [
       {
@@ -84,51 +87,15 @@ export const uexCreateDraft = wrap(async (_d, user) => {
 });
 export const uexBuilder = wrap(async (d) => {
   const ref = refFor(d.id);
-  const party = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) throw new HttpsError("not-found", "Party not found.");
-    const p = snap.data();
-    if (!p.draft) {
-      const migrated = {
-        draft: initialDocument(p),
-        published: p.status === "draft" ? null : initialDocument(p),
-        revision: 0,
-        generated: true,
-        assets: p.coverPath
-          ? [
-              {
-                id: "original-cover",
-                path: p.coverPath,
-                alt: p.name,
-                caption: "",
-              },
-            ]
-          : [],
-        publishedAssets: p.coverPath
-          ? [
-              {
-                id: "original-cover",
-                path: p.coverPath,
-                alt: p.name,
-                caption: "",
-              },
-            ]
-          : [],
-        proposal: null,
-        history: [],
-      };
-      tx.update(ref, migrated);
-      Object.assign(p, migrated);
-    }
-    return p;
-  });
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Party not found.");
+  const party = snap.data();
   return {
     party: {
       ...party,
       id: ref.id,
       assets: await signedAssets(party.assets),
       publishedAssets: null,
-      coverPath: null,
     },
   };
 });
@@ -143,7 +110,7 @@ export const uexBuilderMessage = wrap(async (d, user) => {
     const p = snap.data();
     if (
       p?.history?.some(
-        (m) => m.requestId === requestId && m.role === "assistant",
+        (m) => m.requestId === requestId && m.role === "assistant" && !m.failed,
       )
     )
       return null;
@@ -226,7 +193,30 @@ export const uexBuilderMessage = wrap(async (d, user) => {
       }
       tx.update(ref, update);
     });
-  } catch {
+  } catch (failure) {
+    const conflict = failure.code === "aborted";
+    const validation =
+      failure.code === "invalid-argument" || failure.name === "ZodError";
+    const timeout = failure.name === "APIConnectionTimeoutError";
+    const message = conflict
+      ? "Another manager changed the draft. Refresh before trying again."
+      : validation
+        ? "The assistant returned an invalid page or date. Your draft is safe. Use the date controls to clarify times, or retry your message."
+        : timeout
+          ? "The assistant took too long. Your draft is safe. Please retry your message."
+          : "The page assistant could not finish. Your saved draft is unchanged. Please retry your message.";
+    logError("UEX builder request failed", {
+      requestId,
+      category: conflict
+        ? "conflict"
+        : validation
+          ? "validation"
+          : timeout
+            ? "timeout"
+            : "provider-or-storage",
+      code: String(failure.code || failure.name || "unknown"),
+      providerStatus: failure.status || null,
+    });
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref);
       if (s.data()?.processing?.id === requestId)
@@ -236,15 +226,16 @@ export const uexBuilderMessage = wrap(async (d, user) => {
             ...s.data().history,
             {
               role: "assistant",
-              content:
-                "The page assistant could not finish that request. Your confirmed draft is safe. Please try again.",
+              content: message,
+              requestId,
+              failed: true,
             },
           ],
         });
     });
     throw new HttpsError(
-      "unavailable",
-      "The page assistant could not finish. Your saved draft is unchanged.",
+      conflict ? "aborted" : validation ? "failed-precondition" : "unavailable",
+      message,
     );
   }
   return { success: true };
@@ -321,12 +312,6 @@ export const uexBuilderAction = wrap(async (d, user) => {
           published: doc,
           publishedAssets: p.assets,
           status: "published",
-          name: doc.title,
-          description: doc.description,
-          startsAt: doc.startsAt,
-          endsAt: doc.endsAt,
-          timezone: doc.timezone,
-          location: doc.venue.address,
         });
       } else if (d.action === "cancel") update.status = "cancelled";
       else throw new HttpsError("invalid-argument", "Unknown action.");

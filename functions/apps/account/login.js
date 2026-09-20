@@ -8,7 +8,7 @@ import {
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { auth, db } from "../../core/firebase.js";
 import { callable } from "../../core/config.js";
-import { requireAvailable, requireUser } from "../../core/auth.js";
+import { requireUser } from "../../core/auth.js";
 import { email } from "../../core/values.js";
 import { EMAIL_SECRETS, sendEmail } from "../../services/email.js";
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -34,7 +34,6 @@ export function checkCode(challenge, supplied, now) {
   );
 }
 export async function issueLoginCode(request, address, dedupeKey = null) {
-  await requireAvailable();
   const id = randomBytes(24).toString("hex"),
     code = String(randomInt(0, 1000000)).padStart(6, "0"),
     now = Date.now();
@@ -110,7 +109,6 @@ export const requestLoginCode = onCall(
 export const verifyLoginCode = onCall(
   { ...callable, secrets: EMAIL_SECRETS },
   async (request) => {
-    await requireAvailable();
     const { challengeId: id, code } = request.data || {};
     if (
       typeof id !== "string" ||

@@ -2,13 +2,6 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { db } from "./firebase.js";
 import { MANAGED_MINI_APPS } from "./config.js";
 export const SESSION_SECONDS = 365 * 86400;
-export async function requireAvailable() {
-  if ((await db.doc("platform/accountCutover").get()).data()?.maintenance)
-    throw new HttpsError(
-      "unavailable",
-      "Account maintenance is in progress. Please try again shortly.",
-    );
-}
 export function normalizeMiniApps(value) {
   return Array.isArray(value)
     ? [...new Set(value.filter((item) => MANAGED_MINI_APPS.includes(item)))]
@@ -37,7 +30,6 @@ export function validSession(data, token, now = Date.now()) {
   );
 }
 export async function requireUser(request) {
-  await requireAvailable();
   const uid = request.auth?.uid,
     token = request.auth?.token;
   if (!uid || !token?.email || token.email_verified !== true)

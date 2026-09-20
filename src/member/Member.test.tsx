@@ -27,6 +27,18 @@ const party = {
   timezone: "America/Edmonton",
   status: "published" as const,
   archived: false,
+  assets: [],
+  document: {
+    version: 1 as const,
+    title: "UEX 1",
+    description: "An evening together",
+    venue: { name: "Venue", address: "Edmonton" },
+    startsAt: "2030-10-10T18:00:00Z",
+    endsAt: "2030-10-10T21:00:00Z",
+    timezone: "America/Edmonton",
+    theme: "dark" as const,
+    sections: [],
+  },
 };
 beforeEach(() => {
   vi.resetAllMocks();

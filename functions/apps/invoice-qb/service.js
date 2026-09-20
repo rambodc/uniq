@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { getApp } from "firebase-admin/app";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { db, storage } from "../../core/firebase.js";
-import { requireAdmin, requireMiniApp, requireAvailable } from "../../core/auth.js";
+import { requireAdmin, requireMiniApp } from "../../core/auth.js";
 import { callable, REGION } from "../../core/config.js";
 import { decrypt, encrypt, hash, identifier, MAX_FILE, MAX_CANDIDATE, parseMessage, publicMessage, searchOptions, selections, sourceKey } from "./model.js";
 
@@ -71,7 +71,6 @@ export const invoiceQbConnect = wrap(async (_data, current) => {
 export const invoiceQbOauthCallback = onRequest({ region: REGION, maxInstances: 2, timeoutSeconds: 60 }, async (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
-    await requireAvailable();
     const state = String(req.query.state || "");
     if (!/^[a-f0-9]{64}$/.test(state)) throw new Error("state");
     const stateRef = db.doc(`invoiceQbOauth/${hash(state)}`);

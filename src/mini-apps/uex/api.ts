@@ -12,7 +12,7 @@ export interface Guest {
   ticketValid?: boolean;
   readOnly?: boolean;
 }
-export interface Party {
+export interface PartySummary {
   id: string;
   name: string;
   description: string;
@@ -23,8 +23,10 @@ export interface Party {
   status: "draft" | "published" | "cancelled";
   archived: boolean;
   coverUrl?: string;
-  document?: PageDocument;
-  assets?: Asset[];
+}
+export interface Party extends PartySummary {
+  document: PageDocument;
+  assets: Asset[];
   guest?: Guest;
 }
 export async function call<T>(name: string, data: unknown = {}): Promise<T> {

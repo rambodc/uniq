@@ -1,12 +1,13 @@
+import { requireUexReady } from "./restart-guard.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { db, storage } from "../../core/firebase.js";
+import { db } from "../../core/firebase.js";
 import { callable } from "../../core/config.js";
 import { requireMiniApp, requireUser } from "../../core/auth.js";
-import { email, text, docId, optionalText } from "../../core/values.js";
+import { email, docId, optionalText } from "../../core/values.js";
 import { EMAIL_SECRETS, sendEmail } from "../../services/email.js";
 import { invitationLink } from "./onboarding.js";
-import { guestProjection } from "./document.js";
+import { guestProjection, partySummary } from "./document.js";
 import { signedAssets } from "./builder.js";
 const escapeHtml = (value) =>
   String(value || "").replace(
@@ -23,44 +24,16 @@ const invites = (id) => refFor(id).collection("guests");
 const wrap = (fn, manager = true, secrets = []) =>
   onCall(
     { ...callable, secrets, timeoutSeconds: 300, memory: "512MiB" },
-    async (request) =>
-      fn(
+    async (request) => {
+      await requireUexReady();
+      return fn(
         request.data || {},
         manager
           ? await requireMiniApp(request, "uex")
           : await requireUser(request),
-      ),
+      );
+    },
   );
-export function partyValues(d) {
-  const start = new Date(d.startsAt),
-    end = new Date(d.endsAt),
-    timezone = text(d.timezone || "America/Edmonton", "timezone", 80);
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: timezone }).format(start);
-  } catch {
-    throw new HttpsError(
-      "invalid-argument",
-      "Choose a valid date and timezone.",
-    );
-  }
-  if (!Number.isFinite(end.getTime()) || end <= start)
-    throw new HttpsError(
-      "invalid-argument",
-      "End time must be after start time.",
-    );
-  if (!["draft", "published", "cancelled"].includes(d.status))
-    throw new HttpsError("invalid-argument", "Choose a valid party status.");
-  return {
-    name: text(d.name, "party name", 120),
-    description: text(d.description, "description", 5000),
-    location: text(d.location, "location", 500),
-    timezone,
-    startsAt: start.toISOString(),
-    endsAt: end.toISOString(),
-    status: d.status,
-    archived: d.archived === true,
-  };
-}
 export function ticketValid(p, guest) {
   return (
     p.status === "published" && !guest.revoked && guest.rsvp === "accepted"
@@ -74,31 +47,25 @@ const publicGuest = (p, g) => ({
   readOnly:
     p.status !== "published" ||
     p.archived ||
-    Date.parse(p.startsAt) <= Date.now(),
+    Date.parse(p.published?.startsAt) <= Date.now(),
 });
-async function withCover(p) {
-  if (p.assets) p = { ...p, assets: await signedAssets(p.assets) };
-  if (!p.coverPath) return { ...p, coverUrl: null };
-  const [url] = await storage
-    .bucket()
-    .file(p.coverPath)
-    .getSignedUrl({ action: "read", expires: Date.now() + 15 * 60000 });
-  const safe = { ...p };
-  delete safe.coverPath;
-  return { ...safe, coverUrl: url };
+async function withAssets(p) {
+  const assets = await signedAssets(p.assets);
+  const hero = p.document.sections.find((s) => s.type === "hero")?.items[0]
+    ?.assetId;
+  return {
+    ...p,
+    assets,
+    coverUrl: assets.find((a) => a.id === hero)?.url || null,
+  };
 }
 export const uexListParties = wrap(async () => {
   const snapshot = await parties.get();
   return {
-    parties: await Promise.all(
-      snapshot.docs.map((d) =>
-        withCover({
-          ...d.data(),
-          name: d.data().draft?.title || d.data().name,
-          id: d.id,
-        }),
-      ),
-    ),
+    parties: snapshot.docs.map((d) => ({
+      ...partySummary(d.data(), d.data().draft),
+      id: d.id,
+    })),
   };
 });
 export function imageType(bytes) {
@@ -125,7 +92,7 @@ export const uexAddGuests = wrap(async (d) => {
   if (
     p.data().status === "cancelled" ||
     p.data().archived ||
-    Date.parse(p.data().startsAt) <= Date.now()
+    Date.parse(p.data().published?.startsAt) <= Date.now()
   )
     throw new HttpsError(
       "failed-precondition",
@@ -141,12 +108,12 @@ export const uexAddGuests = wrap(async (d) => {
       optionalText(g.firstName, "first name", 80) || previous?.firstName || "";
     const lastName =
       optionalText(g.lastName, "last name", 80) || previous?.lastName || "";
-    const name =
-      optionalText(g.name, "guest name", 160) ||
-      [firstName, lastName].filter(Boolean).join(" ") ||
-      previous?.name ||
-      "";
-    byEmail.set(address, { email: address, firstName, lastName, name });
+    byEmail.set(address, {
+      email: address,
+      firstName,
+      lastName,
+      name: [firstName, lastName].filter(Boolean).join(" "),
+    });
   }
   const guests = [...byEmail.values()];
   await db.runTransaction(async (tx) => {
@@ -171,12 +138,13 @@ export const uexRevokeGuest = wrap(async (d) => {
 });
 export const uexSendEmails = wrap(
   async (d) => {
-    const p = (await refFor(d.id).get()).data();
-    if (!p || p.status === "draft" || (p.draft && !p.published))
+    const record = (await refFor(d.id).get()).data();
+    if (!record?.published)
       throw new HttpsError(
         "failed-precondition",
         "Publish the party before sending invitations.",
       );
+    const p = partySummary(record, record.published);
     if (!["invitation", "update", "cancellation"].includes(d.kind))
       throw new HttpsError("invalid-argument", "Choose an email type.");
     if (
@@ -261,12 +229,12 @@ export const uexMyParties = wrap(async (_d, current) => {
     if (
       !p.exists ||
       p.data().status === "draft" ||
-      (p.data().draft && !p.data().published) ||
+      !p.data().published ||
       p.data().archived
     )
       continue;
     result.push(
-      await withCover({
+      await withAssets({
         ...guestProjection(p.data()),
         id: p.id,
         guest: publicGuest(p.data(), g.data()),
@@ -287,7 +255,7 @@ export const uexGetMyParty = wrap(async (d, current) => {
     if (
       !p ||
       p.status === "draft" ||
-      (p.draft && !p.published) ||
+      !p.published ||
       !g ||
       g.revoked ||
       g.email !== current.user.email ||
@@ -300,7 +268,7 @@ export const uexGetMyParty = wrap(async (d, current) => {
     if (!g.uid) tx.update(gref, { uid: current.uid });
     return { ...guestProjection(p), id: ref.id, guest: publicGuest(p, g) };
   });
-  return { party: await withCover(result) };
+  return { party: await withAssets(result) };
 }, false);
 export const uexRsvp = wrap(async (d, current) => {
   if (!["accepted", "declined"].includes(d.rsvp))
@@ -319,8 +287,9 @@ export const uexRsvp = wrap(async (d, current) => {
     if (
       !p ||
       p.status !== "published" ||
+      !p.published ||
       p.archived ||
-      Date.parse(p.startsAt) <= Date.now()
+      Date.parse(p.published?.startsAt) <= Date.now()
     )
       throw new HttpsError("failed-precondition", "RSVPs are closed.");
     tx.update(gref, {

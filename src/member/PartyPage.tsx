@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import EventDocument from "../mini-apps/uex/EventDocument";
-import { CalendarDays, MapPin, Ticket } from "lucide-react";
-import { call, myParty, when, type Party } from "../mini-apps/uex/api";
+import { Ticket } from "lucide-react";
+import { call, myParty, type Party } from "../mini-apps/uex/api";
 export default function PartyPage() {
   const { id = "" } = useParams(),
     [party, setParty] = useState<Party | null>(null),
@@ -51,7 +51,7 @@ export default function PartyPage() {
       {party && (
         <>
           <div className="party-details">
-            {party.document ? (
+            {
               <div>
                 <p className="member-eyebrow">
                   {party.status === "cancelled"
@@ -65,27 +65,7 @@ export default function PartyPage() {
                   assets={party.assets}
                 />
               </div>
-            ) : (
-              <section>
-                <span className="member-eyebrow">
-                  {party.status === "cancelled"
-                    ? "EVENT CANCELLED"
-                    : party.archived
-                      ? "ARCHIVED PARTY"
-                      : "YOU’RE INVITED"}
-                </span>
-                <h1>{party.name}</h1>
-                <p className="party-meta">
-                  <CalendarDays />
-                  {when(party)} ({party.timezone})
-                </p>
-                <p className="party-meta">
-                  <MapPin />
-                  {party.location}
-                </p>
-                <p className="party-description">{party.description}</p>
-              </section>
-            )}
+            }
             <aside className="guest-ticket">
               <Ticket />
               <h2>Your invitation</h2>

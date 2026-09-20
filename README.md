@@ -7,7 +7,7 @@ Public website, passwordless member accounts, employee tools, and UEX parties.
 React, TypeScript, Vite and Firebase Hosting. All account/application data access is through App Check-protected Functions; browser Firestore access is denied. Firebase custom authentication follows verification of a six-digit code delivered through the existing SMTP sender.
 
 - `/signin`: public signup and signin. Codes last 10 minutes, permit five attempts, and work once. Email resend cooldown is 60 seconds, with email/IP hourly limits.
-- `/join/:token`: personalized invitation onboarding. An opaque token identifies the invitation, never authenticates. An App Check-protected POST sends a code; reloads reuse a deduplicated request. Verified guests review first/last names, then enter their party. Existing generic links still use ordinary signin.
+- `/join/:token`: personalized invitation onboarding. An opaque token identifies the invitation, never authenticates. An App Check-protected POST sends a code; reloads reuse a deduplicated request. Verified guests review first/last names, then enter their party. Member party routes use ordinary signin and verify invitations on every request.
 - `/member`: gradient member home, Account, LSD Finder, and individually invited parties. Employees/admins can switch here from `/portal`.
 - `/portal`: employee tools. Admins have all tools; employees require grants for FluidLab, Invoice QB, Contact Form, and UEX management.
 - `/apps/user-access`: admins promote already-registered members, set grants, and disable accounts. The last active admin cannot be removed.
@@ -17,7 +17,7 @@ Account records use schema version 2 and roles `member`, `employee`, `admin`. Si
 
 UEX managers share saved conversations and party drafts. Creation opens chat beside a live preview (Chat/Preview tabs on mobile). The assistant returns validated structured sections, never executable HTML/CSS. The first generated draft saves privately; subsequent revisions require Confirm/Cancel. Revision checks and processing leases prevent concurrent overwrites. Dark, light and gold themes support hero, date/time, venue/map, performers, schedule, gallery, FAQs and text. Uploaded JPEG/PNG/WebP images are limited to 5 MB each, 30 per party. Removed/replaced blobs remain available to published snapshots and historical revisions.
 
-Publish/Update live page atomically replaces the guest-visible document and assets. Title, description, start/end, venue name/address, exact-time confirmation and displayed-map confirmation are required. Changing times or venue invalidates the corresponding confirmation. RSVP/tickets are outside AI control. Existing parties convert lazily on manager access; guest reads use a safe structured projection even before conversion, preserving IDs, permissions, RSVPs and tickets. Invitation emails and updates are explicit actions, with per-recipient delivery status. Duplicate guest emails do not create duplicate tickets. Guests see only their own RSVP/ticket; past and archived parties are read-only. Archived parties leave the home feed. No payments, games, plus-ones, QR codes, or check-in in v1.
+Publish/Update live page atomically replaces the guest-visible document and assets. Title, description, start/end, venue name/address, exact-time confirmation and displayed-map confirmation are required. Changing times or venue invalidates the corresponding confirmation. RSVP/tickets are outside AI control. Events use only the current structured draft/published format. Cards, emails, dates, and covers derive from those documents; no old-event conversion or alternate page renderer exists. Invitation emails and updates are explicit actions, with per-recipient delivery status. Duplicate guest emails do not create duplicate tickets. Guests see only their own RSVP/ticket; past and archived parties are read-only. Archived parties leave the home feed. No payments, games, plus-ones, QR codes, or check-in in v1.
 
 Key data: `users/{uid}`, `loginChallenges/{id}`, `loginLimits/{key}`, `loginRequests/{hash}`, `uexInvitationTokens/{tokenHash}`, `uexLimits/{uid}`, `uexParties/{id}/revisions/{revision}`, `uexParties/{id}/guests/{emailHash}`, `fluidWells/{id}`, `contactInquiries`, and `invoiceQbQueue`. Gmail connection authorization remains in `invoiceQbPrivate/connection`.
 
@@ -45,17 +45,17 @@ EMAIL_FROM_ADDRESS
 OPENAI_API_KEY
 ```
 
-Optional function environment values are `SMTP_HOST`, `SMTP_PORT`, and `UEX_MODEL` (falls back to `FLUIDLAB_MODEL`, then `gpt-5.4`). Defaults use Gmail SMTP/465. Invitation URLs always use `https://uniqenergy.com`. Builder requests have a 55-second AI timeout, no automatic paid retries, 30 requests per manager per hour, bounded output/history, and one pending proposal per party.
+Optional function environment values are `SMTP_HOST`, `SMTP_PORT`, and `UEX_MODEL` (falls back to `FLUIDLAB_MODEL`, then `gpt-5.4`). Defaults use Gmail SMTP/465. Invitation URLs always use `https://uniqenergy.com`. AI dates must include a timezone and are normalized to UTC, including offset timestamps that cross midnight. Offset-free dates are rejected. Failed messages remain available to retry; structured error categories are logged without conversation content. The assistant cannot browse the web and asks for supplied performer/venue facts. Builder requests have a 55-second AI timeout, no automatic paid retries, 30 requests per manager per hour, bounded output/history, and one pending proposal per party.
 
 A bounded synthetic live check (two paid AI calls, no Firebase writes or email sends) is available with `node functions/scripts/check-uex-ai.js`. It reads the existing key into process memory and never prints it. Run only when AI behavior changes.
 
-## Preserved accounts and historical cutover
+## Clean UEX restart
 
-The one-time account replacement is complete. Current deployment workflows do **not** invoke reset, start, or finish phases. Keep `platform/accountCutover` intact. Existing accounts, invitations, events, app data, SMTP configuration, and Gmail authorization are preserved. The historical guarded cutover utility remains covered only by demo-project emulator tests; do not run it locally against production.
+The authorized restart removes all prior UEX records and images, including invitation tokens and code-request deduplication records. Current accounts, roles, sessions, other mini-app data, SMTP secrets and Gmail authorization stay intact. Deleted event links return unavailable. The temporary CI-only operation blocks UEX, drains admitted requests, verifies deletion, and records completion before reopening. A follow-up production commit removes the temporary operation and guard, retaining only its completion audit.
 
 Authentication setup grants the runtime permission to sign Firebase custom tokens and private cover URLs, and disables the Firebase password provider. Old invite/password endpoints are removed from deployed Functions.
 
-Run the reset/account integration rehearsal against demo-project emulators only:
+Run current account and UEX integration checks against demo-project emulators only:
 
 ```bash
 FIREBASE_CONFIG='{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}' firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js'

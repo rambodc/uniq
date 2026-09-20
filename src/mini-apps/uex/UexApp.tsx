@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Plus, ArrowLeft, Send, ImagePlus, Sparkles } from "lucide-react";
-import { call, type Party } from "./api";
+import { call, type PartySummary } from "./api";
 import EventDocument, {
   exactTime,
   type PageDocument,
@@ -11,7 +11,7 @@ import EventDocument, {
 import GuestManager from "./GuestManager";
 import "./uex.css";
 
-type BuilderParty = Party & {
+type BuilderParty = PartySummary & {
   draft: PageDocument;
   published: PageDocument | null;
   revision: number;
@@ -30,7 +30,7 @@ export default function UexApp() {
   }, []);
   const [params, setParams] = useSearchParams(),
     id = params.get("party");
-  const [parties, setParties] = useState<Party[]>([]),
+  const [parties, setParties] = useState<PartySummary[]>([]),
     [party, setParty] = useState<BuilderParty | null>(null),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
@@ -45,12 +45,20 @@ export default function UexApp() {
   const fileInput = useRef<HTMLInputElement>(null),
     chatEnd = useRef<HTMLDivElement>(null);
   const load = async () => {
-    if (id)
-      setParty(
-        (await call<{ party: BuilderParty }>("uexBuilder", { id })).party,
+    if (id) {
+      const result = (await call<{ party: BuilderParty }>("uexBuilder", { id }))
+        .party;
+      setParty({
+        ...result,
+        name: result.draft.title,
+        startsAt: result.draft.startsAt,
+        endsAt: (result.published || result.draft).endsAt,
+        timezone: result.draft.timezone,
+      });
+    } else
+      setParties(
+        (await call<{ parties: PartySummary[] }>("uexListParties")).parties,
       );
-    else
-      setParties((await call<{ parties: Party[] }>("uexListParties")).parties);
   };
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -99,6 +107,9 @@ export default function UexApp() {
           message: text,
           requestId: crypto.randomUUID(),
         });
+      } catch (failure) {
+        setMessage(text);
+        throw failure;
       } finally {
         await load();
       }
@@ -148,7 +159,22 @@ export default function UexApp() {
     !!(party?.processing && party.processing.until > now) ||
     !!party?.archived ||
     party?.status === "cancelled" ||
-    !!(party?.endsAt && Date.parse(party.endsAt) < now);
+    !!(party?.published?.endsAt && Date.parse(party.published.endsAt) < now);
+  const readyToPublish =
+    !!party &&
+    !!party.draft.title.trim() &&
+    !!party.draft.description.trim() &&
+    !!party.draft.startsAt &&
+    !!party.draft.endsAt &&
+    !!party.draft.venue.name.trim() &&
+    !!party.draft.venue.address.trim() &&
+    party.timeConfirmed ===
+      JSON.stringify([
+        party.draft.startsAt,
+        party.draft.endsAt,
+        party.draft.timezone,
+      ]) &&
+    party.locationConfirmed === JSON.stringify(party.draft.venue);
   return (
     <main className="uex-app">
       <header className="builder-heading">
@@ -240,7 +266,12 @@ export default function UexApp() {
                     Cancel party
                   </button>
                   <button
-                    disabled={locked}
+                    disabled={locked || !readyToPublish}
+                    title={
+                      readyToPublish
+                        ? "Publish your confirmed draft"
+                        : "Complete the details and confirm the times and map in Preview first."
+                    }
                     onClick={() => void run(() => action("publish"))}
                   >
                     {party.published ? "Update live page" : "Publish party"}

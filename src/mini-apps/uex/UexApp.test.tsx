@@ -108,3 +108,55 @@ it("shared builder previews proposals and confirms against the current revision"
   )!;
   expect(publish.disabled).toBe(true);
 });
+it("failed messages are restored for retry and incomplete parties cannot publish", async () => {
+  const party = {
+    id: "party",
+    draft: { ...draft, title: "", startsAt: "", endsAt: "" },
+    published: null,
+    revision: 1,
+    status: "draft",
+    archived: false,
+    assets: [],
+    history: [],
+    proposal: null,
+  };
+  vi.mocked(call).mockImplementation(async (name) => {
+    if (name === "uexBuilderMessage")
+      throw new Error("Dates need clarification.");
+    return name === "uexBuilder"
+      ? { party }
+      : name === "uexGuests"
+        ? { guests: [] }
+        : { success: true };
+  });
+  await act(async () =>
+    root.render(
+      <MemoryRouter initialEntries={["/apps/uex?party=party"]}>
+        <UexApp />
+      </MemoryRouter>,
+    ),
+  );
+  const publish = [...host.querySelectorAll("button")].find(
+    (b) => b.textContent === "Publish party",
+  )!;
+  expect(publish.disabled).toBe(true);
+  const input = host.querySelector<HTMLTextAreaElement>(
+    ".builder-compose textarea",
+  )!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )!.set!.call(input, "October 29 at 7 PM");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    host
+      .querySelector(".builder-compose")!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  expect(input.value).toBe("October 29 at 7 PM");
+  expect(host.querySelector("[role=alert]")?.textContent).toContain(
+    "Dates need clarification",
+  );
+});

@@ -1,8 +1,9 @@
+import { requireUexReady } from "./restart-guard.js";
 import { randomBytes } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../core/firebase.js";
 import { callable } from "../../core/config.js";
-import { requireAvailable, requireUser } from "../../core/auth.js";
+import { requireUser } from "../../core/auth.js";
 import { text } from "../../core/values.js";
 import { hash, issueLoginCode } from "../account/login.js";
 import { EMAIL_SECRETS } from "../../services/email.js";
@@ -31,13 +32,7 @@ async function resolve(token, tx) {
   const ref = db.doc(`uexParties/${meta.partyId}/guests/${meta.guestId}`);
   const g = (await read(ref)).data(),
     p = (await read(ref.parent.parent)).data();
-  if (
-    !g ||
-    g.revoked ||
-    !p ||
-    p.status === "draft" ||
-    (p.draft && !p.published)
-  )
+  if (!g || g.revoked || !p || p.status === "draft" || !p.published)
     throw new HttpsError(
       "permission-denied",
       "This invitation is no longer available. Please contact the host.",
@@ -47,7 +42,8 @@ async function resolve(token, tx) {
 export const uexInvitationEntry = onCall(
   { ...callable, secrets: EMAIL_SECRETS },
   async (request) => {
-    await requireAvailable();
+    await requireUexReady();
+
     const { g, partyId } = await resolve(request.data?.token);
     let current = null;
     if (request.auth) {
@@ -57,19 +53,12 @@ export const uexInvitationEntry = onCall(
         if (!["permission-denied", "unauthenticated"].includes(e.code)) throw e;
       }
     }
-    const legacyNames =
-      !g.firstName && !g.lastName ? (g.name || "").split(" ") : [];
     if (current?.user.email === g.email && (!g.uid || g.uid === current.uid))
       return {
         step: g.onboardedAt ? "complete" : "names",
         partyId,
-        firstName:
-          current.user.firstName || g.firstName || legacyNames[0] || "",
-        lastName:
-          current.user.lastName ||
-          g.lastName ||
-          legacyNames.slice(1).join(" ") ||
-          "",
+        firstName: current.user.firstName || g.firstName || "",
+        lastName: current.user.lastName || g.lastName || "",
       };
     const device = request.data?.requestId;
     if (typeof device !== "string" || !/^[a-zA-Z0-9_-]{16,100}$/.test(device))
@@ -92,6 +81,7 @@ export const uexInvitationEntry = onCall(
   },
 );
 export const uexConfirmGuestNames = onCall(callable, async (request) => {
+  await requireUexReady();
   const current = await requireUser(request),
     firstName = text(request.data?.firstName, "first name", 80),
     lastName = text(request.data?.lastName, "last name", 80);

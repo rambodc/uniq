@@ -122,9 +122,6 @@ test(
     const admin = req("builder-admin", "builder-admin@example.com"),
       guest = req("builder-guest", "builder-guest@example.com"),
       wrong = req("builder-other", "builder-other@example.com");
-    await db
-      .doc("platform/accountCutover")
-      .set({ maintenance: false }, { merge: true });
     for (const r of [admin, guest, wrong])
       await db.doc(`users/${r.auth.uid}`).set({
         schemaVersion: 2,
@@ -242,10 +239,7 @@ test(
             summary: "bad",
             document: { ...valid(), theme: "javascript" },
           };
-          await assert.rejects(
-            message("Try again"),
-            /saved draft is unchanged/,
-          );
+          await assert.rejects(message("Try again"), /invalid page or date/);
           assert.equal((await get()).draft.theme, "gold");
           assert.equal((await get()).processing, null);
           mock.restoreAll();
@@ -306,10 +300,21 @@ test(
             data: { token, requestId: "same-browser-request-1234" },
             rawRequest: { ip: "onboarding-tests" },
           };
-          const [a, b] = await Promise.all([
-            uexInvitationEntry.run(publicRequest),
-            uexInvitationEntry.run(publicRequest),
-          ]);
+          const enter = async () => {
+            try {
+              return await uexInvitationEntry.run(publicRequest);
+            } catch (e) {
+              // The emulator can label a transaction conflict as INVALID_ARGUMENT.
+              // Retry the identical request; the email must still be sent only once.
+              if (
+                e.code !== 3 ||
+                !e.message.includes("Transaction is invalid or closed")
+              )
+                throw e;
+              return uexInvitationEntry.run(publicRequest);
+            }
+          };
+          const [a, b] = await Promise.all([enter(), enter()]);
           assert.equal(a.challengeId, b.challengeId);
           assert.equal(sent.length, 1);
           assert.equal(sent[0].to, guest.auth.token.email);
@@ -394,6 +399,30 @@ test(
         },
       );
       await t.test(
+        "drafts with past dates stay editable; published past parties are read-only",
+        async () => {
+          const fresh = (await uexCreateDraft.run(manager({}))).id;
+          const past = {
+            ...valid(),
+            startsAt: "2020-10-11T00:00:00.000Z",
+            endsAt: "2020-10-11T04:00:00.000Z",
+          };
+          await db.doc(`uexParties/${fresh}`).update({ draft: past });
+          await uexBuilderAction.run(
+            manager({ id: fresh, revision: 0, action: "time" }),
+          );
+          await db
+            .doc(`uexParties/${fresh}`)
+            .update({ published: past, status: "published" });
+          await assert.rejects(
+            uexBuilderAction.run(
+              manager({ id: fresh, revision: 1, action: "time" }),
+            ),
+            /read-only/,
+          );
+        },
+      );
+      await t.test(
         "image replacement and removal preserve the published asset snapshot",
         async () => {
           mock.method(
@@ -444,35 +473,23 @@ test(
           assert.equal(removed.publishedAssets.length, 1);
         },
       );
-      await t.test(
-        "existing parties migrate without changing guest IDs, tickets or published content",
-        async () => {
-          const legacy = db.collection("uexParties").doc();
-          await legacy.set({
-            name: "Legacy",
-            description: "Existing",
-            location: "Edmonton",
-            startsAt: valid().startsAt,
-            endsAt: valid().endsAt,
-            timezone: "America/Edmonton",
-            status: "published",
-          });
-          await legacy
-            .collection("guests")
-            .doc("original")
-            .set({ ticket: "KEEP-TICKET" });
-          const migrated = (await uexBuilder.run(manager({ id: legacy.id })))
-            .party;
-          assert.equal(migrated.published.title, "Legacy");
-          assert.equal(
-            (await legacy.collection("guests").doc("original").get()).data()
-              .ticket,
-            "KEEP-TICKET",
-          );
-        },
-      );
     } finally {
       mock.restoreAll();
     }
   },
 );
+test("real date regression: offset timestamps normalize across midnight, malformed/ambiguous dates fail", () => {
+  const d = validateDocument({
+    ...valid(),
+    startsAt: "2026-10-29T19:00:00-06:00",
+    endsAt: "2026-10-30T01:00:00-06:00",
+  });
+  assert.equal(d.startsAt, "2026-10-30T01:00:00.000Z");
+  assert.equal(d.endsAt, "2026-10-30T07:00:00.000Z");
+  for (const bad of [
+    "2026-10-29T19:00:00",
+    "2026-02-30T19:00:00-07:00",
+    "2026-10-29T25:00:00Z",
+  ])
+    assert.throws(() => validateDocument({ ...valid(), startsAt: bad }));
+});
