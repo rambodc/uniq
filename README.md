@@ -51,7 +51,7 @@ A bounded synthetic live check (two paid AI calls, no Firebase writes or email s
 
 ## Clean UEX restart
 
-The authorized restart removes all prior UEX records and images, including invitation tokens and code-request deduplication records. Current accounts, roles, sessions, other mini-app data, SMTP secrets and Gmail authorization stay intact. Deleted event links return unavailable. The temporary CI-only operation blocks UEX, drains admitted requests, verifies deletion, and records completion before reopening. A follow-up production commit removes the temporary operation and guard, retaining only its completion audit.
+UEX starts with only the current structured event system. Previous event data and images were deleted in the authorized restart; deleted event links return unavailable. Accounts, roles, other mini-app data, SMTP secrets and Gmail authorization are preserved. No reset utilities, migration paths, or maintenance guards remain. Keep the completion audit at `operations/uexRestart20260920` so a historical workflow retry cannot delete new events.
 
 Authentication setup grants the runtime permission to sign Firebase custom tokens and private cover URLs, and disables the Firebase password provider. Old invite/password endpoints are removed from deployed Functions.
 

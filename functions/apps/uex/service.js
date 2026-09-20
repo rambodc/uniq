@@ -1,4 +1,3 @@
-import { requireUexReady } from "./restart-guard.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../core/firebase.js";
@@ -25,7 +24,6 @@ const wrap = (fn, manager = true, secrets = []) =>
   onCall(
     { ...callable, secrets, timeoutSeconds: 300, memory: "512MiB" },
     async (request) => {
-      await requireUexReady();
       return fn(
         request.data || {},
         manager

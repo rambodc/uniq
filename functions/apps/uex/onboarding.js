@@ -1,4 +1,3 @@
-import { requireUexReady } from "./restart-guard.js";
 import { randomBytes } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../core/firebase.js";
@@ -42,8 +41,6 @@ async function resolve(token, tx) {
 export const uexInvitationEntry = onCall(
   { ...callable, secrets: EMAIL_SECRETS },
   async (request) => {
-    await requireUexReady();
-
     const { g, partyId } = await resolve(request.data?.token);
     let current = null;
     if (request.auth) {
@@ -81,7 +78,6 @@ export const uexInvitationEntry = onCall(
   },
 );
 export const uexConfirmGuestNames = onCall(callable, async (request) => {
-  await requireUexReady();
   const current = await requireUser(request),
     firstName = text(request.data?.firstName, "first name", 80),
     lastName = text(request.data?.lastName, "last name", 80);

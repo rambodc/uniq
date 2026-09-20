@@ -82,6 +82,9 @@ jobs:
               if runtime and all(p.startswith(("functions/apps/uex/", "functions/apps/account/")) or p in uex_paths for p in runtime):
                   groups = re.findall(r'export \{([^}]+)\} from "\./apps/(?:uex|account)/[^"\n]+\.js";?', current)
                   target = ",".join("functions:" + name.strip() for group in groups for name in group.split(","))
+              if runtime and all(p.startswith("functions/apps/uex/") for p in runtime):
+                  groups = re.findall(r'export \{([^}]+)\} from "\./apps/uex/[^"\n]+\.js";?', current)
+                  target = ",".join("functions:" + name.strip() for group in groups for name in group.split(","))
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("target=" + target + "\n")
               output.write("invoice_tests=" + str(invoice_tests).lower() + "\n")
@@ -96,23 +99,11 @@ jobs:
       - name: Rehearse accounts and UEX with isolated emulators
         env:
           FIREBASE_CONFIG: '{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}'
-        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js functions/test/uex-restart.test.js'
+        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js'
       - name: Configure email-code authentication
         run: python3 scripts/configure-account-auth.py
-      - name: Block UEX for clean restart
-        env:
-          UEX_RESTART: CLEAN_UEX_20260920
-          GCLOUD_PROJECT: uniqenergy-de71c
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: node functions/scripts/restart-uex.js begin
       - if: ${{ steps.affected.outputs.target != '' }}
         run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
-      - name: Drain and clean UEX once
-        env:
-          UEX_RESTART: CLEAN_UEX_20260920
-          GCLOUD_PROJECT: uniqenergy-de71c
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: node functions/scripts/restart-uex.js finish
       - name: Configure FluidLab task dispatch
         if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
         run: python3 scripts/configure-fluidlab-cloud.py --after-deploy

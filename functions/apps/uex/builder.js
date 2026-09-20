@@ -1,4 +1,3 @@
-import { requireUexReady } from "./restart-guard.js";
 import { error as logError } from "firebase-functions/logger";
 import { randomUUID } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -24,7 +23,6 @@ const wrap = (fn, ai = false) =>
       ...(ai ? { secrets: ["OPENAI_API_KEY"] } : {}),
     },
     async (r) => {
-      await requireUexReady();
       return fn(r.data || {}, await requireMiniApp(r, "uex"));
     },
   );
