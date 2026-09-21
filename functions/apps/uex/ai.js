@@ -6,7 +6,8 @@ export const builderAnswer = z.object({
   reply: z.string().max(4000),
   summary: z.string().max(2000),
   document: documentSchema.nullable(),
-  sources: z.array(z.object({ title: z.string().max(300), url: z.string().url() })).max(12),
+  // Keep URLs plain strings in the provider schema; validate them after parsing.
+  sources: z.array(z.object({ title: z.string().max(300), url: z.string().max(2000) })).max(12),
   interaction: z
     .object({
       id: z.string().max(120),
@@ -44,6 +45,13 @@ export async function buildAnswer({
     text: { format: zodTextFormat(builderAnswer, "uex_builder") },
   });
   const answer = builderAnswer.parse(result.output_parsed);
+  answer.sources = answer.sources.filter((source) => {
+    try {
+      return ["http:", "https:"].includes(new URL(source.url).protocol);
+    } catch {
+      return false;
+    }
+  });
   if (answer.document)
     answer.document = validateDocument(answer.document, assets);
   return answer;
