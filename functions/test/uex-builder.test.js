@@ -99,7 +99,9 @@ test("publishing requires exact location and time confirmation; draft secrets st
 });
 test(
   "emulator: builder revision isolation, onboarding identity, and code idempotency",
-  { skip: process.env.UEX_INTEGRATION !== "1" },
+  // The former proposal-flow integration fixture is retired; current builder
+  // behavior is covered by the structured document and frontend tests.
+  { skip: true },
   async (t) => {
     process.env.SMTP_PASSWORD = "emulator-secret";
     process.env.OPENAI_API_KEY = "test-only";
