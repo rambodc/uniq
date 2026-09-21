@@ -107,6 +107,7 @@ jobs:
       - name: Clean existing UEX content once
         env:
           GCLOUD_PROJECT: uniqenergy-de71c
+          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: node functions/scripts/clean-uex.js
       - name: Configure FluidLab task dispatch
         if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
