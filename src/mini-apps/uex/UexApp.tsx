@@ -16,7 +16,9 @@ type BuilderParty = PartySummary & {
   published: PageDocument | null;
   revision: number;
   history: { role: string; content: string }[];
-  proposal: { id: string; document: PageDocument; summary: string } | null;
+  interaction?: { id: string; type: string; prompt: string; options: { label: string; value: string }[]; expiresAt: string } | null;
+  sources?: { title: string; url: string }[];
+  summary?: string;
   assets: Asset[];
   locationConfirmed?: string;
   timeConfirmed?: string;
@@ -90,7 +92,6 @@ export default function UexApp() {
     await call("uexBuilderAction", {
       id,
       revision: party?.revision,
-      proposalId: party?.proposal?.id,
       action,
     });
     await load();
@@ -155,7 +156,6 @@ export default function UexApp() {
   };
   const locked =
     busy ||
-    !!party?.proposal ||
     !!(party?.processing && party.processing.until > now) ||
     !!party?.archived ||
     party?.status === "cancelled" ||
@@ -313,26 +313,20 @@ export default function UexApp() {
                     {busy && <p role="status">Working on your party…</p>}
                     <div ref={chatEnd} />
                   </div>
-                  {party.proposal && (
-                    <div className="builder-proposal">
-                      <b>Proposed revision</b>
-                      <p>{party.proposal.summary}</p>
+                  {party.interaction && Date.parse(party.interaction.expiresAt) > now && (
+                    <div className="builder-interaction" role="group" aria-label="Assistant question">
+                      <b>{party.interaction.prompt}</b>
                       <div className="builder-actions">
-                        <button
-                          disabled={busy}
-                          onClick={() => void run(() => action("confirm"))}
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => void run(() => action("reject"))}
-                        >
-                          Cancel revision
-                        </button>
+                        {party.interaction.options.map((option) => (
+                          <button key={option.value} disabled={busy} onClick={() => void run(async () => {
+                            await call("uexBuilderMessage", { id, revision: party.revision, message: option.value, interactionId: party.interaction?.id, requestId: crypto.randomUUID() });
+                            await load();
+                          })}>{option.label}</button>
+                        ))}
                       </div>
                     </div>
                   )}
+                  {!!party.sources?.length && <div className="builder-sources"><b>Sources</b>{party.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}</div>}
                   <form
                     className="builder-compose"
                     onSubmit={(e) => {
@@ -515,12 +509,12 @@ export default function UexApp() {
                 <section className="builder-preview">
                   <div className="builder-preview-label">
                     <span>
-                      {party.proposal ? "PROPOSED PREVIEW" : "SAVED DRAFT"}
+                      SAVED DRAFT
                     </span>
                     <small>Private until you publish</small>
                   </div>
                   <EventDocument
-                    document={party.proposal?.document || party.draft}
+                    document={party.draft}
                     assets={party.assets}
                     preview
                   />

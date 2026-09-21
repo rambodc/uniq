@@ -337,12 +337,12 @@
 .builder-compose button {
   align-self: flex-end;
 }
-.builder-proposal {
+.builder-interaction {
   background: #c3a36e15;
   padding: 20px;
   border-top: 1px solid #c3a36e55;
 }
-.builder-proposal p {
+.builder-interaction p {
   font-size: 14px;
   line-height: 1.6;
 }

@@ -70,7 +70,7 @@ export const uexCreateDraft = wrap(async (_d, user) => {
     generated: false,
     assets: [],
     publishedAssets: [],
-    proposal: null,
+    interaction: null,
     history: [
       {
         role: "assistant",
@@ -113,11 +113,8 @@ export const uexBuilderMessage = wrap(async (d, user) => {
     )
       return null;
     editable(p, d.revision);
-    if (p.proposal)
-      throw new HttpsError(
-        "failed-precondition",
-        "Confirm or cancel the pending proposal first.",
-      );
+    if (d.interactionId && (!p.interaction || p.interaction.id !== d.interactionId || Date.parse(p.interaction.expiresAt) <= now))
+      throw new HttpsError("aborted", "That assistant question is no longer active. Refresh the conversation.");
     if (
       (p.history || []).length >= 200 ||
       Buffer.byteLength(JSON.stringify(p.history || [])) > 250000
@@ -163,31 +160,33 @@ export const uexBuilderMessage = wrap(async (d, user) => {
         processing: null,
         history: [
           ...latest.history,
-          { role: "assistant", content: answer.reply, requestId },
+          {
+            role: "assistant",
+            content: answer.reply,
+            requestId,
+            sources: answer.sources,
+            interaction: answer.interaction,
+          },
         ],
+        interaction: answer.interaction,
+        sources: answer.sources,
+        summary: answer.summary,
       };
       if (answer.document) {
-        if (!latest.generated) {
-          Object.assign(update, {
-            draft: answer.document,
-            generated: true,
-            revision: latest.revision + 1,
-          });
-          update.locationConfirmed = null;
-          update.timeConfirmed = null;
-          tx.set(ref.collection("revisions").doc(String(update.revision)), {
-            document: answer.document,
-            assets: latest.assets || [],
-            by: user.uid,
-            at: new Date().toISOString(),
-          });
-        } else
-          update.proposal = {
-            id: randomUUID(),
-            baseRevision: latest.revision,
-            document: answer.document,
-            summary: answer.summary,
-          };
+        Object.assign(update, {
+          draft: answer.document,
+          generated: true,
+          revision: latest.revision + 1,
+          locationConfirmed: locationKey(answer.document) === locationKey(latest.draft) ? latest.locationConfirmed || null : null,
+          timeConfirmed: timeKey(answer.document) === timeKey(latest.draft) ? latest.timeConfirmed || null : null,
+        });
+        tx.set(ref.collection("revisions").doc(String(update.revision)), {
+          document: answer.document,
+          assets: latest.assets || [],
+          previousRevision: latest.revision,
+          by: user.uid,
+          at: new Date().toISOString(),
+        });
       }
       tx.update(ref, update);
     });
@@ -220,6 +219,7 @@ export const uexBuilderMessage = wrap(async (d, user) => {
       if (s.data()?.processing?.id === requestId)
         tx.update(ref, {
           processing: null,
+          interaction: null,
           history: [
             ...s.data().history,
             {
@@ -245,7 +245,7 @@ export const uexBuilderAction = wrap(async (d, user) => {
       p = s.data();
     // Archival remains available for past/cancelled parties.
     if (d.action === "archive") {
-      if (p?.proposal || p?.processing?.until > Date.now())
+      if (p?.processing?.until > Date.now())
         throw new HttpsError(
           "failed-precondition",
           "Resolve the pending work before archiving.",
@@ -261,59 +261,25 @@ export const uexBuilderAction = wrap(async (d, user) => {
       updatedBy: user.uid,
       updatedAt: new Date().toISOString(),
     };
-    if (["confirm", "reject"].includes(d.action)) {
-      if (
-        !p.proposal ||
-        p.proposal.id !== d.proposalId ||
-        p.proposal.baseRevision !== p.revision
-      )
-        throw new HttpsError(
-          "aborted",
-          "This proposal has changed. Refresh first.",
-        );
-      if (d.action === "confirm") {
-        update.draft = validateDocument(p.proposal.document, p.assets);
-        if (locationKey(update.draft) !== locationKey(p.draft))
-          update.locationConfirmed = null;
-        if (timeKey(update.draft) !== timeKey(p.draft))
-          update.timeConfirmed = null;
-        tx.set(ref.collection("revisions").doc(String(update.revision)), {
-          document: update.draft,
-          assets: p.assets || [],
-          by: user.uid,
-          at: update.updatedAt,
-        });
-      }
-      update.proposal = null;
-      update.history = [
-        ...p.history,
-        {
-          role: "assistant",
-          content:
-            d.action === "confirm"
-              ? "Revision confirmed and saved privately."
-              : "Proposal cancelled. Your saved draft is unchanged.",
-        },
-      ];
-    } else {
-      if (p.proposal)
-        throw new HttpsError(
-          "failed-precondition",
-          "Confirm or cancel the pending proposal first.",
-        );
-      if (d.action === "location")
+    if (d.action === "undo") {
+      const previous = await ref.collection("revisions").doc(String(Math.max(1, p.revision - 1))).get();
+      if (!previous.exists) throw new HttpsError("failed-precondition", "There is no previous draft to undo.");
+      update.draft = validateDocument(previous.data().document, p.assets);
+      update.interaction = null;
+      update.history = [...p.history, { role: "assistant", content: "Undid the last saved draft change." }];
+      tx.set(ref.collection("revisions").doc(String(update.revision)), { document: update.draft, assets: p.assets || [], previousRevision: p.revision, by: user.uid, at: update.updatedAt });
+    } else if (d.action === "location")
         update.locationConfirmed = locationKey(p.draft);
-      else if (d.action === "time") update.timeConfirmed = timeKey(p.draft);
-      else if (d.action === "publish") {
+    else if (d.action === "time") update.timeConfirmed = timeKey(p.draft);
+    else if (d.action === "publish") {
         const doc = publishable(p);
         Object.assign(update, {
           published: doc,
           publishedAssets: p.assets,
           status: "published",
         });
-      } else if (d.action === "cancel") update.status = "cancelled";
-      else throw new HttpsError("invalid-argument", "Unknown action.");
-    }
+    } else if (d.action === "cancel") update.status = "cancelled";
+    else throw new HttpsError("invalid-argument", "Unknown action.");
     tx.update(ref, update);
   });
   return { success: true };
@@ -344,11 +310,6 @@ export const uexAsset = wrap(async (d) => {
       const s = await tx.get(ref),
         p = s.data();
       editable(p, d.revision);
-      if (p.proposal)
-        throw new HttpsError(
-          "failed-precondition",
-          "Resolve the pending proposal first.",
-        );
       let assets = p.assets || [],
         draft = p.draft;
       if (d.action === "upload") {

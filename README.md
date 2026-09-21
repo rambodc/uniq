@@ -45,7 +45,7 @@ EMAIL_FROM_ADDRESS
 OPENAI_API_KEY
 ```
 
-Optional function environment values are `SMTP_HOST`, `SMTP_PORT`, and `UEX_MODEL` (falls back to `FLUIDLAB_MODEL`, then `gpt-5.4`). Defaults use Gmail SMTP/465. Invitation URLs always use `https://uniqenergy.com`. AI dates must include a timezone and are normalized to UTC, including offset timestamps that cross midnight. Offset-free dates are rejected. Failed messages remain available to retry; structured error categories are logged without conversation content. The assistant cannot browse the web and asks for supplied performer/venue facts. Builder requests have a 55-second AI timeout, no automatic paid retries, 30 requests per manager per hour, bounded output/history, and one pending proposal per party.
+Optional function environment values are `SMTP_HOST`, `SMTP_PORT`, and `UEX_MODEL` (default `gpt-5.4`). Defaults use Gmail SMTP/465. Invitation URLs always use `https://uniqenergy.com`. AI dates must include a timezone and are normalized to UTC, including offset timestamps that cross midnight. Offset-free dates are rejected. Failed messages remain available to retry; structured error categories are logged without conversation content. The UEX assistant can use bounded hosted web search for current venue and performer facts, returns source links, and exposes trusted in-chat interaction controls. Builder requests have a 55-second AI timeout, no automatic paid retries, 30 requests per manager per hour, and bounded output/history.
 
 A bounded synthetic live check (two paid AI calls, no Firebase writes or email sends) is available with `node functions/scripts/check-uex-ai.js`. It reads the existing key into process memory and never prints it. Run only when AI behavior changes.
 

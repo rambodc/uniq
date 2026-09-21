@@ -104,6 +104,10 @@ jobs:
         run: python3 scripts/configure-account-auth.py
       - if: ${{ steps.affected.outputs.target != '' }}
         run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
+      - name: Clean existing UEX content once
+        env:
+          GCLOUD_PROJECT: uniqenergy-de71c
+        run: node functions/scripts/clean-uex.js
       - name: Configure FluidLab task dispatch
         if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
         run: python3 scripts/configure-fluidlab-cloud.py --after-deploy
