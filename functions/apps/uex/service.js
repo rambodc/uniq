@@ -114,13 +114,23 @@ export const uexAddGuests = wrap(async (d) => {
     });
   }
   const guests = [...byEmail.values()];
+  const profiles = await Promise.all(
+    guests.map(async (g) => {
+      const snap = await db.collection("users").where("email", "==", g.email).limit(1).get();
+      const profile = snap.docs[0]?.data();
+      if (!profile) return g;
+      const firstName = String(profile.firstName || "").trim();
+      const lastName = String(profile.lastName || "").trim();
+      return { ...g, firstName, lastName, name: [firstName, lastName].filter(Boolean).join(" ") };
+    }),
+  );
   await db.runTransaction(async (tx) => {
-    const refs = guests.map((g) => invites(d.id).doc(keyFor(g.email))),
+    const refs = profiles.map((g) => invites(d.id).doc(keyFor(g.email))),
       snapshots = await tx.getAll(...refs);
     snapshots.forEach((snap, i) => {
       if (!snap.exists)
         tx.create(snap.ref, {
-          ...guests[i],
+          ...profiles[i],
           rsvp: "pending",
           revoked: false,
           delivery: "not-sent",

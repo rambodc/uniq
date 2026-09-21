@@ -138,9 +138,16 @@ export const uexBuilderMessage = wrap(async (d, user) => {
       ...(p.history || []),
       { role: "user", content, requestId, by: user.uid },
     ];
+    const interaction = d.interactionId ? p.interaction : null;
     tx.update(ref, {
       history,
       processing: { id: requestId, until: now + 90000 },
+      ...(interaction?.type === "datetime" && /confirm|yes|approve/i.test(content)
+        ? { timeConfirmed: timeKey(p.draft), interaction: null }
+        : {}),
+      ...(interaction?.type === "venue_confirm" && /confirm|yes|approve/i.test(content)
+        ? { locationConfirmed: locationKey(p.draft), interaction: null }
+        : {}),
     });
     return { ...p, history };
   });

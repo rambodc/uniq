@@ -1,5 +1,5 @@
 import { db, storage } from "../core/firebase.js";
-const marker = db.doc("operations/uexRestart20260921");
+const marker = db.doc("operations/uexRestart20260922");
 const collections = ["uexParties", "uexInvitationTokens", "uexLimits", "invitations"];
 const run = async () => {
   const state = (await marker.get()).data();

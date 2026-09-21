@@ -38,12 +38,7 @@ export default function UexApp() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [tab, setTab] = useState("chat"),
-    [progress, setProgress] = useState(0),
-    [alt, setAlt] = useState(""),
-    [caption, setCaption] = useState("");
-  const [clarifyStart, setClarifyStart] = useState(""),
-    [clarifyEnd, setClarifyEnd] = useState("");
-  const [replaceId, setReplaceId] = useState<string | null>(null);
+    [progress, setProgress] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null),
     chatEnd = useRef<HTMLDivElement>(null);
   const load = async () => {
@@ -94,6 +89,11 @@ export default function UexApp() {
       revision: party?.revision,
       action,
     });
+    if (action === "publish") {
+      const guests = (await call<{ guests: { id: string; delivery: string }[] }>("uexGuests", { id })).guests;
+      for (const guest of guests.filter((g) => g.delivery === "not-sent"))
+        await call("uexSendEmails", { id, kind: "invitation", guestIds: [guest.id] });
+    }
     await load();
   };
   const send = () =>
@@ -121,7 +121,6 @@ export default function UexApp() {
       file.size > 5242880
     )
       throw new Error("Choose a JPEG, PNG or WebP up to 5 MB.");
-    if (!alt.trim()) throw new Error("Describe the image before uploading.");
     setProgress(5);
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -138,16 +137,12 @@ export default function UexApp() {
       await call("uexAsset", {
         id,
         revision: party?.revision,
-        action: replaceId ? "replace" : "upload",
-        assetId: replaceId,
+        action: "upload",
         base64,
-        alt,
-        caption,
+        alt: file.name.replace(/\.[^.]+$/, ""),
+        caption: "",
       });
       setProgress(100);
-      setReplaceId(null);
-      setAlt("");
-      setCaption("");
       await load();
     } finally {
       setTimeout(() => setProgress(0), 1200);
@@ -160,21 +155,6 @@ export default function UexApp() {
     !!party?.archived ||
     party?.status === "cancelled" ||
     !!(party?.published?.endsAt && Date.parse(party.published.endsAt) < now);
-  const readyToPublish =
-    !!party &&
-    !!party.draft.title.trim() &&
-    !!party.draft.description.trim() &&
-    !!party.draft.startsAt &&
-    !!party.draft.endsAt &&
-    !!party.draft.venue.name.trim() &&
-    !!party.draft.venue.address.trim() &&
-    party.timeConfirmed ===
-      JSON.stringify([
-        party.draft.startsAt,
-        party.draft.endsAt,
-        party.draft.timezone,
-      ]) &&
-    party.locationConfirmed === JSON.stringify(party.draft.venue);
   return (
     <main className="uex-app">
       <header className="builder-heading">
@@ -245,36 +225,6 @@ export default function UexApp() {
                 <div className="builder-actions">
                   <button disabled={busy} onClick={() => void run(load)}>
                     Refresh
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() => void run(() => action("archive"))}
-                  >
-                    {party.archived ? "Unarchive" : "Archive"}
-                  </button>
-                  <button
-                    disabled={locked}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Cancel this party? Tickets will become invalid. Emails are sent separately.",
-                        )
-                      )
-                        void run(() => action("cancel"));
-                    }}
-                  >
-                    Cancel party
-                  </button>
-                  <button
-                    disabled={locked || !readyToPublish}
-                    title={
-                      readyToPublish
-                        ? "Publish your confirmed draft"
-                        : "Complete the details and confirm the times and map in Preview first."
-                    }
-                    onClick={() => void run(() => action("publish"))}
-                  >
-                    {party.published ? "Update live page" : "Publish party"}
                   </button>
                 </div>
               </div>
@@ -347,164 +297,14 @@ export default function UexApp() {
                       Send
                     </button>
                   </form>
-                  <details className="builder-images">
-                    <summary>Clarify date &amp; time</summary>
-                    <p>
-                      Choose local times in {party.draft.timezone}. The
-                      assistant will check them before you confirm.
-                    </p>
-                    <label>
-                      Party starts
-                      <input
-                        type="datetime-local"
-                        value={clarifyStart}
-                        disabled={locked}
-                        onChange={(e) => setClarifyStart(e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Party ends
-                      <input
-                        type="datetime-local"
-                        value={clarifyEnd}
-                        disabled={locked}
-                        onChange={(e) => setClarifyEnd(e.target.value)}
-                      />
-                    </label>
-                    <button
-                      disabled={locked || !clarifyStart || !clarifyEnd}
-                      onClick={() =>
-                        setMessage(
-                          `Set the start to ${clarifyStart.replace("T", " at ")} and the end to ${clarifyEnd.replace("T", " at ")} in ${party.draft.timezone}. These are local times. Ask me if a time is ambiguous.`,
-                        )
-                      }
-                    >
-                      Add these times to my message
-                    </button>
-                  </details>
-                  <details className="builder-images">
-                    <summary>
-                      <ImagePlus size={17} /> Add or manage images
-                    </summary>
-                    <p>
-                      Upload your photos, then tell the assistant where to use
-                      them.
-                    </p>
-                    <label>
-                      Image description (alt text)
-                      <input
-                        value={alt}
-                        maxLength={300}
-                        onChange={(e) => setAlt(e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      Caption
-                      <input
-                        value={caption}
-                        maxLength={500}
-                        onChange={(e) => setCaption(e.target.value)}
-                      />
-                    </label>
-                    {replaceId && (
-                      <p>
-                        Replacing an existing image.{" "}
-                        <button
-                          type="button"
-                          onClick={() => setReplaceId(null)}
-                        >
-                          Add a new image instead
-                        </button>
-                      </p>
-                    )}
-                    <input
-                      aria-label="Upload party image"
-                      ref={fileInput}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      disabled={locked}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (f) void run(() => upload(f));
-                      }}
-                    />
-                    {progress > 0 && (
-                      <>
-                        <progress max={100} value={progress} />
-                        <small>
-                          {progress < 50
-                            ? "Reading image"
-                            : progress < 100
-                              ? "Uploading image…"
-                              : "Uploaded"}
-                        </small>
-                      </>
-                    )}
-                    {party.assets.map((a) => (
-                      <div className="builder-asset" key={a.id}>
-                        <img src={a.url} alt={a.alt} />
-                        <div>
-                          <b>{a.alt}</b>
-                          <small>{a.caption}</small>
-                          <button
-                            disabled={locked}
-                            onClick={() => {
-                              setReplaceId(a.id);
-                              setAlt(a.alt);
-                              setCaption(a.caption);
-                              fileInput.current?.click();
-                            }}
-                          >
-                            Replace image
-                          </button>
-                          <button
-                            disabled={locked}
-                            onClick={() => {
-                              setAlt(a.alt);
-                              setCaption(a.caption);
-                            }}
-                          >
-                            Copy details
-                          </button>
-                          <button
-                            disabled={locked || !alt.trim()}
-                            onClick={() =>
-                              void run(async () => {
-                                await call("uexAsset", {
-                                  id,
-                                  revision: party.revision,
-                                  action: "update",
-                                  assetId: a.id,
-                                  alt,
-                                  caption,
-                                });
-                                await load();
-                              })
-                            }
-                          >
-                            Save these details
-                          </button>
-                          <button
-                            disabled={locked}
-                            onClick={() =>
-                              void run(async () => {
-                                await call("uexAsset", {
-                                  id,
-                                  revision: party.revision,
-                                  action: "remove",
-                                  assetId: a.id,
-                                });
-                                await load();
-                              })
-                            }
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </details>
+                  <div className="builder-chat-tools">
+                    <input aria-label="Upload party image" ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={locked} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void run(() => upload(f)); }} />
+                    <button type="button" disabled={locked} onClick={() => fileInput.current?.click()}><ImagePlus size={17} /> Add image</button>
+                    {progress > 0 && <progress max={100} value={progress} aria-label="Image upload progress" />}
+                    <button type="button" disabled={locked} onClick={() => void run(() => action("undo"))}>Undo last change</button>
+                    <button type="button" disabled={locked} onClick={() => void run(() => action("publish"))}>{party.published ? "Update live page" : "Publish party"}</button>
+                    <button type="button" disabled={locked} onClick={() => void run(() => action("cancel"))}>Cancel party</button>
+                  </div>
                 </section>
                 <section className="builder-preview">
                   <div className="builder-preview-label">
@@ -518,64 +318,6 @@ export default function UexApp() {
                     assets={party.assets}
                     preview
                   />
-                  <div className="builder-confirmations">
-                    <h3>Check the essentials</h3>
-                    <p>
-                      {party.draft.startsAt
-                        ? `${exactTime(party.draft.startsAt, party.draft.timezone)} → ${exactTime(party.draft.endsAt, party.draft.timezone)} (${party.draft.timezone})`
-                        : "Tell the assistant your dates and times."}
-                    </p>
-                    <button
-                      disabled={
-                        locked ||
-                        !party.draft.startsAt ||
-                        !party.draft.endsAt ||
-                        party.timeConfirmed ===
-                          JSON.stringify([
-                            party.draft.startsAt,
-                            party.draft.endsAt,
-                            party.draft.timezone,
-                          ])
-                      }
-                      onClick={() => void run(() => action("time"))}
-                    >
-                      {party.timeConfirmed ===
-                      JSON.stringify([
-                        party.draft.startsAt,
-                        party.draft.endsAt,
-                        party.draft.timezone,
-                      ])
-                        ? "Times confirmed"
-                        : "Confirm these exact times"}
-                    </button>
-                    <p>
-                      Review the map above for{" "}
-                      {party.draft.venue.name || "your venue"}
-                      {party.draft.venue.address
-                        ? ` · ${party.draft.venue.address}`
-                        : ""}
-                      .
-                    </p>
-                    <button
-                      disabled={
-                        locked ||
-                        !party.draft.venue.name ||
-                        !party.draft.venue.address ||
-                        party.locationConfirmed ===
-                          JSON.stringify(party.draft.venue)
-                      }
-                      onClick={() => void run(() => action("location"))}
-                    >
-                      {party.locationConfirmed ===
-                      JSON.stringify(party.draft.venue)
-                        ? "Location confirmed"
-                        : "Confirm displayed location"}
-                    </button>
-                    <small>
-                      Ask the assistant to correct anything before confirming.
-                      Changing the address or times requires confirmation again.
-                    </small>
-                  </div>
                 </section>
               </div>
               <GuestManager id={id} status={party.status} />
