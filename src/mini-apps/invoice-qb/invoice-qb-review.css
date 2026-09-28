@@ -1,0 +1,58 @@
+/* High-contrast overrides for the light reading surfaces inside the dark portal. */
+.iq-workspace,
+.iq-workspace .iq-detail,
+.iq-workspace .iq-list,
+.iq-email-body,
+.iq-selection,
+.iq-preview,
+.iq-accounting-draft { color: #233a30; }
+.iq-detail-heading h2,
+.iq-detail-heading b,
+.iq-accounting-draft h3,
+.iq-accounting-draft h4,
+.iq-selection legend,
+.iq-documents li > span,
+.iq-preview header b { color: #203a2e; }
+.iq-selection label,
+.iq-create label,
+.iq-accounting-draft label { color: #294238; }
+.iq-workspace .iq-editor label { color: #294238; }
+.iq-workspace .iq-editor p { color: #4d6256; }
+.iq-accounting-draft .portal-button.secondary { color: #244d38; background: #fff; border: 1px solid #a9bdb0; }
+.iq-accounting-draft .iq-confirm-review { display: flex; flex-direction: row; align-items: center; gap: 9px; margin: 14px 0; font-weight: 600; }
+.iq-confirm-review input { accent-color: #416e35; }
+.iq-documents small,
+.iq-caption,
+.iq-create p,
+.iq-accounting-draft p,
+.iq-accounting-draft strong { color: #4d6256; }
+.iq-detail summary,
+.iq-detail details summary { color: #28543f; font-weight: 650; cursor: pointer; }
+.iq-documents li > svg { color: #456c50; flex: none; }
+.iq-documents button,
+.iq-preview header button,
+.iq-pdf-viewer nav button,
+.iq-line-item button,
+.iq-accounting-draft > button { color: #244d38; background: #fff; border: 1px solid #a9bdb0; border-radius: 7px; padding: 8px 10px; font-weight: 600; cursor: pointer; }
+.iq-documents button:hover,
+.iq-preview header button:hover,
+.iq-pdf-viewer nav button:hover,
+.iq-line-item button:hover,
+.iq-accounting-draft > button:hover { background: #edf5ef; }
+.iq-accounting-draft { border: 1px solid #cad8cf; background: #fbfdfb; border-radius: 12px; padding: 18px; margin: 22px 0; }
+.iq-accounting-draft h3 { margin: 0 0 8px; }
+.iq-review-warning { color: #59430e; background: #fff5d8; border: 1px solid #ebd394; border-radius: 8px; padding: 10px 12px; margin: 12px 0; overflow-wrap: anywhere; }
+.iq-draft-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
+.iq-draft-grid label,
+.iq-line-item label { display: flex; flex-direction: column; gap: 5px; color: #294238; font-size: 13px; font-weight: 600; }
+.iq-draft-grid input,
+.iq-draft-grid select,
+.iq-line-item input { width: 100%; min-width: 0; padding: 9px; color: #203a2e; background: #fff; border: 1px solid #aebfb4; border-radius: 7px; }
+.iq-line-item { display: grid; grid-template-columns: minmax(220px, 3fr) repeat(3, minmax(90px, 1fr)) auto; gap: 10px; align-items: end; margin: 10px 0; }
+.iq-pdf-viewer { background: #edf0ee; border-radius: 8px; padding: 10px; text-align: center; color: #263c31; }
+.iq-pdf-viewer nav { display: flex; align-items: center; justify-content: center; gap: 16px; color: #233a30; font-weight: 600; margin-bottom: 10px; }
+.iq-pdf-viewer nav button { display: inline-flex; align-items: center; }
+.iq-pdf-viewer nav button:disabled { opacity: .45; cursor: not-allowed; }
+.iq-pdf-viewer canvas { display: block; max-width: 100%; height: auto; margin: 0 auto; box-shadow: 0 2px 12px #0002; background: white; }
+.iq-pdf-viewer [role="alert"] { color: #7b2424; }
+@media (max-width: 720px) { .iq-line-item { grid-template-columns: repeat(2, minmax(100px, 1fr)); } .iq-line-item label:first-child { grid-column: 1 / -1; } }

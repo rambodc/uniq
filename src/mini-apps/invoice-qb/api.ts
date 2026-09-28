@@ -3,9 +3,11 @@ import { auth, functions } from "../../core/firebase";
 
 export interface Connection { configured: boolean; connected: boolean; email: string | null }
 export interface Document { id: string; name: string; mime: string; size: number }
+export interface AccountingLine { description: string; quantity: string | null; rate: string | null; amount: string | null }
+export interface AccountingDraft { documentId: string; transactionType: "" | "vendor_bill" | "customer_invoice"; partyName: string; invoiceNumber: string; invoiceDate: string; dueDate: string; currency: string; subtotal: string | null; tax: string | null; total: string | null; lineItems: AccountingLine[]; uncertainFields: string[]; reviewState: "needs_review" | "ready"; reviewConfirmed?: boolean; extractedAt?: string; updatedAt?: string }
 export interface EmailSummary { id: string; subject: string; sender: string; date: string; attachmentCount: number; queued: boolean }
 export interface Email extends EmailSummary { body: string; html: string; attachments: Document[] }
-export interface Candidate { id: string; mailbox: string; messageId: string; subject: string; sender: string; date: string; documents: Document[]; createdAt: string; addedByName: string; notes: string; status: "queued" | "already-entered" | "ignored"; revision: number; deleting?: boolean }
+export interface Candidate { id: string; mailbox: string; messageId: string; subject: string; sender: string; date: string; documents: Document[]; createdAt: string; addedByName: string; notes: string; status: "queued" | "already-entered" | "ignored"; revision: number; accountingDrafts?: Record<string, AccountingDraft>; deleting?: boolean }
 export interface Filters { query: string; from: string; to: string; label: string }
 export const invoke = async <T>(name: string, data: unknown = {}) => (await httpsCallable<unknown, T>(functions, name, { timeout: 300000 })(data)).data;
 export const connection = () => invoke<Connection>("invoiceQbConnection");
@@ -17,6 +19,8 @@ export const message = (id: string) => invoke<Email>("invoiceQbMessage", { id })
 export const add = (messageId: string, parts: string[], separate: boolean) => invoke<{ ids: string[] }>("invoiceQbAdd", { messageId, parts, separate });
 export const queue = (cursor: string | null = null) => invoke<{ entries: Candidate[]; cursor: string | null }>("invoiceQbQueue", { cursor });
 export const queueBody = (id: string) => invoke<{ body: string }>("invoiceQbQueueBody", { id });
+export const extract = (id: string, documentId: string) => invoke<{ draft: AccountingDraft; revision: number }>("invoiceQbExtract", { id, documentId });
+export const saveDraft = (entry: Candidate, draft: AccountingDraft) => invoke<{ draft: AccountingDraft; revision: number }>("invoiceQbSaveDraft", { id: entry.id, documentId: draft.documentId, revision: entry.revision, draft });
 export const update = (entry: Candidate, status: Candidate["status"], notes: string) => invoke("invoiceQbUpdate", { id: entry.id, revision: entry.revision, status, notes });
 export const remove = (id: string) => invoke("invoiceQbRemove", { id });
 export async function documentBlob(part: string, source: { message: string } | { entry: string }) {

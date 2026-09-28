@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { getApp } from "firebase-admin/app";
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import { extractInvoiceDocument } from "./extraction.js";
 import { db, storage } from "../../core/firebase.js";
 import { requireAdmin, requireMiniApp } from "../../core/auth.js";
 import { callable, REGION } from "../../core/config.js";
@@ -21,7 +22,7 @@ async function config() {
   cachedConfig = { value, until: Date.now() + 60000 };
   return value;
 }
-const wrap = (action, admin = false) => onCall({ ...callable, timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
+const wrap = (action, admin = false, options = {}) => onCall({ ...callable, timeoutSeconds: 300, memory: "512MiB", ...options }, async (request) => {
   const current = admin ? await requireAdmin(request) : await requireMiniApp(request, "invoice-qb");
   try { return await action(request.data || {}, current); }
   catch (error) {
@@ -215,6 +216,62 @@ export const invoiceQbQueueBody = wrap(async (data) => {
   if (!entry || entry.deleting) throw new HttpsError("not-found", "Candidate not found.");
   const [body] = await storage.bucket().file(entry.bodyPath).download();
   return { body: body.toString("utf8") };
+});
+export const invoiceQbExtract = wrap(async (data) => {
+  if (!process.env.OPENAI_API_KEY) throw new HttpsError("failed-precondition", "AI extraction is not configured. Ask an administrator to configure the OpenAI service secret.");
+  const id = identifier(data.id), documentId = identifier(data.documentId), ref = entries.doc(id);
+  const snap = await ref.get(), entry = snap.data();
+  if (!entry || entry.deleting) throw new HttpsError("not-found", "Candidate not found.");
+  const doc = entry.documents.find((item) => item.id === documentId);
+  if (!doc || doc.mime !== "application/pdf") throw new HttpsError("failed-precondition", "Choose a queued PDF document to extract.");
+  if (doc.size > MAX_FILE) throw new HttpsError("invalid-argument", "PDFs must be 20 MB or smaller for AI extraction.");
+  let bytes;
+  try { [bytes] = await storage.bucket().file(doc.path).download(); }
+  catch { throw new HttpsError("not-found", "The original PDF is unavailable. The queue entry was not changed."); }
+  let extracted;
+  try { extracted = await extractInvoiceDocument(bytes); }
+  catch (error) {
+    if (error instanceof HttpsError) throw error;
+    if (error?.status === 401 || error?.status === 403 || error?.status === 429) throw new HttpsError("failed-precondition", "AI extraction is unavailable. Check the OpenAI service configuration or quota, then retry.");
+    throw new HttpsError("failed-precondition", "This PDF could not be read. It may be scanned, damaged, or password-protected; the original is still available to download.");
+  }
+  const draft = {
+    documentId, transactionType: extracted.suggestedType === "unknown" ? "" : extracted.suggestedType,
+    partyName: extracted.partyName, invoiceNumber: extracted.invoiceNumber, invoiceDate: extracted.invoiceDate, dueDate: extracted.dueDate,
+    currency: extracted.currency, subtotal: extracted.subtotal, tax: extracted.tax, total: extracted.total,
+    lineItems: extracted.lineItems, uncertainFields: extracted.uncertainFields, reviewState: "needs_review", reviewConfirmed: false, extractedAt: new Date().toISOString(),
+  };
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(ref);
+    if (!fresh.exists || fresh.data().deleting) throw new HttpsError("not-found", "Candidate not found.");
+    if (fresh.data().revision !== entry.revision) throw new HttpsError("aborted", "Another teammate updated this candidate during extraction. Refresh before retrying.");
+    tx.update(ref, { [`accountingDrafts.${documentId}`]: draft, revision: entry.revision + 1 });
+  });
+  return { draft, revision: entry.revision + 1 };
+}, false, { secrets: ["OPENAI_API_KEY"] });
+export const invoiceQbSaveDraft = wrap(async (data) => {
+  const id = identifier(data.id), documentId = identifier(data.documentId), ref = entries.doc(id), draft = data.draft;
+  const snap = await ref.get(), entry = snap.data();
+  if (!entry || entry.deleting) throw new HttpsError("not-found", "Candidate not found.");
+  if (!entry.documents.some((doc) => doc.id === documentId && doc.mime === "application/pdf")) throw new HttpsError("invalid-argument", "Draft must refer to a queued PDF.");
+  const validText = (value, max) => typeof value === "string" && value.length <= max;
+  if (!draft || !["", "vendor_bill", "customer_invoice"].includes(draft.transactionType) || !["needs_review", "ready"].includes(draft.reviewState)
+    || !["partyName", "invoiceNumber", "invoiceDate", "dueDate", "currency"].every((key) => validText(draft[key], 300))
+    || !["subtotal", "tax", "total"].every((key) => draft[key] === null || validText(draft[key], 40))
+    || typeof draft.reviewConfirmed !== "boolean" || !Array.isArray(draft.uncertainFields) || draft.uncertainFields.length > 30
+    || !Array.isArray(draft.lineItems) || draft.lineItems.length > 200
+    || draft.lineItems.some((line) => !line || !validText(line.description, 1000) || !["quantity", "rate", "amount"].every((key) => line[key] === null || validText(line[key], 40))))
+    throw new HttpsError("invalid-argument", "Draft fields are invalid. Refresh and retry.");
+  if (draft.reviewState === "ready" && (draft.reviewConfirmed !== true || !draft.transactionType || !draft.partyName.trim() || !draft.invoiceNumber.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(draft.invoiceDate) || !draft.currency.trim() || draft.total === null || !String(draft.total).trim()))
+    throw new HttpsError("failed-precondition", "To mark this draft ready, confirm you reviewed it and provide the transaction type, party, invoice number, invoice date, currency, and total.");
+  const safeDraft = { ...draft, documentId, uncertainFields: Array.isArray(draft.uncertainFields) ? draft.uncertainFields.filter((x) => typeof x === "string").slice(0, 30) : [], updatedAt: new Date().toISOString() };
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(ref);
+    if (!fresh.exists || fresh.data().deleting) throw new HttpsError("not-found", "Candidate not found.");
+    if (fresh.data().revision !== data.revision) throw new HttpsError("aborted", "Another teammate updated this candidate. Refresh before saving.");
+    tx.update(ref, { [`accountingDrafts.${documentId}`]: safeDraft, revision: data.revision + 1 });
+  });
+  return { draft: safeDraft, revision: data.revision + 1 };
 });
 export const invoiceQbUpdate = wrap(async (data) => {
   if (!["queued", "already-entered", "ignored"].includes(data.status) || typeof data.notes !== "string" || data.notes.length > 5000) throw new HttpsError("invalid-argument", "Choose a valid status and notes of up to 5,000 characters.");

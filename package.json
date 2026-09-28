@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/generate-seo.mjs",
+    "test:invoice-qb": "vitest run src/mini-apps/invoice-qb/InvoiceQb.test.tsx src/mini-apps/invoice-qb/PdfViewer.test.tsx",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings=0",
     "test": "vitest run src/auth/InvitationEntry.test.tsx src/auth/EnterpriseAuth.test.tsx src/member/Member.test.tsx src/mini-apps/uex/UexApp.test.tsx src/mini-apps/invoice-qb/InvoiceQb.test.tsx src/mini-apps/fluidlab/WellInformation.test.tsx src/mini-apps/lsd-finder/LsdFinder.test.tsx src/mini-apps/fluidlab/pason/SurveyWorkspace.test.tsx src/mini-apps/fluidlab/pason/PackageDetailChoice.test.tsx src/portal/AppLauncher.test.tsx src/mini-apps/fluidlab/pason/zip.test.ts src/App.test.tsx src/portal/miniApps.test.ts src/mini-apps/fluidlab/model.test.ts src/mini-apps/fluidlab/FluidLab.test.tsx src/mini-apps/fluidlab/usePason.test.tsx src/mini-apps/fluidlab/useWellSearch.test.tsx src/mini-apps/fluidlab/pason/survey.test.ts src/mini-apps/fluidlab/pason/well-package.test.ts src/mini-apps/fluidlab/pason/viewer-math.test.ts && node --test tests/homepage.test.mjs tests/well-worker.test.mjs",
@@ -23,6 +24,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^1.33.0",
     "motion": "^12.23.24",
+    "pdfjs-dist": "^5.6.205",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-router-dom": "^7.18.2",

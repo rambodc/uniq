@@ -1,6 +1,6 @@
 # Invoice QB Gmail setup
 
-Invoice QB is a shared, read-only Gmail browser and bill-candidate queue. It does not send email, change Gmail labels/read status, extract invoice fields with AI, or write to QuickBooks.
+Invoice QB is a shared, read-only Gmail browser and bill-candidate queue. It does not send email, change Gmail labels/read status, or write transactions to QuickBooks. AI extraction is available only after a user explicitly requests it for an individual queued PDF.
 
 ## Google administrator setup
 
@@ -39,8 +39,10 @@ Config is checked at runtime and cached for at most 60 seconds. No redeployment 
 - Emails defaults to all mail except Spam and Trash, with no date restriction. Date boundaries are UTC when dates are supplied; Through includes the selected date. Search supports Gmail search syntax. Refresh and Load more retrieve mail on demand.
 - Open an email, select its body and/or attachments, and choose **Add to bill queue**. The default groups selected documents into one candidate. The checkbox creates separate candidates. An individual PDF containing multiple invoices is retained as one document for later bill preparation.
 - Each attachment is limited to 20 MB; each candidate is limited to 50 MB. Missing, oversized, or failed downloads abort the entire selection. Duplicates are detected by source mailbox/message/document, including concurrent submissions. This does not detect the same invoice resent in a different email or bills already in QuickBooks.
-- The queue saves email text, original message data, and selected attachments. It retains documents after email deletion, Gmail disconnection, or mailbox replacement. Full message data is stored privately. Email HTML is displayed in a sandboxed, restricted preview with a plain-text fallback; scripts, forms, frames, unsafe links, and external resources are blocked. PDFs and supported raster images can be previewed; other formats are downloaded.
-- Queue entries are candidates, not bills. Queued, Already entered, and Ignored are team-managed statuses. Notes/status updates detect concurrent edits. Choose Queued to reopen a candidate. Remove deletes the candidate and saved documents; Gmail is unchanged. If deletion fails, retry Remove on the entry marked Removal pending.
+- The queue saves email text, original message data, and selected attachments. It retains documents after email deletion, Gmail disconnection, or mailbox replacement. Full message data is stored privately. Email HTML is displayed in a sandboxed, restricted preview with a plain-text fallback; scripts, forms, frames, unsafe links, and external resources are blocked. PDFs use a page-based viewer with page navigation and a download fallback; supported raster images can also be previewed. Other formats are downloaded.
+- Queue entries are candidates, not bills. For a queued PDF, choose **Extract with AI** to extract a suggested vendor/customer type, party, invoice number/dates, currency, totals, and line items. This sends only that chosen stored PDF to the AI service; mail and attachments are never processed automatically. Extraction output is an editable draft, starts in **Needs review**, and remains linked to the original candidate and PDF. Review and correct its values, choose **Vendor Bill (Payable)** or **Customer Invoice (Receivable)**, save it, and mark it ready only after confirming key fields. Party names remain text and are not matched against QuickBooks lists yet. No bill or invoice is created in QuickBooks in this phase. If extraction cannot read a PDF, its saved original remains downloadable.
+- AI extraction requires the project's existing **OPENAI_API_KEY** Secret Manager secret to be bound to the extraction function. The extraction function uses the Responses API PDF input and does not store the request with the provider. Confirm that secret is already configured before expecting extraction to work; Gmail setup and credentials are unchanged.
+- Queued, Already entered, and Ignored are team-managed statuses. Notes/status updates detect concurrent edits. Choose Queued to reopen a candidate. Remove deletes the candidate and saved documents; Gmail is unchanged. If deletion fails, retry Remove on the entry marked Removal pending.
 - To change accounts, disconnect first. This revokes the stored Google grant and clears local credentials. Then connect the replacement mailbox. Reconnect renews authorization for the same mailbox.
 - Final live acceptance: connect the dedicated account, browse a known invoice, add a document, have a second authorized user view it, change its status, disconnect and confirm the saved document is still readable, then reconnect. Check Gmail to confirm read state and labels were not changed.
 
@@ -51,8 +53,9 @@ Commit and push `production` only. Functions and required permission endpoints d
 Focused tests:
 
 ```sh
+npm run test:invoice-qb
 npx vitest run src/mini-apps/invoice-qb/InvoiceQb.test.tsx src/portal/miniApps.test.ts src/portal/AppLauncher.test.tsx src/App.test.tsx
-node --test functions/test/invoice-qb.test.js
+node --test functions/test/invoice-qb.test.js functions/test/invoice-qb-extraction.test.js
 ```
 
 Run the integration test with Firestore and Storage emulators and a **demo project**, never production. The test replaces Google calls with fixtures and uses the emulator to verify permissions, single-use OAuth state, concurrent duplicate prevention, failed downloads, retained documents, and deletion. It never connects a real mailbox.
