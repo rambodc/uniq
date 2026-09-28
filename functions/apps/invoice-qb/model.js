@@ -26,8 +26,9 @@ export function parseMessage(message) {
     (part.parts || []).forEach((p, i) => walk(p, `${path}_${i}`));
   }
   walk(message.payload || {});
-  const body = texts.join("\n") || html.join("\n").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<[^>]*>/g, " ");
-  return { id: message.id, subject: get("subject"), sender: get("from"), date: new Date(Number(message.internalDate)).toISOString(), body, attachments };
+  const htmlBody = html.join("\n");
+  const body = texts.join("\n") || htmlBody.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<[^>]*>/g, " ");
+  return { id: message.id, subject: get("subject"), sender: get("from"), date: new Date(Number(message.internalDate)).toISOString(), body, html: htmlBody, attachments };
 }
 export function publicMessage(message) {
   return { ...message, attachments: message.attachments.map(({ id, name, mime, size }) => ({ id, name, mime, size })) };

@@ -4,18 +4,21 @@ import { randomBytes } from "node:crypto";
 import { decrypt, encrypt, identifier, MAX_CANDIDATE, MAX_FILE, parseMessage, publicMessage, searchOptions, selections, sourceKey } from "../apps/invoice-qb/model.js";
 const encoded = (value) => Buffer.from(value).toString("base64url");
 const sample = { id: "abc", internalDate: "1700000000000", payload: { headers: [{ name: "Subject", value: "Two invoices" }, { name: "From", value: "supplier@example.com" }], parts: [{ mimeType: "text/plain", body: { data: encoded("Please review"), size: 13 } }, { filename: "invoice.pdf", mimeType: "application/pdf", body: { attachmentId: "secret-attachment-id", size: 123 } }, { parts: [{ filename: "second.png", mimeType: "image/png", body: { data: encoded("image"), size: 5 } }] }] } };
-test("parses nested attachments without exposing internal attachment content", () => {
+test("parses nested attachments and preserves HTML without exposing internal attachment content", () => {
   const parsed = parseMessage(sample), visible = publicMessage(parsed);
   assert.equal(parsed.body, "Please review");
+  assert.equal(parsed.html, "");
   assert.equal(parsed.attachments.length, 2);
   assert.equal(parsed.attachments[1].id, "0_2_0");
   assert.equal(visible.attachments[0].attachmentId, undefined);
   assert.equal(visible.attachments[1].data, undefined);
   assert.equal(visible.sender, "supplier@example.com");
 });
-test("HTML-only email becomes inert text and never embeds remote images", () => {
+test("HTML-only email preserves markup while providing a plain-text fallback", () => {
   const parsed = parseMessage({ ...sample, payload: { mimeType: "text/html", body: { data: encoded('<script>alert(1)</script><p>Invoice<img src="https://tracker.test/pixel"></p>') } } });
   assert.equal(parsed.body.trim(), "Invoice");
+  assert.match(parsed.html, /<script>/);
+  assert.match(parsed.html, /tracker\.test/);
 });
 test("selection validates missing, repeated, oversized and grouped documents", () => {
   const parsed = parseMessage(sample);
@@ -50,4 +53,11 @@ test("Gmail searches carry bounded query, inclusive end date, label and cursor",
   assert.throws(() => searchOptions({ from: "2026-09-18", to: "2026-09-01" }));
   assert.throws(() => searchOptions({ query: "x".repeat(501) }));
   assert.throws(() => identifier("../../users/admin"));
+});
+test("Gmail default search leaves date and label filters unset", () => {
+  const params = searchOptions({ query: "" });
+  assert.equal(params.get("labelIds"), null);
+  assert.equal(params.get("q"), "");
+  assert.equal(params.get("after"), null);
+  assert.equal(params.get("before"), null);
 });

@@ -16,18 +16,20 @@ beforeEach(() => {
   vi.mocked(api.connection).mockResolvedValue({ configured: true, connected: true, email: "invoices@example.com" });
   vi.mocked(api.labels).mockResolvedValue({ labels: [{ id: "INBOX", name: "Inbox" }] });
   vi.mocked(api.messages).mockResolvedValue({ messages: [summary], cursor: null });
-  vi.mocked(api.message).mockResolvedValue({ ...summary, body: '<img src="https://tracker.test">Invoice text', attachments: [{ id: "0_1", name: "invoice.pdf", mime: "application/pdf", size: 3 }] });
+  vi.mocked(api.message).mockResolvedValue({ ...summary, body: "Invoice text", html: '<script>alert(1)</script><table><tr><td>Invoice text</td></tr></table><img src="https://tracker.test">', attachments: [{ id: "0_1", name: "invoice.pdf", mime: "application/pdf", size: 3 }] });
   vi.mocked(api.queue).mockResolvedValue({ entries: [], cursor: null });
   vi.mocked(api.add).mockResolvedValue({ ids: ["candidate"] });
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 const render = async () => { await act(async () => root.render(<InvoiceQb/>)); };
 const click = async (text: string) => { const button = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(text)); expect(button).toBeTruthy(); await act(async () => button!.click()); };
-it("browses emails, renders inert body and queues only selected documents", async () => {
+it("browses all mail, safely previews HTML, and queues only selected documents", async () => {
   await render();
-  expect(api.messages).toHaveBeenCalledWith(expect.objectContaining({ label: "INBOX" }), null);
+  expect(api.messages).toHaveBeenCalledWith({ query: "", from: "", to: "", label: "" }, null);
   await click("Supplier invoice");
-  expect(host.querySelector('img[src="https://tracker.test"]')).toBeNull();
+  expect(host.querySelector("iframe[sandbox]")).toBeTruthy();
+  expect(host.querySelector("iframe")?.getAttribute("srcdoc")).not.toContain("<script");
+  expect(host.textContent).toContain("Plain-text email fallback");
   const boxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
   await act(async () => boxes[1].click());
   await click("Add to bill queue");

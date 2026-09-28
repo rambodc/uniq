@@ -4,7 +4,7 @@ import { auth, functions } from "../../core/firebase";
 export interface Connection { configured: boolean; connected: boolean; email: string | null }
 export interface Document { id: string; name: string; mime: string; size: number }
 export interface EmailSummary { id: string; subject: string; sender: string; date: string; attachmentCount: number; queued: boolean }
-export interface Email extends EmailSummary { body: string; attachments: Document[] }
+export interface Email extends EmailSummary { body: string; html: string; attachments: Document[] }
 export interface Candidate { id: string; mailbox: string; messageId: string; subject: string; sender: string; date: string; documents: Document[]; createdAt: string; addedByName: string; notes: string; status: "queued" | "already-entered" | "ignored"; revision: number; deleting?: boolean }
 export interface Filters { query: string; from: string; to: string; label: string }
 export const invoke = async <T>(name: string, data: unknown = {}) => (await httpsCallable<unknown, T>(functions, name, { timeout: 300000 })(data)).data;
