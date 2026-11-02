@@ -126,6 +126,7 @@
 .inv-filters button,.inv-ask button{min-height:48px}
 .inv-lines{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .inv-lines li{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) auto;gap:8px;align-items:center}
+.inv-lines-ticket li{grid-template-columns:minmax(0,1.6fr) minmax(4.5rem,.7fr) auto auto auto}
 .inv-lines-head li{color:var(--portal-muted);font-size:12px}
 .inv-lines span{overflow-wrap:anywhere}
 .portal-panel h2{margin:0;font-size:22px}
@@ -137,7 +138,8 @@
 .inv-ask{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
 .mail-meta a{margin-right:8px}
 @media(max-width:800px){
-  .inv-stats,.inv-sources{grid-template-columns:1fr}
+  .inv-stats,.inv-sources,.inv-lines-ticket li{grid-template-columns:1fr}
+  .inv-lines-ticket li span:first-child{grid-column:1/-1}
   .inv-tabs{flex-wrap:wrap;overflow:visible}
   .inv-ask button{width:100%}
 }

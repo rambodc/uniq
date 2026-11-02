@@ -54,7 +54,7 @@ Missing config uses those defaults. Checks do not overwrite `config`.
 | `company` | string |
 | `warehouseCode` | string |
 | `warehouseName` | string |
-| `type` | string. `DT`, `CT`, `MR`, `ST`, `STx`, `SR`, `AT`, `TT`, `PR`, `FT`, and any later warehouse code. Stored uppercase. |
+| `type` | string. `DT`, `CT`, `MR`, `ST`, `STx`, `SR`, `AT`, `TT`, `PR`, `FT`, and any later warehouse code. `STx` is distinct from `ST`. Comparisons ignore case, so keep the stored spelling. |
 | `rig` | string |
 | `lsd` | string, raw LSD or UWI |
 | `lsdNorm` | string. See below. Checks fill it when it is blank or stale. |
@@ -74,7 +74,7 @@ Missing config uses those defaults. Checks do not overwrite `config`.
 | `collectedAt` | ISO string |
 | `runId` | string, usually the run date |
 
-Stock effect of a ticket on its `warehouseCode`: `MR`, `PR`, `SR`, and `FT` add `qty`. `DT`, `CT`, `ST`, `STx`, and `TT` subtract `qty`. `AT` uses the signed `qty` as stored.
+Stock effect of a ticket on its `warehouseCode`: `MR`, `PR`, `SR`, and `FT` add `qty`. `DT`, `CT`, `ST`, `STx`, and `TT` subtract `qty`. `AT` uses the signed `qty` as stored. `STx` and `stx` are the same outbound transfer.
 
 ### LSD key
 

@@ -53,7 +53,7 @@ export function Tickets() {
       <input aria-label="Search tickets" placeholder="Search tickets" value={filters.query} onChange={(event) => setFilters({ ...filters, query: event.target.value })} />
       <select aria-label="Source" value={filters.source} onChange={(event) => setFilters({ ...filters, source: event.target.value })}><option value="">All sources</option><option value="xpress">Xpress</option><option value="mim">MIM</option></select>
       <select aria-label="Company" value={filters.company} onChange={(event) => setFilters({ ...filters, company: event.target.value })}><option value="">All companies</option><option value="uniqenergy">UniqEnergy</option><option value="alchem">Alchem</option></select>
-      <input aria-label="Type" placeholder="Type" value={filters.type} onChange={(event) => setFilters({ ...filters, type: event.target.value.toUpperCase() })} />
+      <input aria-label="Type" placeholder="Type" value={filters.type} onChange={(event) => setFilters({ ...filters, type: event.target.value })} />
       <input aria-label="Warehouse" placeholder="Warehouse" value={filters.warehouseCode} onChange={(event) => setFilters({ ...filters, warehouseCode: event.target.value })} />
       <input aria-label="Rig" placeholder="Rig" value={filters.rig} onChange={(event) => setFilters({ ...filters, rig: event.target.value })} />
       <button type="submit">Filter</button>
@@ -115,22 +115,35 @@ export function TicketDetail() {
       <dl className="portal-facts">
         <div><dt>Source</dt><dd>{ticket.source}</dd></div>
         <div><dt>Company</dt><dd>{ticket.company}</dd></div>
-        <div><dt>Warehouse</dt><dd>{ticket.warehouseName || ticket.warehouseCode}</dd></div>
+        <div><dt>Warehouse</dt><dd>{ticket.warehouseName || "—"}</dd></div>
+        <div><dt>Warehouse code</dt><dd>{ticket.warehouseCode || "—"}</dd></div>
         <div><dt>Rig</dt><dd>{ticket.rig || "—"}</dd></div>
         <div><dt>LSD</dt><dd>{ticket.lsd || "—"}</dd></div>
+        <div><dt>LSD grid</dt><dd>{ticket.lsdGrid || "—"}</dd></div>
         <div><dt>Well</dt><dd>{ticket.wellName || "—"}</dd></div>
         <div><dt>Customer</dt><dd>{ticket.customer || "—"}</dd></div>
         <div><dt>Posted</dt><dd>{shortDate(ticket.postedAt)}</dd></div>
         <div><dt>Shipped</dt><dd>{shortDate(ticket.shippedAt)}</dd></div>
         <div><dt>Total</dt><dd>{ticket.total == null ? "—" : money(ticket.total)}</dd></div>
+        <div><dt>PDF</dt><dd>{ticket.pdfPath || "—"}</dd></div>
       </dl>
+      {ticket.relatedTickets.length > 0 && <p className="mail-meta">Related: {ticket.relatedTickets.join(", ")}</p>}
       <h2>Lines</h2>
-      {ticket.lines.length === 0 ? <p className="portal-empty">No product lines.</p> : <ul className="inv-lines">{ticket.lines.map((line) => <li key={`${line.code}-${line.name}`}><span>{line.name}</span><span>{line.code}</span><span>{line.qty}</span></li>)}</ul>}
+      {ticket.lines.length === 0 ? <p className="portal-empty">No product lines.</p> : <ul className="inv-lines inv-lines-ticket">
+        <li><span>Product</span><span>Code</span><span>Qty</span><span>Unit</span><span>Weight</span></li>
+        {ticket.lines.map((line) => <li key={`${line.productId || line.code}-${line.name}`}>
+          <span>{line.name}{line.description ? ` — ${line.description}` : ""}{line.productId ? ` (${line.productId})` : ""}</span>
+          <span>{line.code}</span>
+          <span>{line.qty}</span>
+          <span>{line.unit || "—"}</span>
+          <span>{line.weight ?? line.unitWeight ?? "—"}</span>
+        </li>)}
+      </ul>}
       {ticket.charges.length > 0 && <>
         <h2>Charges</h2>
         <ul className="inv-lines">{ticket.charges.map((charge) => <li key={charge.service}><span>{charge.service}</span><span>{charge.billingMethod}</span><span>{money(charge.total)}</span></li>)}</ul>
       </>}
-      <div className="mail-actions"><button type="button" className="button-primary" disabled={busy || !ticket.hasPdf} onClick={() => void openPdf()}>{ticket.hasPdf ? "Open PDF" : "No PDF"}</button></div>
+      <div className="mail-actions"><button type="button" className="button-primary" disabled={busy || !ticket.hasPdf} onClick={() => void openPdf()}>{ticket.hasPdf ? "View PDF" : "No PDF"}</button></div>
     </article>}
   </Shell>;
 }
