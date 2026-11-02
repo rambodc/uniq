@@ -2,48 +2,68 @@ import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PortalUser } from "./core/types";
 
-const session = vi.hoisted(() => ({ user: null as PortalUser | null, loading: false }));
-vi.mock("./portal/AuthContext", () => ({ AuthProvider: ({ children }: { children: ReactNode }) => children, usePortalAuth: () => session }));
-vi.mock("react-router-dom", async (original) => ({ ...await original<typeof import("react-router-dom")>(), Navigate: ({ to }: { to: string }) => <span>Redirect to {to}</span> }));
+vi.mock("react-router-dom", async (original) => ({ ...await original<typeof import("react-router-dom")>(), Navigate: ({ to }: { to: string }) => <span>{`Redirect to ${to}`}</span> }));
+
+const session = vi.hoisted(() => ({
+  user: null as { emailVerified: boolean } | null,
+  loading: false,
+  type: null as string | null,
+  accessLoading: false,
+  accessError: null as string | null,
+  can: (id: string) => id.length < 0,
+  logout: async () => {},
+  profile: null,
+  miniApps: [] as string[],
+  refreshAccess: async () => {},
+}));
+vi.mock("./auth/AuthContext", () => ({ AuthProvider: ({ children }: { children: ReactNode }) => children, useAuth: () => session }));
 vi.mock("./public/PublicSite", () => ({ default: () => <span>Public site</span> }));
-vi.mock("./auth/EnterpriseAuth", () => ({ default: () => null }));
-
-vi.mock("./mini-apps/account/AccountApp", () => ({ default: () => null }));
-vi.mock("./mini-apps/contact-form/ContactFormApp", () => ({ default: () => null }));
-vi.mock("./mini-apps/user-access/UserAccessApp", () => ({ default: () => null }));
-vi.mock("./mini-apps/fluidlab/FluidLab", () => ({ default: () => <span>FluidLab workspace</span> }));
+vi.mock("./auth/SignIn", () => ({ default: () => <span>Sign in</span> }));
+vi.mock("./auth/Dashboard", () => ({ default: () => <span>Dashboard</span> }));
+vi.mock("./contact/ContactInbox", () => ({ default: () => <span>Contact inbox</span> }));
+vi.mock("./users/UsersApp", () => ({ default: () => <span>User access</span> }));
+vi.mock("./profile/ProfileApp", () => ({ default: () => <span>Profile</span> }));
 import App from "./App";
 
-const user: PortalUser = { schemaVersion: 2, uid: "test", email: "test@example.com", firstName: "Test", lastName: "User", role: "employee", status: "active", enabledMiniApps: [] };
-const render = (path = "/apps/fluidlab") => renderToString(<MemoryRouter initialEntries={[path]}><App/></MemoryRouter>);
+const render = (path: string) => renderToString(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
 
-beforeEach(() => { session.user = null; session.loading = false; });
-describe("private FluidLab route", () => {
-  it("waits for authentication before rendering the workspace", () => {
+beforeEach(() => {
+  session.user = null;
+  session.loading = false;
+  session.type = null;
+  session.accessLoading = false;
+  session.accessError = null;
+  session.can = () => false;
+});
+
+describe("workspace routes", () => {
+  it("waits for authentication", () => {
     session.loading = true;
-    expect(render()).toContain("Opening your UniqEnergy portal");
-    expect(render()).not.toContain("Loading FluidLab");
+    expect(render("/dashboard")).toContain("Opening your UniqEnergy workspace");
   });
   it("sends signed-out visitors to sign-in", () => {
-    expect(render()).toContain("Redirect to <!-- -->/signin");
+    expect(render("/dashboard")).toContain("Redirect to /signin");
+    expect(render("/contact-inbox")).toContain("Redirect to /signin");
   });
-  it("sends unassigned users to the portal", () => {
-    session.user = user;
-    expect(render()).toContain("Redirect to <!-- -->/portal");
+  it("opens the dashboard and profile for an authorized account", () => {
+    session.user = { emailVerified: true };
+    session.type = "staff";
+    session.can = (id) => id === "profile";
+    expect(render("/dashboard")).toContain("Dashboard");
+    expect(render("/profile")).toContain("Profile");
+    expect(render("/users")).toContain("Redirect to /dashboard");
   });
-  it("rejects disabled users even with a grant", () => {
-    session.user = { ...user, status: "disabled", enabledMiniApps: ["fluidlab"] };
-    expect(render()).toContain("Redirect to <!-- -->/signin");
+  it("opens contact and user access only when granted", () => {
+    session.user = { emailVerified: true };
+    session.type = "super_admin";
+    session.can = () => true;
+    expect(render("/contact-inbox")).toContain("Contact inbox");
+    expect(render("/users")).toContain("User access");
   });
-  it.each(["admin", "assigned"])("opens the workspace for %s", (kind) => {
-    session.user = kind === "admin" ? { ...user, role: "admin" } : { ...user, enabledMiniApps: ["fluidlab"] };
-    expect(render()).toMatch(/Loading FluidLab|FluidLab workspace/);
-    expect(render()).not.toContain("Redirect to");
-  });
-  it("has no viewer or redirect at the removed public URL", () => {
-    session.user = { ...user, role: "admin" };
-    expect(render("/well-viewer")).toBe("<span>Public site</span>");
+  it("keeps the public site on marketing routes", () => {
+    expect(render("/")).toContain("Public site");
+    expect(render("/contact-us")).toContain("Public site");
+    expect(render("/apps/fluidlab")).toContain("Public site");
   });
 });

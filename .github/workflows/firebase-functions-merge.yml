@@ -2,7 +2,7 @@ name: "Production: Firebase Functions"
 on:
   push:
     branches: [production]
-    paths: ["functions/**", "scripts/configure-fluidlab-cloud.py", "scripts/configure-invoice-qb-cloud.py", "scripts/configure-account-auth.py", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
+    paths: ["functions/**", "firebase.json", ".firebaserc", ".github/workflows/firebase-functions-merge.yml"]
   workflow_dispatch:
 concurrency: { group: functions-production, cancel-in-progress: false }
 jobs:
@@ -12,7 +12,6 @@ jobs:
     permissions: { id-token: write, contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: functions/package-lock.json }
       - name: Validate deployment identity
@@ -24,96 +23,10 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Configure FluidLab APIs and secret access
-        run: python3 scripts/configure-fluidlab-cloud.py
-      - name: Configure Invoice QB Gmail access
-        run: python3 scripts/configure-invoice-qb-cloud.py
       - run: npm ci --prefix functions
       - run: find functions -path 'functions/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
       - run: npm run lint --prefix functions
       - run: env -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE -u GOOGLE_GHA_CREDS_PATH npm test --prefix functions
       - run: npm install --global firebase-tools@14.15.2
-      - name: Select affected functions
-        id: affected
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          python3 - <<'PYCODE'
-          import os, re, subprocess
-          before = os.environ.get("BEFORE_SHA", "")
-          target = "functions"
-          invoice_tests = True
-          if before and set(before) != {"0"}:
-              paths = subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines()
-              invoice_tests = any(p.startswith(("functions/apps/invoice-qb/", "functions/test/invoice-qb")) for p in paths)
-              runtime = [p for p in paths if p.startswith("functions/") and not p.startswith(("functions/test/", "functions/scripts/"))]
-              with open("functions/index.js") as source:
-                  current = source.read()
-              previous = subprocess.check_output(["git", "show", before + ":functions/index.js"], text=True)
-              pattern = r'export \{([^}]+)\} from "\./apps/fluidlab/[^"\n]+\.js";?'
-              other_exports_unchanged = re.sub(pattern, "", current).strip() == re.sub(pattern, "", previous).strip()
-              if not runtime and not any(p in ("firebase.json", ".firebaserc", "scripts/configure-fluidlab-cloud.py") for p in paths):
-                  target = ""
-              if runtime and other_exports_unchanged and all(p.startswith("functions/apps/fluidlab/") or p == "functions/index.js" for p in runtime):
-                  with open("functions/index.js") as source:
-                      exports = re.findall(pattern, source.read())
-                  target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
-                  if not target:
-                      raise SystemExit("No FluidLab exports found")
-              # The location engine is shared only by Fluid Labs and LSD Finder.
-              location_pattern = r'export \{([^}]+)\} from "\./apps/(?:fluidlab|lsd-finder)/[^"\n]+\.js";?'
-              location_exports_unchanged = re.sub(location_pattern, "", current).strip() == re.sub(location_pattern, "", previous).strip()
-              if runtime and location_exports_unchanged and any(p.startswith(("functions/apps/lsd-finder/", "functions/shared/locations/")) for p in runtime) and all(p.startswith(("functions/apps/fluidlab/", "functions/apps/lsd-finder/", "functions/shared/locations/")) or p == "functions/index.js" for p in runtime):
-                  exports = re.findall(location_pattern, current)
-                  target = ",".join("functions:" + name.strip() for group in exports for name in group.split(","))
-                  if not target:
-                      raise SystemExit("No location app exports found")
-              invoice_paths = {"functions/index.js", "functions/core/config.js"}
-              if runtime and all(p.startswith("functions/apps/invoice-qb/") or p in invoice_paths for p in runtime):
-                  invoice_exports = re.findall(r'export \{([^}]+)\} from "\./apps/invoice-qb/[^"\n]+\.js";?', current)
-                  names = [name.strip() for group in invoice_exports for name in group.split(",")]
-                  if "functions/core/config.js" in runtime:
-                      enterprise_exports = re.findall(r'export \{([^}]+)\} from "\./apps/(?:account|user-access)/[^"\n]+\.js";?', current)
-                      names += [name.strip() for group in enterprise_exports for name in group.split(",")]
-                  target = ",".join("functions:" + name for name in names)
-                  if not target:
-                      raise SystemExit("No Invoice QB exports found")
-              uex_paths = {"functions/index.js", "functions/services/email.js"}
-              if runtime and all(p.startswith(("functions/apps/uex/", "functions/apps/account/")) or p in uex_paths for p in runtime):
-                  groups = re.findall(r'export \{([^}]+)\} from "\./apps/(?:uex|account)/[^"\n]+\.js";?', current)
-                  target = ",".join("functions:" + name.strip() for group in groups for name in group.split(","))
-              if runtime and all(p.startswith("functions/apps/uex/") for p in runtime):
-                  groups = re.findall(r'export \{([^}]+)\} from "\./apps/uex/[^"\n]+\.js";?', current)
-                  target = ",".join("functions:" + name.strip() for group in groups for name in group.split(","))
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write("target=" + target + "\n")
-              output.write("invoice_tests=" + str(invoice_tests).lower() + "\n")
-          PYCODE
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 21 }
-      - name: Test Invoice QB with isolated emulators
-        if: steps.affected.outputs.invoice_tests == 'true'
-        run: >-
-          firebase emulators:exec --project demo-invoice-qb --only firestore,storage
-          'FIREBASE_CONFIG='\''{"projectId":"demo-invoice-qb","storageBucket":"demo-invoice-qb.appspot.com"}'\'' node --test functions/test/invoice-qb.integration.test.js'
-      - name: Rehearse accounts and UEX with isolated emulators
-        env:
-          FIREBASE_CONFIG: '{"projectId":"demo-uex","storageBucket":"demo-uex.appspot.com"}'
-        run: firebase emulators:exec --project demo-uex --only auth,firestore,storage 'UEX_INTEGRATION=1 node --test --test-concurrency=1 functions/test/uex-account.test.js functions/test/uex-builder.test.js'
-      - name: Configure email-code authentication
-        run: python3 scripts/configure-account-auth.py
-      - if: ${{ steps.affected.outputs.target != '' }}
-        run: firebase deploy --only "${{ steps.affected.outputs.target }}" --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
-      - name: Clean existing UEX content once
-        env:
-          GCLOUD_PROJECT: uniqenergy-de71c
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: node functions/scripts/clean-uex.js
-      - name: Configure FluidLab task dispatch
-        if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
-        run: python3 scripts/configure-fluidlab-cloud.py --after-deploy
-      - name: Index shared well names
-        if: steps.affected.outputs.target == 'functions' || contains(steps.affected.outputs.target, 'functions:listFluidWells')
-        env:
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: node functions/scripts/index-fluid-well-names.js
+      # Deploy the whole codebase with --force so functions removed from index.js are deleted.
+      - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"

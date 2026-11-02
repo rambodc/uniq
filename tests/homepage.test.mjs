@@ -100,103 +100,44 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
   for (const path of ["src/public/scenes/HomeWellScene.tsx", "src/public/scenes/ContactSignalScene.tsx", "src/public/scenes/TechnologyJourney.tsx"]) { const source = await read(path); assert.match(source, /prefers-reduced-motion/); assert.match(source, /IntersectionObserver/); assert.match(source, /canRenderWebGL/); }
 });
 
-test("enterprise routes include the private Well Viewer mini app", async () => {
-  const app = await read("src/App.tsx"), registry = await read("src/portal/miniApps.ts"), firebase = await read("firebase.json");
-  for (const route of ["/portal", "/apps/fluidlab", "/apps/contact-form", "/apps/user-access", "/apps/account", "/member/parties/:id"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.doesNotMatch(app, /path="\/well-viewer"/);
-  assert.doesNotMatch(registry, /well-viewer|Well Viewer/);
-  assert.doesNotMatch(firebase, /well-viewer/);
-  for (const legacy of ["/signup", "/account/profile", "/account/projects"]) assert.doesNotMatch(app, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.doesNotMatch(app, /returnTo|LegacyProjectRedirect/);
-  assert.doesNotMatch(app, /createUserWithEmailAndPassword/);
-  assert.match(registry, /adminOnly: true/);
-  assert.match(registry, /alwaysVisible: true/);
-  assert.match(registry, /user\.role === "admin"/);
+test("workspace routes are sign-in, dashboard, and the three mini apps", async () => {
+  const app = await read("src/App.tsx"), registry = await read("functions/miniApps.js"), firebase = await read("firebase.json");
+  for (const route of ["/signin", "/dashboard", "/contact-inbox", "/users", "/profile"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const gone of ['path="/portal"', 'path="/member"', 'path="/join/', "requestLoginCode", "signInWithCustomToken", "createUserWithEmailAndPassword", "/apps/fluidlab"]) assert.doesNotMatch(app, new RegExp(gone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(registry, /id: "profile"/);
+  assert.match(registry, /id: "contact"/);
+  assert.match(registry, /id: "users"/);
+  assert.match(registry, /name: "Profile"/);
+  assert.match(registry, /name: "Contact Form"/);
+  assert.match(registry, /name: "User Access"/);
+  for (const gone of ["fluidlab", "invoice-qb", "uex", "lsd-finder", "account"]) assert.doesNotMatch(registry, new RegExp(`id: "${gone}"`));
+  assert.doesNotMatch(firebase, /well-viewer|\/portal|\/apps\//);
 });
 
-test("Well Viewer carries layered search-engine exclusion", async () => {
-  const firebase = await read("firebase.json"), robots = await read("public/robots.txt"), main = await read("src/main.tsx"), sitemap = await read("public/sitemap.xml"), routes = await read("src/public/seo-routes.json"), source = await read("src/public/PublicSite.tsx");
-  assert.ok(JSON.parse(firebase).hosting.headers.some(h => h.source === "/@(member|apps)/**" && h.headers.some(v => v.key === "X-Robots-Tag" && v.value === "noindex, nofollow")));
-  assert.match(robots, /Disallow: \/apps/);
-  assert.doesNotMatch(robots, /well-viewer/);
-  assert.doesNotMatch(main, /well-viewer/);
-  assert.match(main, /robots\.content = "noindex, nofollow"/);
-  assert.doesNotMatch(sitemap, /well-viewer/);
-  assert.doesNotMatch(routes, /well-viewer/);
-  assert.doesNotMatch(source, /well-viewer/);
+test("private routes stay out of the public index", async () => {
+  const firebase = await read("firebase.json"), robots = await read("public/robots.txt"), main = await read("src/main.tsx"), sitemap = await read("public/sitemap.xml");
+  const hosting = JSON.parse(firebase).hosting.headers;
+  for (const source of ["/signin", "/dashboard", "/contact-inbox", "/users", "/profile"]) {
+    assert.ok(hosting.some((entry) => entry.source === source && entry.headers.some((header) => header.key === "X-Robots-Tag" && header.value === "noindex, nofollow")));
+    assert.match(robots, new RegExp(`Disallow: ${source}`));
+  }
+  assert.match(main, /isPrivatePage/);
+  assert.doesNotMatch(sitemap, /\/signin|\/dashboard|\/contact-inbox/);
 });
 
-test("enterprise authentication has one portal destination and one profile authority", async () => {
-  const app = await read("src/App.tsx"), authPage = await read("src/auth/EnterpriseAuth.tsx"), authContext = await read("src/portal/AuthContext.tsx"), publicSite = await read("src/public/PublicSite.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx"), firebase = await read("firebase.json");
-  assert.match(publicSite, /account.role === "member"/);
-  assert.match(authPage, /signInWithCustomToken/);
-  assert.doesNotMatch(app + authPage + publicSite + fluidlab, /returnTo/);
-  assert.match(authContext, /const delays = \[0, 250, 750\]/);
-  assert.match(authContext, /await signOut\(auth\)/);
-  assert.doesNotMatch(fluidlab, /authReady|auth\.currentUser/);
-  for (const legacy of ["/signup", "/fluidlab", "/account/**"]) assert.doesNotMatch(firebase, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-});
-
-test("portal launcher contains only managed and account mini apps", async () => {
-  const registry = await read("src/portal/miniApps.ts"), launcher = await read("src/portal/AppLauncher.tsx");
-  for (const id of ["fluidlab", "user-access", "account"]) assert.match(registry, new RegExp(`id: "${id}"`));
-  assert.doesNotMatch(registry, /well-viewer/);
-  assert.match(launcher, /visibleMiniApps\(user\)/);
-  assert.doesNotMatch(launcher, /Recent projects|Search projects/);
-});
-
-test("Contact Form is managed through the portal and callable-only backend", async () => {
-  const registry = await read("src/portal/miniApps.ts"), types = await read("src/core/types.ts"), access = await read("src/mini-apps/user-access/UserAccessApp.tsx"), app = await read("src/mini-apps/contact-form/ContactFormApp.tsx"), exports = await read("functions/index.js"), config = await read("functions/core/config.js"), rules = await read("firestore.rules");
-  for (const source of [registry, types, access, config]) assert.match(source, /contact-form/);
-  assert.match(app, /listContactInquiries/); assert.match(app, /archiveContactInquiry/); assert.match(app, /restoreContactInquiry/);
-  for (const callable of ["listContactInquiries", "archiveContactInquiry", "restoreContactInquiry"]) assert.match(exports, new RegExp(callable));
+test("sign-in is email and password, and contact stays callable-only", async () => {
+  const signIn = await read("src/auth/SignIn.tsx"), profile = await read("src/profile/ProfileApp.tsx"), exports = [await read("functions/index.js"), await read("functions/users-functions.js"), await read("functions/profile-functions.js")].join("\n"), rules = await read("firestore.rules"), storage = await read("storage.rules"), form = await read("src/public/PublicSite.tsx");
+  assert.match(signIn, /signInWithEmailAndPassword/);
+  assert.match(signIn, /sendPasswordResetEmail/);
+  assert.doesNotMatch(signIn, /requestLoginCode|signInWithCustomToken|createUserWithEmailAndPassword/);
+  assert.match(profile, /updatePassword/);
+  for (const callable of ["submitContactInquiry", "listContactInquiries", "archiveContactInquiry", "restoreContactInquiry", "getAccess", "listUsers", "createUser", "setUserDisabled"]) assert.match(exports, new RegExp(callable));
+  for (const gone of ["requestLoginCode", "invoiceQb", "uex", "listFluidWells", "resolveLsdLocation"]) assert.doesNotMatch(exports, new RegExp(gone));
   assert.match(rules, /allow read, write: if false/);
-});
-
-test("enterprise clients keep their authorized callable interfaces", async () => {
-  const api = await read("src/core/api.ts"), fluid = await read("src/mini-apps/fluidlab/api.ts"), exports = await read("functions/index.js");
-  for (const endpoint of ["getCurrentUser", "adminListUsers", "requestLoginCode", "verifyLoginCode", "revokeMySessions"]) assert.match(api, new RegExp(endpoint));
-  for (const endpoint of ["listFluidWells", "beginFluidImport", "askFluidChat"]) assert.match(fluid + exports, new RegExp(endpoint));
-  assert.doesNotMatch(exports, /saveFluidLabProject/);
-});
-
-test("mini apps use independent navigation and Fluid Labs owns Pason", async () => {
-  const layout = await read("src/portal/PortalLayout.tsx"), account = await read("src/mini-apps/account/AccountApp.tsx"), fluidlab = await read("src/mini-apps/fluidlab/FluidLab.tsx");
-  assert.doesNotMatch(layout, /portal-nav|signOut/);
-  assert.match(layout, /className="portal-back-button" to="\/portal"/);
-  assert.match(layout, /className="portal-brand-mark"/);
-  assert.doesNotMatch(layout, /<Link[^>]+className="portal-brand/);
-  assert.match(account, /revokeMySessions/);
-  assert.doesNotMatch(account, /updatePassword/);
-  assert.match(account, /Sign out all devices/);
-  assert.doesNotMatch(account, /sendPasswordResetEmail|Forgot current password/);
-  assert.match(account, /Sign out/);
-  assert.match(fluidlab, /All wells panel/);
-  assert.match(fluidlab, /aria-label="Review"/);
-  assert.match(fluidlab, /Costs/);
-  assert.doesNotMatch(fluidlab, /className="workspace-brand" href=/);
-  assert.match(await read("src/mini-apps/fluidlab/pason/zip.ts"), /file\.slice\(start, start \+ length\)/);
-  const controls = (await read("src/mini-apps/fluidlab/pason/SurveyWorkspace.tsx")).replace(/\s+/g," ");
-  assert.match(controls, /navigationFocusSignal/);
-  assert.match(controls, /ArrowUp.*ArrowDown.*ArrowLeft.*ArrowRight/);
-  assert.match(controls, /ArrowLeft.*\? -1 : 1/);
-  assert.match(controls, /ArrowUp.*\? -1 : 1/);
-  assert.match(controls, /↑↓ Zoom · ←→ Depth · Shift 4×/);
-  assert.match(controls, /className="fl-pason-joystick" role="slider"/);
-  assert.match(controls, /joystickIntensity/);
-  assert.match(controls, /useState<LabelMode>\("off"\)/);
-});
-
-test("passwordless signin uses the protected SMTP callable", async () => {
-  const authPage = await read("src/auth/EnterpriseAuth.tsx"), handler = await read("functions/apps/account/login.js");
-  assert.match(authPage, /requestLoginCode/);
-  assert.match(handler, /EMAIL_SECRETS/);
-  assert.match(handler, /createCustomToken/);
-  assert.doesNotMatch(authPage, /signInWithEmailAndPassword/);
-});
-
-test("browser database access stays denied and storage is limited to private wells", async () => {
-  const firestore = await read("firestore.rules"), storage = await read("storage.rules");
-  assert.match(firestore, /allow read, write: if false/);
   assert.match(storage, /allow read, write: if false/);
+  assert.doesNotMatch(storage, /fluidlab/);
+  assert.match(form, /submitContactInquiry/);
+  assert.match(form, /productName/);
+  assert.doesNotMatch(form, /areaOfInterest|linkedinUrl/);
+  assert.match(form, /portalNavigate\("\/signin"\)/);
 });
