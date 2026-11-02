@@ -299,6 +299,13 @@ function identityOf(index, code, name) {
   return { product, key, name: product?.name || name || code || "Unknown product" };
 }
 
+function lineIdentity(index, line) {
+  const item = identityOf(index, line?.code, line?.name || line?.product || line?.productname);
+  const unit = loggedUnit(line);
+  const pack = packKey(unit);
+  return { ...item, unit, key: pack ? `${item.key}|${pack}` : item.key, name: unit ? `${item.name} ${unit}` : item.name };
+}
+
 function money(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
@@ -325,11 +332,55 @@ function unitToken(value) {
   return token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token;
 }
 
+function unitFamily(raw) {
+  const token = unitToken(raw);
+  if (["l", "lt", "ltr", "litre", "liter"].includes(token)) return "l";
+  if (["ml", "millilitre", "milliliter"].includes(token)) return "ml";
+  if (["kg", "kilo", "kilogram"].includes(token)) return "kg";
+  if (["g", "gram"].includes(token)) return "g";
+  if (["lb", "pound"].includes(token)) return "lb";
+  if (["gal", "gallon"].includes(token)) return "gal";
+  return "";
+}
+
+function packSize(unit) {
+  const match = String(unit ?? "").toLowerCase().replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*([a-z]+)/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const family = unitFamily(match[2]);
+  if (!Number.isFinite(amount) || amount <= 0 || !family) return null;
+  return { amount, family };
+}
+
+function packKey(unit) {
+  const size = packSize(unit);
+  if (size) return `${Math.round(size.amount * 1000) / 1000}${size.family}`;
+  return unitToken(unit);
+}
+
 function unitsDiffer(logged, listed) {
-  const left = unitToken(logged);
-  const right = unitToken(listed);
-  if (!left || !right) return false;
-  return left !== right;
+  const left = packSize(logged);
+  const right = packSize(listed);
+  if (left && right) {
+    if (left.family !== right.family) return true;
+    return Math.abs(left.amount - right.amount) / Math.max(left.amount, right.amount) > 0.15;
+  }
+  const a = unitToken(logged);
+  const b = unitToken(listed);
+  if (!a || !b) return false;
+  return a !== b;
+}
+
+function samePack(index, line, key) {
+  const item = lineIdentity(index, line);
+  if (item.key === key) return true;
+  const itemPack = item.key.includes("|") ? item.key.slice(item.key.indexOf("|") + 1) : "";
+  const keyPack = String(key).includes("|") ? String(key).slice(String(key).indexOf("|") + 1) : "";
+  const itemProduct = itemPack ? item.key.slice(0, item.key.indexOf("|")) : item.key;
+  const keyProduct = keyPack ? String(key).slice(0, String(key).indexOf("|")) : String(key);
+  if (itemProduct !== keyProduct) return false;
+  if (!itemPack || !keyPack) return true;
+  return itemPack === keyPack;
 }
 
 /** App line price first. The pricelist (or cost) is used only when that price is missing and the product unit matches the logged unit. */
@@ -346,6 +397,19 @@ function catalogPrice(product, valuation) {
   if (!product) return null;
   const listed = valuation === "cost" ? product.cost : product.price;
   return typeof listed === "number" && Number.isFinite(listed) ? listed : null;
+}
+
+function addLineQty(current, line) {
+  const qty = qtyOf(line);
+  current.qty += qty;
+  const price = appLinePrice(line);
+  if (price != null && qty > 0) {
+    current.pricedQty = (current.pricedQty || 0) + qty;
+    current.pricedValue = (current.pricedValue || 0) + qty * price;
+    current.price = current.pricedValue / current.pricedQty;
+  } else if (current.price == null && price != null) {
+    current.price = price;
+  }
 }
 
 function dollars(qty, price) {
@@ -414,10 +478,9 @@ function sumLines(tickets, index, accept) {
   for (const ticket of tickets) {
     if (!accept(ticket)) continue;
     for (const line of linesOf(ticket)) {
-      const item = identityOf(index, line.code, line.name);
-      const current = groups.get(item.key) || { ...item, qty: 0 };
-      current.qty += qtyOf(line);
-      if (!current.unit && loggedUnit(line)) current.unit = loggedUnit(line);
+      const item = lineIdentity(index, line);
+      const current = groups.get(item.key) || { ...item, qty: 0, price: null };
+      addLineQty(current, line);
       groups.set(item.key, current);
       const ids = ticketIds.get(item.key) || [];
       if (!ids.includes(ticket.id)) ids.push(ticket.id);
@@ -431,12 +494,9 @@ function remainingMap(well, index) {
   const groups = new Map();
   const prices = new Map();
   for (const line of remainingList(well)) {
-    const item = identityOf(index, line.code, line.product || line.name);
-    const current = groups.get(item.key) || { ...item, qty: 0, price: null, unit: "" };
-    current.qty += qtyOf(line);
-    const linePrice = appLinePrice(line);
-    if (current.price == null && linePrice != null) current.price = linePrice;
-    if (!current.unit && loggedUnit(line)) current.unit = loggedUnit(line);
+    const item = lineIdentity(index, line);
+    const current = groups.get(item.key) || { ...item, qty: 0, price: null };
+    addLineQty(current, line);
     groups.set(item.key, current);
     if (current.price != null) prices.set(item.key, current.price);
   }
@@ -446,7 +506,7 @@ function remainingMap(well, index) {
 function movementMap(entries, index, dateField) {
   const groups = new Map();
   for (const line of entries || []) {
-    const item = identityOf(index, line.code, line.product || line.name);
+    const item = lineIdentity(index, line);
     const current = groups.get(item.key) || { ...item, qty: 0, dates: [] };
     current.qty += qtyOf(line);
     const day = dayKey(line[dateField]) || dayKey(line.date);
@@ -459,11 +519,9 @@ function movementMap(entries, index, dateField) {
 function appEntryLines(entry, index) {
   const groups = new Map();
   for (const line of entry.lines || []) {
-    const item = identityOf(index, line.code, line.name || line.product);
-    const current = groups.get(item.key) || { ...item, qty: 0, price: null, unit: "" };
-    current.qty += qtyOf(line);
-    if (current.price == null) current.price = appLinePrice(line);
-    if (!current.unit && loggedUnit(line)) current.unit = loggedUnit(line);
+    const item = lineIdentity(index, line);
+    const current = groups.get(item.key) || { ...item, qty: 0, price: null };
+    addLineQty(current, line);
     groups.set(item.key, current);
   }
   return groups;
@@ -565,7 +623,7 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
     if (!appLines.size) continue;
     for (const [key, row] of appLines) {
       if (isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
-      const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => identityOf(index, line.code, line.name).key === key).reduce((inner, line) => inner + qtyOf(line), 0), 0);
+      const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => samePack(index, line, key)).reduce((inner, line) => inner + qtyOf(line), 0), 0);
       if (Math.abs(ticketQty - row.qty) <= QTY_TOLERANCE) continue;
       add(issues, baseIssue({
         date, rule: "qty_mismatch", severity: "medium", well, key: `${entry.id || entry.rawTicket}-${key}`, row: { ...row, qty: row.qty - ticketQty },
@@ -614,7 +672,7 @@ function receiptIssues(issues, { date, settings, tickets, wells, index, appEntri
     for (const [key, row] of received) {
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "received" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
       const center = row.dates[0] || dayKey(well.lastReportDate);
-      const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
+      const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => samePack(index, line, key)));
       if (!matched.length) {
         add(issues, baseIssue({
           date, rule: "logged_no_ticket", severity: "medium", well, key, row,
@@ -628,7 +686,7 @@ function receiptIssues(issues, { date, settings, tickets, wells, index, appEntri
     for (const [key, row] of returned) {
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "returned" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
       const center = row.dates[0] || dayKey(well.lastReportDate);
-      const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, RETURN_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
+      const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, RETURN_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => samePack(index, line, key)));
       if (!matched.length) {
         if (isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
         add(issues, baseIssue({
@@ -882,7 +940,7 @@ function returnIssues(issues, { date, settings, tickets, wells, index, claimed }
     for (const [key, row] of groups) {
       if (row.qty <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
       if (claimed?.has(`${well.id}|${key}`)) continue;
-      const covered = tickets.some((ticket) => inTicketTypes(ticket.type, TRANSFER_TYPES) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
+      const covered = tickets.some((ticket) => inTicketTypes(ticket.type, TRANSFER_TYPES) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => samePack(index, line, key)));
       if (covered) continue;
       const price = unitPrice(row, settings.valuation);
       const value = dollars(row.qty, price);
@@ -1045,7 +1103,7 @@ function rigInventoryFor(date, wells, tickets, index) {
       related.push(ticket.id);
       const sign = inTicketTypes(ticket.type, DELIVERY_TYPES) ? 1 : -1;
       for (const line of linesOf(ticket)) {
-        const row = identityOf(index, line.code, line.name);
+        const row = lineIdentity(index, line);
         const current = expected.get(row.key) || { ...row, qty: 0 };
         current.qty += sign * qtyOf(line);
         expected.set(row.key, current);

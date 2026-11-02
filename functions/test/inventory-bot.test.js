@@ -660,6 +660,43 @@ test("an app line price is used instead of a different pack size on the pricelis
   assert.equal(samePack.issues.find((issue) => issue.rule === "should_be_returned").dollarValue, 11258);
 });
 
+test("two pack sizes of one product keep their own prices", () => {
+  const terminox = { id: "terminox", name: "Terminox", xpressCodes: ["TERM"], mimCodes: [], appNames: [], unit: "20L", price: 160, cost: 100, confirmed: true };
+  const barite = { id: "barite", name: "Barite", xpressCodes: ["BAR"], mimCodes: [], appNames: [], unit: "25kg", price: 80, cost: 50, confirmed: true };
+  const catalog = [...products, terminox, barite];
+  const split = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [
+      well({ id: "spl-14-3", name: "SPL 14-3", contractor: "Ensign", rig: "361", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Terminox", unit: "1000L", qty: 1, price: 9000 }, { product: "Terminox", unit: "19L", qty: 28, price: 140 }] }),
+      well({ id: "spl-5-22", name: "SPL 5-22", contractor: "Ensign", rig: "361", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [] }),
+    ],
+  });
+  const lost = split.issues.filter((issue) => issue.rule === "lost_on_rig_move");
+  assert.equal(lost.length, 2);
+  assert.equal(lost.find((issue) => issue.products[0].name === "Terminox 1000L").dollarValue, 9000);
+  assert.equal(lost.find((issue) => issue.products[0].name === "Terminox 19L").dollarValue, 3920);
+  assert.equal(split.summary.dollarsAtRisk, 12920);
+  const carried = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [
+      well({ id: "spl-14-3", name: "SPL 14-3", contractor: "Ensign", rig: "361", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Terminox", unit: "1000L", qty: 1, price: 9000 }, { product: "Terminox", unit: "19L", qty: 28, price: 140 }] }),
+      well({ id: "spl-5-22", name: "SPL 5-22", contractor: "Ensign", rig: "361", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [] }),
+    ],
+    appTickets: [{ id: "spl-5-22_in", wellId: "spl-5-22", kind: "transferIn", rawTicket: "1730000000000_transferTo_by-ops", date: "2026-10-02", lines: [{ name: "Terminox", unit: "19L", qty: 28, price: 140 }] }],
+  });
+  const still = carried.issues.filter((issue) => issue.rule === "lost_on_rig_move");
+  assert.deepEqual(still.map((issue) => issue.products[0].name), ["Terminox 1000L"]);
+  assert.equal(still[0].dollarValue, 9000);
+  const priced = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [well({ id: "packs", rig: "", lsd: "", status: "paused", remaining: [{ product: "Terminox", unit: "19L", qty: 10 }, { product: "Barite", unit: "22.68kg", qty: 4 }, { product: "Terminox", unit: "1000L", qty: 1 }] })],
+  });
+  const returns = Object.fromEntries(priced.issues.filter((issue) => issue.rule === "should_be_returned").map((issue) => [issue.products[0].name, issue.dollarValue]));
+  assert.equal(returns["Terminox 19L"], 1600);
+  assert.equal(returns["Barite 22.68kg"], 320);
+  assert.equal(returns["Terminox 1000L"], 0);
+});
+
 test("pallet names are ignored on quantity and price checks", () => {
   assert.equal(isIgnoredStockItem({ name: "Pallet Recycling" }, DEFAULT_IGNORE_STOCK_NAMES), true);
   const result = runChecks({
