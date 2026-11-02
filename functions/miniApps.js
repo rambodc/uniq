@@ -17,6 +17,7 @@
 export const MINI_APPS = /** @type {const} */ ([
   { id: "profile", name: "Profile", description: "Your name, email, photo and password.", route: "/profile", icon: "CircleUserRound", accent: "#1ce7be", superAdminOnly: false, everyone: true },
   { id: "contact", name: "Contact Form", description: "Messages received through uniqenergy.com.", route: "/contact-inbox", icon: "Inbox", accent: "#32c9ed", superAdminOnly: false, everyone: false },
+  { id: "inventoryBot", name: "Inventory Bot", description: "Warehouse tickets, rig inventory, and the morning checks.", route: "/inventory-bot", icon: "PackageSearch", accent: "#f0b429", superAdminOnly: false, everyone: false },
   { id: "users", name: "User Access", description: "Invite people, edit their details, and choose which mini apps each one can open.", route: "/users", icon: "ShieldCheck", accent: "#7aa2ff", superAdminOnly: true, everyone: false },
 ]);
 

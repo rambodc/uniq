@@ -22,7 +22,7 @@
 .portal-eyebrow{margin:0 0 6px;color:var(--accent,var(--portal-teal));font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 .portal-lead,.portal-card p,.portal-panel p{color:var(--portal-muted);line-height:1.55}
 .portal-welcome{display:flex;align-items:center;gap:14px;margin-bottom:8px}
-.portal-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.portal-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
 .portal-tile{display:grid;gap:8px;min-height:220px;padding:22px;border:1px solid var(--portal-line);border-top:4px solid var(--accent,var(--portal-teal));border-radius:22px;background:var(--portal-panel);box-shadow:var(--portal-shadow);align-content:start}
 .portal-tile h2{margin:8px 0 0;font-size:24px}
 .portal-tile p{margin:0;color:var(--portal-muted)}
@@ -98,4 +98,46 @@
   .portal-photo{align-items:flex-start}
   .portal-bar,.portal-main{width:min(100% - 28px,1100px)}
   .portal-logout,.mail-actions .portal-text-button{width:100%}
+  .inv-filters{grid-template-columns:1fr 1fr}
+  .inv-ask{grid-template-columns:1fr}
+}
+.inv-tabs{display:flex;gap:8px;overflow:auto;margin:0 0 16px;padding-bottom:2px}
+.inv-tabs a{flex:none;display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:1px solid var(--portal-line);border-radius:999px;background:var(--portal-panel-solid);color:var(--portal-text);text-decoration:none;font-weight:700}
+.inv-tabs a.active{color:#032018;background:linear-gradient(135deg,#35f5c7,#12caa7)}
+.inv-date{margin:0 0 16px;max-width:220px}
+.inv-date input,.inv-filters input,.inv-filters select,.inv-ask textarea,.portal-panel textarea{width:100%;border:1px solid var(--portal-line);border-radius:12px;background:var(--portal-input);color:var(--portal-text);font:inherit}
+.inv-date input,.inv-filters input,.inv-filters select{min-height:48px;padding:0 14px}
+.inv-ask textarea,.portal-panel textarea{padding:12px 14px;resize:vertical}
+.inv-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 16px}
+.inv-stats article{display:grid;gap:4px;padding:16px;border:1px solid var(--portal-line);border-radius:18px;background:var(--portal-panel)}
+.inv-stats span,.inv-sources span{color:var(--portal-muted);font-size:13px}
+.inv-stats strong{font-size:clamp(22px,3vw,32px);letter-spacing:-.04em}
+.inv-sources{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 16px;padding:0}
+.inv-sources li{display:grid;gap:4px;padding:14px;border:1px solid var(--portal-line);border-radius:16px;background:var(--portal-panel)}
+.inv-sources li.ok{border-color:color-mix(in srgb,var(--portal-teal) 45%,var(--portal-line))}
+.inv-sources li.bad{border-color:rgba(196,62,58,.45)}
+.inv-severity{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:750;text-transform:capitalize}
+.inv-severity.high{color:#8d1d1a;background:rgba(196,62,58,.16)}
+.inv-severity.medium{color:#8a5a00;background:rgba(240,180,41,.2)}
+.inv-severity.low{color:var(--portal-muted);background:var(--portal-chip)}
+.portal-root[data-theme="dark"] .inv-severity.high{color:#ffb4af}
+.portal-root[data-theme="dark"] .inv-severity.medium{color:#ffd78a}
+.inv-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 16px}
+.inv-filters button,.inv-ask button{min-height:48px}
+.inv-lines{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.inv-lines li{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) auto;gap:8px;align-items:center}
+.inv-lines-head li{color:var(--portal-muted);font-size:12px}
+.inv-lines span{overflow-wrap:anywhere}
+.portal-panel h2{margin:0;font-size:22px}
+.inv-chat{list-style:none;display:grid;gap:12px;margin:0 0 16px;padding:0}
+.inv-chat li{display:grid;gap:4px;max-width:70ch;padding:14px 16px;border:1px solid var(--portal-line);border-radius:18px;background:var(--portal-panel)}
+.inv-chat li.user{justify-self:end;background:var(--portal-chip)}
+.inv-chat span{color:var(--portal-muted);font-size:12px;font-weight:700}
+.inv-chat p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.inv-ask{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.mail-meta a{margin-right:8px}
+@media(max-width:800px){
+  .inv-stats,.inv-sources{grid-template-columns:1fr}
+  .inv-tabs{flex-wrap:wrap;overflow:visible}
+  .inv-ask button{width:100%}
 }

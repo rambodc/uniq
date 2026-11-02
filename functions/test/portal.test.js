@@ -24,8 +24,8 @@ const database = fakeDb({
   nameless: { email: "nameless@uniquem.ca", type: "staff", miniApps: [], disabled: false },
 });
 
-test("registry is the three UniqEnergy mini apps", () => {
-  assert.deepEqual(MINI_APP_IDS, ["profile", "contact", "users"]);
+test("registry is the UniqEnergy mini apps", () => {
+  assert.deepEqual(MINI_APP_IDS, ["profile", "contact", "inventoryBot", "users"]);
   assert.equal(new Set(MINI_APP_IDS).size, MINI_APPS.length);
   for (const app of MINI_APPS) {
     for (const key of ["id", "name", "description", "route", "icon", "accent"]) assert.equal(typeof app[key], "string");
@@ -33,12 +33,13 @@ test("registry is the three UniqEnergy mini apps", () => {
     assert.match(app.accent, /^#[0-9a-f]{6}$/);
     assert.equal(app.superAdminOnly && app.everyone, false);
   }
-  assert.deepEqual(ASSIGNABLE_MINI_APP_IDS, ["contact"]);
+  assert.deepEqual(ASSIGNABLE_MINI_APP_IDS, ["contact", "inventoryBot"]);
   assert.deepEqual(EVERYONE_MINI_APP_IDS, ["profile"]);
   assert.equal(MINI_APPS.find((app) => app.id === "users").superAdminOnly, true);
   assert.equal(MINI_APPS.find((app) => app.id === "users").name, "User Access");
   assert.equal(MINI_APPS.find((app) => app.id === "profile").name, "Profile");
   assert.equal(MINI_APPS.find((app) => app.id === "contact").name, "Contact Form");
+  assert.equal(MINI_APPS.find((app) => app.id === "inventoryBot").name, "Inventory Bot");
   assert.deepEqual([...USER_TYPES], ["super_admin", "staff"]);
   assert.equal(MINI_APPS[0].id, "profile");
 });
@@ -150,7 +151,7 @@ test("Resend uses the Uniquem sender and the RESEND_API_KEY secret", async () =>
 });
 
 test("every callable except the public inquiry and getAccess is guarded, and removed apps are gone", () => {
-  const sources = { "../index.js": read("../index.js"), "../profile-functions.js": read("../profile-functions.js"), "../users-functions.js": read("../users-functions.js") };
+  const sources = { "../index.js": read("../index.js"), "../profile-functions.js": read("../profile-functions.js"), "../users-functions.js": read("../users-functions.js"), "../inventory-functions.js": read("../inventory-functions.js") };
   const callables = (source) => source.split(/export const (\w+) = onCall\(/).slice(1).reduce((all, part, index, parts) => (index % 2 === 0 ? [...all, { name: part, body: parts[index + 1].split(/\nexport /)[0] }] : all), []);
   const open = new Set(["submitContactInquiry", "getAccess"]);
   const names = [];
@@ -158,11 +159,11 @@ test("every callable except the public inquiry and getAccess is guarded, and rem
     for (const { name, body } of callables(source)) {
       names.push(name);
       if (open.has(name)) continue;
-      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : /requireMiniApp\(request, "contact"\)/;
+      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? (name === "inventoryBotRunChecks" ? /requireSuperAdmin\(request\)/ : /requireMiniApp\(request, "inventoryBot"\)/) : /requireMiniApp\(request, "contact"\)/;
       assert.match(body, guard, `${name} in ${file}`);
     }
   }
-  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
+  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotChat", "inventoryBotGetTicket", "inventoryBotGetToday", "inventoryBotGetWell", "inventoryBotListChat", "inventoryBotListTickets", "inventoryBotListWarehouses", "inventoryBotListWells", "inventoryBotRunChecks", "inventoryBotTicketUrl", "inventoryBotUpdateIssue", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
   const tree = readdirSync(new URL("..", import.meta.url));
   assert.equal(tree.includes("apps"), false);
   const bundle = names.join("\n") + read("../index.js");

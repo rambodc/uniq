@@ -9,6 +9,7 @@ import ContactInbox from "./contact/ContactInbox";
 import ContactDetail from "./contact/ContactDetail";
 import UsersApp from "./users/UsersApp";
 import ProfileApp from "./profile/ProfileApp";
+import InventoryApp from "./inventory/InventoryApp";
 import { isPrivatePage } from "./auth/privatePaths";
 import { ThemeProvider } from "./auth/Theme";
 import "./auth/portal.css";
@@ -37,6 +38,7 @@ export default function App() {
       <Route path="/contact-inbox" element={<ContactInbox />} />
       <Route path="/contact-inbox/:inquiryId" element={<ContactDetail />} />
     </Route>
+    <Route element={<RequireMiniApp app="inventoryBot" />}><Route path="/inventory-bot/*" element={<InventoryApp />} /></Route>
     <Route element={<RequireMiniApp app="users" />}><Route path="/users" element={<UsersApp />} /></Route>
     <Route element={<RequireMiniApp app="profile" />}><Route path="/profile" element={<ProfileApp />} /></Route>
     </Route>
