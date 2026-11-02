@@ -14,7 +14,7 @@ Mini apps are declared once in `functions/miniApps.js`. The browser imports that
 | Contact Form | `contact` | `/contact-inbox` | Staff who are assigned it, and every super admin |
 | User Access | `users` | `/users` | Super admins only |
 
-Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/users`, `/profile`. There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
+Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/users`, `/profile`. The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
 
 Access is checked on the server with `requireMiniApp(request, "<id>")` or `requireSuperAdmin(request)` in `functions/core.js`. A missing user record, a mismatched email, an unverified email, an unknown type, missing names, or `disabled: true` means no access.
 

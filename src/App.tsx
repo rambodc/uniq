@@ -6,6 +6,7 @@ import SignIn from "./auth/SignIn";
 import RequireMiniApp from "./auth/RequireMiniApp";
 import Dashboard from "./auth/Dashboard";
 import ContactInbox from "./contact/ContactInbox";
+import ContactDetail from "./contact/ContactDetail";
 import UsersApp from "./users/UsersApp";
 import ProfileApp from "./profile/ProfileApp";
 import { isPrivatePage } from "./auth/privatePaths";
@@ -32,7 +33,10 @@ export default function App() {
     <Route element={<PortalFrame />}>
     <Route path="/signin" element={<SignIn />} />
     <Route element={<RequireMiniApp />}><Route path="/dashboard" element={<Dashboard />} /></Route>
-    <Route element={<RequireMiniApp app="contact" />}><Route path="/contact-inbox" element={<ContactInbox />} /></Route>
+    <Route element={<RequireMiniApp app="contact" />}>
+      <Route path="/contact-inbox" element={<ContactInbox />} />
+      <Route path="/contact-inbox/:inquiryId" element={<ContactDetail />} />
+    </Route>
     <Route element={<RequireMiniApp app="users" />}><Route path="/users" element={<UsersApp />} /></Route>
     <Route element={<RequireMiniApp app="profile" />}><Route path="/profile" element={<ProfileApp />} /></Route>
     </Route>

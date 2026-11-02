@@ -5,18 +5,19 @@ import { useAuth } from "./AuthContext";
 import { ICONS, miniAppById, type MiniAppId } from "./miniApps";
 import { ThemeToggle } from "./Theme";
 
-export default function Shell({ title, eyebrow, appId, back, watermark, children }: {
+export default function Shell({ title, eyebrow, appId, back, backTo = "/dashboard", watermark, children }: {
   title: string;
   eyebrow?: string;
   appId?: MiniAppId;
   back?: boolean;
+  backTo?: string;
   watermark?: boolean;
   children: ReactNode;
 }) {
   const { profile } = useAuth();
   const app = appId ? miniAppById(appId) : null;
   const Icon = app ? ICONS[app.icon] : null;
-  return <div className={watermark ? "portal-shell portal-shell-mark" : "portal-shell"}>
+  return <div className={watermark ? "portal-shell portal-shell-mark" : "portal-shell"} style={app ? { "--accent": app.accent } as CSSProperties : undefined}>
     {watermark && <div className="portal-watermark" aria-hidden="true" />}
     <header className="portal-bar">
       <Link to="/dashboard" className="portal-brand">
@@ -29,8 +30,8 @@ export default function Shell({ title, eyebrow, appId, back, watermark, children
       </div>
     </header>
     <main className="portal-main">
-      {back && <Link className="portal-back-link" to="/dashboard"><ArrowLeft size={18} aria-hidden="true" /> Back</Link>}
-      <div className="portal-page-head" style={app ? { "--accent": app.accent } as CSSProperties : undefined}>
+      {back && <Link className="portal-back-link" to={backTo}><ArrowLeft size={18} aria-hidden="true" /> Back</Link>}
+      <div className="portal-page-head">
         {Icon && <span className="portal-page-icon"><Icon size={26} aria-hidden="true" /></span>}
         <div>
           {eyebrow && <p className="portal-eyebrow">{eyebrow}</p>}
