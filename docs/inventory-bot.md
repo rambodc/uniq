@@ -87,7 +87,13 @@ The rule is in `lsdNorm` in `functions/inventoryBot/engine.js`:
 4. Parse LSD, section, township, range, and meridian. Write them without leading zeros as `{lsd}-{section}-{township}-{range}{W|E}{meridian}`.
 5. If that pattern is not present, keep only letters and digits.
 
-A ticket matches a well on `lsdNorm`. If several wells share that LSD, the rig number (digits only, so `Rig 0245` and `245` match) picks the well. If the LSD matches nothing and exactly one well has that rig, the rig is used.
+Warehouse tickets match app entries by ticket number first. LSD, rig, and the date window are only the fallback.
+
+`ticketNorm` in `functions/inventoryBot/engine.js` uppercases the number and removes whitespace and newlines. `WBFS-DT-000472` with a stray newline is `WBFS-DT-000472`. A missing type segment still matches: `NK-004764` and `NK-DT-004764` are the same digits and prefix. Leading zeros do not matter. Xpress prefixes are not the same strings as the warehouse codes, so these prefixes are aliases: `NK` with `CANNK`, and `BRKS` with `SBBRK`. A shorter prefix that is a suffix of a longer one (`NK` at the end of `CANNK`) also matches. An exact cleaned string is a normal match. Anything else that still agrees is fuzzy and raises `ticket_typo`.
+
+A number with no letters, such as `191562`, is a third-party supplier delivery. It is stored and is not expected to exist in Xpress or MIM.
+
+A ticket matches a well on `lsdNorm` when the ticket number did not find an app entry. If several wells share that LSD, the rig number (digits only, so `Rig 0245` and `245` match) picks the well. If the LSD matches nothing and exactly one well has that rig, the rig is used.
 
 ## Stock
 
@@ -119,11 +125,46 @@ Optional movement on each item, or a parallel `movement` array of the same shape
 | `pricelist` | string |
 | `lastReportId` | string |
 | `lastReportDate` | `YYYY-MM-DD` or null |
-| `remaining` | `{ product, qty, price }[]` from the latest mirror report |
-| `received`, `returned`, `used` | `{ product, qty, date? }[]` from that same report. `date` is `YYYY-MM-DD` when the report has one. |
+| `remaining` | `{ product, qty, price }[]` from the latest mirror report's `remainingInventoryAfterReport` |
+| `received`, `returned`, `used` | `{ product, qty, date?, price?, description?, rawTicket? }[]` from that same report. `date` is `YYYY-MM-DD` when the report has one. |
+| `costs` | Latest report costs: `dailyProductCost`, `totalProductCost`, `dailyServiceCost`, `totalServiceCost`, `dailyTotalCost`. Numbers. |
+| `services`, `otherServices` | Arrays copied from `inventory.services` and `inventory.otherServices` |
+| `initials` | string, from `inventory.initials` |
 | `updatedAt` | ISO string |
 
-`received` and `returned` are the latest report's lines, not lifetime totals. A delivery is "not logged" only when the latest report date is on or after the ticket and the product is absent from `received`.
+`received` and `returned` on the well are the latest report's product totals. The ticket-numbered lines belong in `appTickets`. A `description` or `rawTicket` on a well line is still parsed, so either place works.
+
+## App tickets
+
+`inventoryBot/main/appTickets/{wellId}_{reportId}_{n}`
+
+One document per `received.<n>` or `returned.<n>` line on a mud report. `n` is that index.
+
+| Field | Type |
+| --- | --- |
+| `wellId` | string, the well document id |
+| `reportId` | string, the mirror report id |
+| `kind` | `received`, `returned`, `transferIn`, or `transferOut` |
+| `rawTicket` | string, the ticket token only, with whitespace removed |
+| `ticketNorm` | string, the cleaned ticket (`NK-DT-004764`, `NK-004764`, `191562`, or the transfer id) |
+| `date` | `YYYY-MM-DD`, from `receiveddate` or `returneddate` |
+| `lines` | `{ name, unit, price, qty }[]` from `receiveddetail` or `returneddetail`. `qty` is the `received` or `returned` amount. `price` is the detail price. |
+| `otherWellUWI` | string, normalized LSD when the line is a rig-to-rig transfer, otherwise `""` |
+| `description` | optional original text |
+
+How to read `description`:
+
+| Text | `kind` | `rawTicket` |
+| --- | --- | --- |
+| `Ticket:WBFS-DT-000488,Delivery from Elk Point Warehouse` | `received` when it is under `received` | `WBFS-DT-000488` |
+| `Ticket:NK-004764,...` | `received` | `NK-004764` |
+| `Ticket:WBFS-DT-000472` plus a newline before the comma | `received` | `WBFS-DT-000472` |
+| `Ticket:BRKS-CT-000174,Products returned to Whse via Smithbrook` | `returned` | `BRKS-CT-000174` |
+| `Ticket:191562,Tiger Calcium Delivery of Heavy Brine` | `received` | `191562` |
+| `Transfer-To Ticket: <ts>_transferTo_by-<email>,Transferring from FromWell (<name> at <UWI>...` | `transferIn` | the token before the comma. `otherWellUWI` is the UWI in the text. |
+| `Transfer-From Ticket: ...,Transferred inventory from the well: <name>,<UWI>, to the ImportedToWell: <name>` | `transferOut` | the token before the comma. `otherWellUWI` is the UWI in the text. |
+
+`received.<n>` is `received` unless the text starts with `Transfer-To Ticket:` (`transferIn`) or the token contains `-CT-` (`returned`). `returned.<n>` is `returned` unless the text starts with `Transfer-From Ticket:` (`transferOut`).
 
 ## Products
 
@@ -154,6 +195,7 @@ The collector writes the run envelope. Checks only merge `summary` and `checkedA
 | `summary.issueCounts` | `{ high, medium, low, open }` |
 | `summary.dollarsAtRisk` | number, sum of open issue `dollarValue` |
 | `summary.mimTtCharges` | number, sum of MIM `TT` `charges[].total` for that date |
+| `summary.appProductCost`, `summary.appServiceCost`, `summary.appTotalCost` | numbers, sum of `costs.dailyProductCost`, `dailyServiceCost`, and `dailyTotalCost` on wells whose `lastReportDate` is this date |
 | `checkedAt` | ISO string written by checks |
 
 ## Rig inventory and issues
@@ -189,13 +231,15 @@ Checks rewrite these for the date. Resolved and ignored issues keep their status
 
 Rules:
 
-1. `delivered_not_logged` (high). A `DT` matched to a well, older than `graceDays`, whose report date is on or after the ticket, with no matching `received` product.
-2. `logged_no_ticket` (medium). Latest-report `received` with no `DT` for that product within `receivedWindowDays`.
-3. `qty_mismatch` (medium). Received or returned quantity differs from the `DT` or `SR` quantity in that window.
-4. `lost_on_rig_move` (high). On the same rig, the newer well's carried-in (received with no `DT` for that product) is below the previous well's remaining.
-5. `should_be_returned` (medium). The well is inactive, or the last report is older than `staleReportDays`, remaining is above zero, and no `SR`, `ST`, `STx`, or `TT` for that product is dated on or after the report.
-6. `warehouse_drift` (high when on-hand or available is negative, otherwise medium). The on-hand change between the two latest snapshots on or before the date is not the signed ticket quantity between those dates.
-7. Money. Every issue above carries `dollarValue`. `missing_price` (low) flags a `DT` on the check date whose product has no price. `summary.mimTtCharges` sums that day's MIM `TT` charges.
+1. `delivered_not_logged` (high). A `DT` older than `graceDays`, whose report date is on or after the ticket, with no app entry for that ticket number and no matching `received` product. A fuzzy ticket number still counts as logged.
+2. `logged_no_ticket` (medium). An app receipt or return cites a warehouse ticket number that does not match a warehouse ticket, and the LSD, rig, and date window do not either. A digits-only supplier ticket is not this rule.
+3. `qty_mismatch` (medium). The app line quantity differs from the warehouse ticket it matched, by number or by the date-window fallback. Return tickets are `SR` and `CT`.
+4. `ticket_typo` (low). The app number matches only after allowing a missing type segment, different zero padding, or a prefix alias (`NK` / `CANNK`, `BRKS` / `SBBRK`). Dollar value is zero.
+5. `transfer_mismatch` (medium). Transfer-To quantity at the receiving well differs from Transfer-From quantity at the sending well. Pairs share the timestamp before `_transfer`, or each entry's `otherWellUWI` is the other well. Dollar value uses the app line price, then the pricelist.
+6. `lost_on_rig_move` (high). On the same rig, the newer well's carried-in (received with no `DT` for that product) is below the previous well's remaining.
+7. `should_be_returned` (medium). The well is inactive, or the last report is older than `staleReportDays`, remaining is above zero, and no `SR`, `ST`, `STx`, or `TT` for that product is dated on or after the report.
+8. `warehouse_drift` (high when on-hand or available is negative, otherwise medium). The on-hand change between the two latest snapshots on or before the date is not the signed ticket quantity between those dates.
+9. Money. Every issue carries `dollarValue`. The price is the app line price when the mud report has one, otherwise the pricelist (or cost, when config says so). `missing_price` (low) flags a `DT` on the check date whose product has no price. `summary.mimTtCharges` sums that day's MIM `TT` charges. `summary.appProductCost`, `summary.appServiceCost`, and `summary.appTotalCost` sum the daily cost fields from reports dated that day.
 
 ## Chat
 
@@ -219,7 +263,7 @@ Upload the file to `inventoryBot/tickets/{source}/{file}.pdf` and store that pat
 
 `inventoryBotRunChecks` does not use App Check, because the collector is not the web app. It still requires a signed-in super admin.
 
-1. Write tickets, stock, wells, products, and `runs/{date}.sources` with the Admin SDK.
+1. Write tickets, stock, wells, products, `appTickets`, and `runs/{date}.sources` with the Admin SDK.
 2. Upload PDFs.
 3. Create a custom token for the super admin uid, exchange it for an ID token, and POST:
 

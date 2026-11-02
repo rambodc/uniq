@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { inventoryBotGetWell, inventoryBotListWells, messageOf, type InventoryWell, type RigInventory, type TicketSummary, type WellSummary } from "../core/api";
+import { inventoryBotGetWell, inventoryBotListWells, messageOf, type AppTicketEntry, type InventoryWell, type RigInventory, type TicketSummary, type WellSummary } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import Shell from "../auth/Shell";
 import Tabs, { tabTo, useInventoryDate } from "./Tabs";
@@ -52,6 +52,7 @@ export function WellDetail() {
   const [well, setWell] = useState<InventoryWell | null>(() => seeded?.well ?? null);
   const [rig, setRig] = useState<RigInventory | null>(() => seeded?.rigInventory ?? null);
   const [tickets, setTickets] = useState<TicketSummary[]>(() => seeded?.tickets ?? []);
+  const [appTickets, setAppTickets] = useState<AppTicketEntry[]>(() => seeded?.appTickets ?? []);
   const [loading, setLoading] = useState(() => preview == null);
   const [error, setError] = useState("");
 
@@ -63,6 +64,7 @@ export function WellDetail() {
       setWell(result.well);
       setRig(result.rigInventory);
       setTickets(result.tickets);
+      setAppTickets(result.appTickets || []);
       setLoading(false);
     }, (cause: unknown) => {
       if (!active) return;
@@ -88,6 +90,8 @@ export function WellDetail() {
         <Compare rig={rig} remaining={well.remaining} />
       </section>
       <section>
+        <h2>App tickets</h2>
+        {appTickets.length === 0 ? <p className="portal-empty">No mud-report ticket numbers stored for this well yet.</p> : <ul className="inv-lines">{appTickets.map((entry) => <li key={entry.id}><span>{entry.kind}</span><span>{entry.ticketNorm || entry.rawTicket}</span><span>{shortDate(entry.date)}</span></li>)}</ul>}
         <h2>Tickets</h2>
         {tickets.length === 0 ? <p className="portal-empty">No tickets matched this LSD yet.</p> : <ul className="mail-list">{tickets.map((ticket) => <li key={ticket.id}><Link className="mail-row" to={tabTo(`/inventory-bot/tickets/${ticket.id}`, date)}><span className="mail-row-top"><strong>{ticket.type} · {ticket.id}</strong><span className="mail-meta">{shortDate(ticket.postedAt)}</span></span><span className="mail-preview">{ticket.warehouseName || ticket.source}</span></Link></li>)}</ul>}
       </section>

@@ -68,6 +68,10 @@ function publicWell(id, data) {
     received: Array.isArray(data.received) ? data.received : [],
     returned: Array.isArray(data.returned) ? data.returned : [],
     used: Array.isArray(data.used) ? data.used : [],
+    costs: data.costs || null,
+    services: Array.isArray(data.services) ? data.services : [],
+    otherServices: Array.isArray(data.otherServices) ? data.otherServices : [],
+    initials: data.initials || "",
     updatedAt: data.updatedAt || null,
   };
 }
@@ -121,7 +125,7 @@ async function queryTickets(filters) {
 export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: false, timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
   await requireSuperAdmin(request);
   const date = cleanDate(request.data?.date);
-  const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap] = await Promise.all([
+  const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap, appSnap] = await Promise.all([
     root().get(),
     col("tickets").get(),
     col("wells").get(),
@@ -130,13 +134,15 @@ export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: fals
     col("runs").doc(date).get(),
     col("issues").where("date", "==", date).get(),
     col("rigInventory").where("date", "==", date).get(),
+    col("appTickets").get(),
   ]);
   const tickets = ticketSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const wells = wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const products = productSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const stock = stockSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const appTickets = appSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const sources = runSnap.data()?.sources;
-  const result = runChecks({ date, config: main.data()?.config, tickets, wells, products, stock, sources });
+  const result = runChecks({ date, config: main.data()?.config, tickets, wells, products, stock, appTickets, sources });
   const existing = new Map(issueSnap.docs.map((doc) => [doc.id, doc.data()]));
   const ops = [];
   const nextIds = new Set(result.issues.map((issue) => issue.id));
@@ -218,7 +224,9 @@ export const inventoryBotGetWell = onCall(callable, async (request) => {
     const found = await col("tickets").where("lsdNorm", "==", well.lsdNorm).orderBy("postedAt", "desc").limit(40).get();
     tickets = found.docs.map((doc) => ticketSummary(doc.id, doc.data())).filter((ticket) => !well.rig || rigNorm(ticket.rig) === rigNorm(well.rig) || ticket.lsdNorm === well.lsdNorm);
   }
-  return { well, rigInventory: rig.exists ? rig.data() : null, tickets };
+  const appSnap = await col("appTickets").where("wellId", "==", wellId).get();
+  const appTickets = appSnap.docs.map((doc) => ({ id: doc.id, kind: doc.data().kind || "", rawTicket: doc.data().rawTicket || "", ticketNorm: doc.data().ticketNorm || "", date: doc.data().date || null, otherWellUWI: doc.data().otherWellUWI || "", lines: doc.data().lines || [] }));
+  return { well, rigInventory: rig.exists ? rig.data() : null, tickets, appTickets };
 });
 
 export const inventoryBotListTickets = onCall(callable, async (request) => {

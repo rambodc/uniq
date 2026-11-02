@@ -1,9 +1,9 @@
-import type { Inquiry, InventoryChatMessage, InventoryTicket, InventoryToday, InventoryWell, RigInventory, TicketSummary, UserRecord, WarehouseStock, WellSummary } from "../core/api";
+import type { AppTicketEntry, Inquiry, InventoryChatMessage, InventoryTicket, InventoryToday, InventoryWell, RigInventory, TicketSummary, UserRecord, WarehouseStock, WellSummary } from "../core/api";
 
 export type InventoryPreviewData = {
   today: InventoryToday;
   wells: WellSummary[];
-  wellDetails: Record<string, { well: InventoryWell; rigInventory: RigInventory | null; tickets: TicketSummary[] }>;
+  wellDetails: Record<string, { well: InventoryWell; rigInventory: RigInventory | null; tickets: TicketSummary[]; appTickets?: AppTicketEntry[] }>;
   tickets: TicketSummary[];
   ticketDetails: Record<string, InventoryTicket>;
   warehouses: WarehouseStock[];

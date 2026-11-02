@@ -52,7 +52,8 @@ export type InventoryConfig = { graceDays: number; valuation: string; receivedWi
 export type InventoryToday = { date: string; config: InventoryConfig; run: InventoryRun | null; issues: InventoryIssue[] };
 export type WellSummary = { id: string; name: string; lsd: string; rig: string; status: string; operator: string; lastReportDate: string | null; remainingCount: number };
 export type WellLine = { product: string; qty: number; date?: string | null; price?: number };
-export type InventoryWell = { id: string; name: string; lsd: string; lsdNorm: string; rig: string; contractor: string; operator: string; province: string; status: string; spudDate: string | null; pricelist: string; lastReportId: string; lastReportDate: string | null; remaining: WellLine[]; received: WellLine[]; returned: WellLine[]; used: WellLine[]; updatedAt: string | null };
+export type AppTicketEntry = { id: string; kind: string; rawTicket: string; ticketNorm: string; date: string | null; otherWellUWI: string; lines: { name?: string; product?: string; qty: number; price?: number | null; unit?: string }[] };
+export type InventoryWell = { id: string; name: string; lsd: string; lsdNorm: string; rig: string; contractor: string; operator: string; province: string; status: string; spudDate: string | null; pricelist: string; lastReportId: string; lastReportDate: string | null; remaining: WellLine[]; received: WellLine[]; returned: WellLine[]; used: WellLine[]; costs?: { dailyProductCost?: number; totalProductCost?: number; dailyServiceCost?: number; totalServiceCost?: number; dailyTotalCost?: number } | null; updatedAt: string | null };
 export type RigInventory = { id: string; date: string; wellId: string; rig: string; name: string; expected: { product: string; qty: number }[]; appRemaining: { product: string; qty: number }[]; diff: { product: string; qty: number }[]; ticketIds?: string[] };
 export type TicketLine = { code: string; name: string; qty: number; unitWeight?: number | null; weight?: number | null };
 export type TicketCharge = { service: string; qty: number; billingMethod: string; price: number; total: number };
@@ -66,7 +67,7 @@ export type TicketFilters = { query?: string; source?: string; company?: string;
 export const inventoryBotGetToday = (date?: string) => invoke<{ date?: string }, InventoryToday>("inventoryBotGetToday", { date });
 export const inventoryBotUpdateIssue = (issueId: string, status: InventoryIssueStatus, note: string) => invoke<{ issueId: string; status: InventoryIssueStatus; note: string }, InventoryIssue>("inventoryBotUpdateIssue", { issueId, status, note });
 export const inventoryBotListWells = () => invoke<undefined, { wells: WellSummary[] }>("inventoryBotListWells");
-export const inventoryBotGetWell = (wellId: string, date?: string) => invoke<{ wellId: string; date?: string }, { well: InventoryWell; rigInventory: RigInventory | null; tickets: TicketSummary[] }>("inventoryBotGetWell", { wellId, date });
+export const inventoryBotGetWell = (wellId: string, date?: string) => invoke<{ wellId: string; date?: string }, { well: InventoryWell; rigInventory: RigInventory | null; tickets: TicketSummary[]; appTickets: AppTicketEntry[] }>("inventoryBotGetWell", { wellId, date });
 export const inventoryBotListTickets = (filters: TicketFilters) => invoke<TicketFilters, { tickets: TicketSummary[] }>("inventoryBotListTickets", filters);
 export const inventoryBotGetTicket = (ticketId: string) => invoke<{ ticketId: string }, InventoryTicket>("inventoryBotGetTicket", { ticketId });
 export const inventoryBotTicketUrl = (ticketId: string) => invoke<{ ticketId: string }, { url: string; expiresAt: string }>("inventoryBotTicketUrl", { ticketId });

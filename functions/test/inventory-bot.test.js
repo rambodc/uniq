@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { isTicketPdfPath, lsdNorm, matchProduct, matchWell, indexProducts, rigNorm, runChecks } from "../inventoryBot/engine.js";
+import { isTicketPdfPath, lsdNorm, matchProduct, matchWell, indexProducts, parseAppDescription, rigNorm, runChecks, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -183,6 +183,76 @@ test("grace days come from config and PDF paths stay inside the ticket folder", 
   assert.equal(isTicketPdfPath("inventoryBot/tickets/xpress/WBFS-DT-000529.pdf"), true);
   assert.equal(isTicketPdfPath("profile-photos/uid/avatar.jpg"), false);
   assert.equal(isTicketPdfPath("inventoryBot/tickets/../secrets.txt"), false);
+});
+
+test("app ticket numbers ignore newlines and match a missing type or warehouse prefix", () => {
+  const elk = parseAppDescription("Ticket:WBFS-DT-000488,Delivery from Elk Point Warehouse");
+  assert.equal(elk.kind, "received");
+  assert.equal(elk.rawTicket, "WBFS-DT-000488");
+  const broken = parseAppDescription("Ticket:WBFS-DT-000472\n,note");
+  assert.equal(broken.rawTicket, "WBFS-DT-000472");
+  const omitted = ticketNorm("NK-004764");
+  const full = ticketNorm("NK-DT-004764");
+  assert.equal(ticketsMatch(omitted, full), "fuzzy");
+  assert.equal(ticketsMatch(ticketNorm("NK-DT-004764"), ticketNorm("CANNK-DT-004764")), "fuzzy");
+  assert.equal(ticketsMatch(ticketNorm("BRKS-CT-000174"), ticketNorm("SBBRK-CT-174")), "fuzzy");
+  assert.equal(ticketsMatch(full, full), "exact");
+  const supplier = parseAppDescription("Ticket:191562,Tiger Calcium Delivery of Heavy Brine");
+  assert.equal(ticketNorm(supplier.rawTicket).thirdParty, true);
+  const inbound = parseAppDescription("Transfer-To Ticket: 1730000_transferTo_by-ann@uniqenergy.com,Transferring from FromWell (Old Hole at 100/09-26-055-04W4/00)");
+  assert.equal(inbound.kind, "transferIn");
+  assert.equal(inbound.rawTicket, "1730000_transferTo_by-ann@uniqenergy.com");
+  assert.equal(inbound.otherWellUWI, "9-26-55-4W4");
+  const outbound = parseAppDescription("Transfer-From Ticket: 1730000_transferFrom_by-ann@uniqenergy.com,Transferred inventory from the well: Old Hole,100/09-26-055-04W4/00, to the ImportedToWell: North Pad", "returned");
+  assert.equal(outbound.kind, "transferOut");
+  assert.equal(parseAppDescription("Ticket:BRKS-CT-000174,Products returned to Whse via Smithbrook", "returned").kind, "returned");
+});
+
+test("a fuzzy ticket number is a typo, an exact number is logged, and a supplier ticket is not missing", () => {
+  const fuzzy = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "north-pad" })],
+    tickets: [ticket({ id: "xpress_NK-DT-004764", postedAt: "2026-10-20", lines: [{ code: "ELX", name: "Elixir", qty: 4 }] })],
+    appTickets: [{ id: "north-pad_r1_0", wellId: "north-pad", reportId: "r1", kind: "received", rawTicket: "NK-004764", date: "2026-10-20", lines: [{ name: "Elixir", qty: 4, price: 250 }] }],
+  });
+  assert.equal(fuzzy.issues.some((issue) => issue.rule === "delivered_not_logged"), false);
+  assert.equal(fuzzy.issues.some((issue) => issue.rule === "logged_no_ticket"), false);
+  assert.equal(fuzzy.issues.filter((issue) => issue.rule === "ticket_typo").length, 1);
+  const exact = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "north-pad", lastReportDate: "2026-11-02", costs: { dailyProductCost: 1000, dailyServiceCost: 80, dailyTotalCost: 1080 } })],
+    tickets: [ticket({ id: "xpress_WBFS-DT-000488", postedAt: "2026-11-02", lines: [{ code: "ELX", name: "Elixir", qty: 2 }] })],
+    appTickets: [{ id: "north-pad_r2_0", wellId: "north-pad", description: "Ticket:WBFS-DT-000488,Delivery from Elk Point Warehouse", date: "2026-11-02", lines: [{ name: "Elixir", qty: 4, price: 20 }] }],
+  });
+  const mismatch = exact.issues.find((issue) => issue.rule === "qty_mismatch");
+  assert.ok(mismatch);
+  assert.equal(mismatch.dollarValue, 40);
+  assert.equal(exact.summary.appProductCost, 1000);
+  assert.match(exact.summary.text, /product cost/);
+  const supplier = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "north-pad" })],
+    appTickets: [{ id: "north-pad_r3_0", wellId: "north-pad", description: "Ticket:191562,Tiger Calcium Delivery of Heavy Brine", date: "2026-10-28", lines: [{ name: "Heavy brine", qty: 1, price: 500 }] }],
+  });
+  assert.equal(supplier.issues.some((issue) => issue.rule === "logged_no_ticket"), false);
+});
+
+test("transfer-to and transfer-from quantities have to agree", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", name: "Old Hole", lsd: "100/09-26-055-04W4/00", lsdNorm: "9-26-55-4W4" }),
+      well({ id: "new", name: "North Pad", lsd: "16-1-1-1W5", lsdNorm: "16-1-1-1W5" }),
+    ],
+    appTickets: [
+      { id: "new_r_0", wellId: "new", description: "Transfer-To Ticket: 1730000_transferTo_by-ann@uniqenergy.com,Transferring from FromWell (Old Hole at 100/09-26-055-04W4/00)", date: "2026-10-20", lines: [{ name: "Elixir", qty: 4, price: 250 }] },
+      { id: "old_r_0", wellId: "old", description: "Transfer-From Ticket: 1730000_transferFrom_by-ann@uniqenergy.com,Transferred inventory from the well: Old Hole,100/09-26-055-04W4/00, to the ImportedToWell: North Pad", date: "2026-10-20", lines: [{ name: "Elixir", qty: 1, price: 250 }] },
+    ],
+  });
+  const mismatch = result.issues.find((issue) => issue.rule === "transfer_mismatch");
+  assert.ok(mismatch);
+  assert.equal(mismatch.products[0].qty, 3);
+  assert.equal(mismatch.dollarValue, 750);
 });
 
 test("the chatbot calls one targeted tool and cites the tool result", async () => {
