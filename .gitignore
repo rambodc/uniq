@@ -31,6 +31,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Non-secret Functions parameter. RESEND_API_KEY stays in Secret Manager.
+!functions/.env
 
 # vercel
 .vercel

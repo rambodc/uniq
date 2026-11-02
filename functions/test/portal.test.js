@@ -130,6 +130,9 @@ test("Resend uses the Uniquem sender and the RESEND_API_KEY secret", async () =>
   assert.equal(EMAIL_FROM, "UniqEnergy Website <website@uniquem.ca>");
   assert.match(read("../core.js"), /defineSecret\("RESEND_API_KEY"\)/);
   assert.match(read("../core.js"), /CONTACT_NOTIFY_EMAIL/);
+  const dotenv = read("../.env");
+  assert.match(dotenv, /^CONTACT_NOTIFY_EMAIL=rambodr@uniquem\.ca$/m);
+  assert.doesNotMatch(dotenv, /RESEND_API_KEY\s*=/);
   const message = buildInquiryEmail({ inquiryType: "operations", name: "A", email: "a@example.com", message: "Hello", notificationTimestamp: "2026-11-02T18:00:00Z" }, "rambodr@uniquem.ca");
   assert.equal(message.from, EMAIL_FROM);
   assert.deepEqual(message.to, ["rambodr@uniquem.ca"]);

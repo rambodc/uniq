@@ -55,7 +55,9 @@ Only two top-level collections. Browsers cannot read or write them.
 
 ## Email
 
-All application mail goes through Resend. The secret name is `RESEND_API_KEY` (`defineSecret` in `functions/core.js`). The sender is `UniqEnergy Website <website@uniquem.ca>` (`EMAIL_FROM` in `functions/mailer.js`), the same verified uniquem.ca address Uniquem uses. Invite replies go to `rambodr@uniquem.ca`. Each new contact submission also notifies `rambodr@uniquem.ca`. Change that recipient with the `CONTACT_NOTIFY_EMAIL` parameter; the default is `rambodr@uniquem.ca`.
+All application mail goes through Resend. The sender is `UniqEnergy Website <website@uniquem.ca>` (`EMAIL_FROM` in `functions/mailer.js`), the same verified uniquem.ca address Uniquem uses. Invite replies go to `rambodr@uniquem.ca`. Each new contact submission also notifies `rambodr@uniquem.ca`.
+
+`RESEND_API_KEY` is declared with `defineSecret` in `functions/core.js` and is already stored in Secret Manager for `uniqenergy-de71c`. Do not put that key in a dotenv file. The functions deploy binds the existing secret. The notification recipient is the non-secret parameter `CONTACT_NOTIFY_EMAIL`, committed in `functions/.env` as `rambodr@uniquem.ca` (the same value as the `defineString` default) so a non-interactive deploy does not prompt for it.
 
 Forgot-password mail is sent by Firebase Authentication, not Resend.
 
@@ -105,14 +107,14 @@ npm run test:rules
 Do this in order. Do not deploy Hosting, Functions, or rules from a local shell. Pushing `production` is the only deploy.
 
 1. In Firebase Authentication for `uniqenergy-de71c`, enable the Email/Password provider. The previous production workflow had turned it off. Invites and forgot-password both need it. `uniqenergy.com` must stay an authorized domain.
-2. Set the Resend secret before the functions deploy. Run this in a trusted terminal and do not put the key in the command history if you can avoid it:
+2. `RESEND_API_KEY` is already in Secret Manager for `uniqenergy-de71c`. Leave it there. `defineSecret` binds it during the functions deploy. Set it again only if the secret is missing:
 
    ```bash
    npx -y firebase-tools@latest functions:secrets:set RESEND_API_KEY --project uniqenergy-de71c
    ```
 
-3. Merge to `production`. GitHub Actions deploys Functions (`firebase deploy --only functions --force`, which deletes the removed functions), Firestore rules, indexes, and Storage rules, then Hosting. Hosting waits until the functions and rules workflows for that commit succeed.
+3. Merge to `production`. GitHub Actions deploys Functions with firebase-tools 15.34.2 (`firebase deploy --only functions --force`, which deletes functions removed from the source), Firestore rules, indexes, and Storage rules, then Hosting. Hosting waits until the functions and rules workflows for that commit succeed. The Hosting build receives `VITE_APPCHECK_SITE_KEY` from the Prod GitHub environment: the secret of that name, or the variable of that name if the secret is empty. It is the public reCAPTCHA Enterprise site key, not a server secret.
 4. After that deploy is green, run the contact migration (dry run, then `--execute`).
 5. Run the wipe (dry run, then `--execute`). The wipe is what creates the first super admin and disconnects QuickBooks. Until it runs, old account records do not match the new user schema, so the workspace will not sign those accounts in. `contactInquiries` is kept and should already be migrated.
 
-The contact notification recipient stays `rambodr@uniquem.ca` unless `CONTACT_NOTIFY_EMAIL` is set for the functions deploy.
+The contact notification recipient is `rambodr@uniquem.ca`, committed in `functions/.env`.
