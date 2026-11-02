@@ -8,7 +8,7 @@ export const TRANSFER_TYPES = ["SR", "ST", "STx", "TT"];
 export const INBOUND_TYPES = ["MR", "PR", "SR", "FT"];
 export const OUTBOUND_TYPES = ["DT", "CT", "ST", "STx", "TT"];
 export const ADJUSTMENT_TYPES = ["AT"];
-export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "closed", "suspended"];
+export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "completed-reviewed", "closed", "suspended"];
 const QTY_TOLERANCE = 0.01;
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 };
 
@@ -64,7 +64,57 @@ export function configOf(value) {
   const receivedWindowDays = Number.isFinite(source.receivedWindowDays) ? source.receivedWindowDays : DEFAULT_CONFIG.receivedWindowDays;
   const staleReportDays = Number.isFinite(source.staleReportDays) ? source.staleReportDays : DEFAULT_CONFIG.staleReportDays;
   const valuation = source.valuation === "cost" ? "cost" : "pricelist";
-  return { graceDays, receivedWindowDays, staleReportDays, valuation };
+  const checksStartDate = /^\d{4}-\d{2}-\d{2}$/.test(String(source.checksStartDate || "")) ? String(source.checksStartDate) : "";
+  return { graceDays, receivedWindowDays, staleReportDays, valuation, checksStartDate };
+}
+
+/** `checksStartDate` lives on `config` or, as in the current main document, beside it. */
+export function configFromMain(data) {
+  const root = data && typeof data === "object" ? data : {};
+  const config = root.config && typeof root.config === "object" ? root.config : {};
+  return configOf({ ...config, checksStartDate: config.checksStartDate || root.checksStartDate });
+}
+
+export function isInactiveStatus(status) {
+  const value = String(status || "").toLowerCase();
+  return INACTIVE_STATUSES.includes(value) || value.startsWith("completed");
+}
+
+export function datedOnOrAfter(day, start) {
+  if (!start || !day) return true;
+  return day >= start;
+}
+
+export function requestStamp(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "string") return value;
+  if (typeof value?.toDate === "function") {
+    try { return value.toDate().toISOString(); } catch { return ""; }
+  }
+  if (typeof value === "object" && Number.isFinite(Number(value.seconds))) return `${value.seconds}.${value.nanoseconds || 0}`;
+  return String(value);
+}
+
+/** True only when checksRequestedAt is present and different, so a summary write does not run the checks again. */
+export function checksRequestChanged(before, after) {
+  const next = requestStamp(after);
+  return Boolean(next) && next !== requestStamp(before);
+}
+
+export function kindFromAppTicketId(id) {
+  const match = String(id || "").match(/_(received|returned|transferIn|transferOut)-[A-Za-z0-9]+$/i);
+  if (!match) return "";
+  if (/^transferin$/i.test(match[1])) return "transferIn";
+  if (/^transferout$/i.test(match[1])) return "transferOut";
+  return match[1].toLowerCase();
+}
+
+export function remainingList(well) {
+  const source = String(well?.remainingSource || "").toLowerCase();
+  if (source === "opening" && Array.isArray(well?.openingRemaining)) return well.openingRemaining;
+  if (Array.isArray(well?.remaining) && well.remaining.length) return well.remaining;
+  if (!Array.isArray(well?.remaining) && Array.isArray(well?.openingRemaining)) return well.openingRemaining;
+  return Array.isArray(well?.remaining) ? well.remaining : [];
 }
 
 export function indexProducts(products) {
@@ -175,8 +225,10 @@ export function parseAppDescription(description, side = "received") {
 }
 
 export function normalizeAppTicket(entry) {
-  const described = entry?.description ? parseAppDescription(entry.description, entry.kind || "received") : null;
-  const kind = entry?.kind || described?.kind || "received";
+  const fromId = kindFromAppTicketId(entry?.id);
+  const described = entry?.description ? parseAppDescription(entry.description, entry.kind || fromId || "received") : null;
+  const transferKind = described?.kind === "transferIn" || described?.kind === "transferOut" ? described.kind : "";
+  const kind = entry?.kind || transferKind || fromId || described?.kind || "received";
   const rawTicket = entry?.rawTicket || described?.rawTicket || "";
   const parsed = ticketNorm(entry?.ticketNorm || rawTicket);
   const lines = Array.isArray(entry?.lines) && entry.lines.length ? entry.lines : linesFromDetail(entry?.receiveddetail || entry?.returneddetail || entry?.detail, kind);
@@ -271,7 +323,7 @@ function sumLines(tickets, index, accept) {
 function remainingMap(well, index) {
   const groups = new Map();
   const prices = new Map();
-  for (const line of well.remaining || []) {
+  for (const line of remainingList(well)) {
     const item = identityOf(index, line.code, line.product || line.name);
     const current = groups.get(item.key) || { ...item, qty: 0 };
     current.qty += qtyOf(line);
@@ -598,7 +650,7 @@ function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
 function returnIssues(issues, { date, settings, tickets, wells, index }) {
   for (const well of wells) {
     const stale = !well.lastReportDate || daysBetween(date, dayKey(well.lastReportDate)) > settings.staleReportDays;
-    if (!INACTIVE_STATUSES.includes(String(well.status || "").toLowerCase()) && !stale) continue;
+    if (!isInactiveStatus(well.status) && !stale) continue;
     const { groups, prices } = remainingMap(well, index);
     const reportDay = dayKey(well.lastReportDate);
     for (const [key, row] of groups) {
@@ -607,7 +659,7 @@ function returnIssues(issues, { date, settings, tickets, wells, index }) {
       if (covered) continue;
       const price = priceOf(row.product, prices.get(key), settings.valuation);
       const value = dollars(row.qty, price);
-      const why = INACTIVE_STATUSES.includes(String(well.status || "").toLowerCase()) ? `status is ${well.status}` : `no app report in more than ${settings.staleReportDays} days`;
+      const why = isInactiveStatus(well.status) ? `status is ${well.status}` : `no app report in more than ${settings.staleReportDays} days`;
       add(issues, {
         id: issueId(date, "should_be_returned", well.id, key),
         date, rule: "should_be_returned", severity: "medium",
@@ -815,11 +867,17 @@ function liftedEntries(wells) {
 export function runChecks({ date, config, tickets = [], wells = [], products = [], stock = [], appTickets = [], sources }) {
   const settings = configOf(config);
   const index = indexProducts(products);
-  const preparedTickets = tickets.map((ticket) => ({ ...ticket, lsdNorm: ticket.lsdNorm || lsdNorm(ticket.lsd) }));
-  const preparedWells = wells.map((well) => ({ ...well, lsdNorm: well.lsdNorm || lsdNorm(well.lsd) }));
-  const appEntries = [...appTickets.map((entry) => normalizeAppTicket(entry)), ...liftedEntries(preparedWells)];
+  const preparedTickets = tickets.map((ticket) => ({ ...ticket, lsdNorm: ticket.lsdNorm || lsdNorm(ticket.lsd) })).filter((ticket) => datedOnOrAfter(ticketDay(ticket), settings.checksStartDate));
+  const preparedWells = wells.map((well) => ({
+    ...well,
+    lsdNorm: well.lsdNorm || lsdNorm(well.lsd),
+    lastReportId: well.lastReportId || well.newestReportId || "",
+    remaining: remainingList(well),
+  }));
+  const appEntries = [...appTickets.map((entry) => normalizeAppTicket(entry)), ...liftedEntries(preparedWells)].filter((entry) => datedOnOrAfter(entry.date, settings.checksStartDate));
+  const stockInWindow = (stock || []).filter((row) => datedOnOrAfter(row.date, settings.checksStartDate));
   const issues = new Map();
-  const input = { date, settings, tickets: preparedTickets, wells: preparedWells, index, stock, appEntries };
+  const input = { date, settings, tickets: preparedTickets, wells: preparedWells, index, stock: stockInWindow, appEntries };
   deliveryIssues(issues, input);
   ticketLinkIssues(issues, input);
   receiptIssues(issues, input);

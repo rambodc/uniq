@@ -1,12 +1,14 @@
 // Inventory Bot callables. Browsers never touch Firestore. Staff need the inventoryBot mini app;
 // super admins always have it. inventoryBotRunChecks is also what the external collector calls
-// after it writes a day's documents (App Check is off on that one function; a super admin token is still required).
+// after it writes a day's documents. App Check is off on that callable. The collector can instead set
+// runs/{date}.checksRequestedAt and inventoryBotRunWritten runs the same checks with no Auth token.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
-import { configOf, dayKey, docSlug, isTicketPdfPath, lsdNorm, nameNorm, rigNorm, runChecks, todayKey } from "./inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, lsdNorm, nameNorm, rigNorm, runChecks, todayKey } from "./inventoryBot/engine.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. Answer only from the tool results. Never invent ticket numbers, quantities, or dollar amounts. Cite ticket ids and well names in the answer. If the tools do not contain the answer, say so. Keep the answer short.";
@@ -63,7 +65,9 @@ function publicWell(id, data) {
     id, name: data.name || "", lsd: data.lsd || "", lsdNorm: data.lsdNorm || lsdNorm(data.lsd),
     rig: data.rig || "", contractor: data.contractor || "", operator: data.operator || "",
     province: data.province || "", status: data.status || "", spudDate: data.spudDate || null,
-    pricelist: data.pricelist || "", lastReportId: data.lastReportId || "", lastReportDate: data.lastReportDate || null,
+    pricelist: data.pricelist || "", lastReportId: data.lastReportId || data.newestReportId || "", lastReportDate: data.lastReportDate || null,
+    newestReportId: data.newestReportId || "", openingReportId: data.openingReportId || "", openingReportDate: data.openingReportDate || null,
+    openingRemaining: Array.isArray(data.openingRemaining) ? data.openingRemaining : [], remainingSource: data.remainingSource || "",
     remaining: Array.isArray(data.remaining) ? data.remaining : [],
     received: Array.isArray(data.received) ? data.received : [],
     returned: Array.isArray(data.returned) ? data.returned : [],
@@ -122,9 +126,9 @@ async function queryTickets(filters) {
   });
 }
 
-export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: false, timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
-  await requireSuperAdmin(request);
-  const date = cleanDate(request.data?.date);
+const checkOptions = { region: "us-central1", timeoutSeconds: 300, memory: "512MiB" };
+
+async function executeInventoryChecks(date) {
   const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap, appSnap] = await Promise.all([
     root().get(),
     col("tickets").get(),
@@ -142,7 +146,7 @@ export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: fals
   const stock = stockSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const appTickets = appSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const sources = runSnap.data()?.sources;
-  const result = runChecks({ date, config: main.data()?.config, tickets, wells, products, stock, appTickets, sources });
+  const result = runChecks({ date, config: configFromMain(main.data()), tickets, wells, products, stock, appTickets, sources });
   const existing = new Map(issueSnap.docs.map((doc) => [doc.id, doc.data()]));
   const ops = [];
   const nextIds = new Set(result.issues.map((issue) => issue.id));
@@ -177,6 +181,22 @@ export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: fals
   ops.push((batch) => batch.set(col("runs").doc(date), { summary, checkedAt: new Date().toISOString() }, { merge: true }));
   await commitAll(ops);
   return { date, summary, issueCount: result.issues.length };
+}
+
+export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: false, ...checkOptions }, async (request) => {
+  await requireSuperAdmin(request);
+  return executeInventoryChecks(cleanDate(request.data?.date));
+});
+
+/** The collector sets checksRequestedAt on the run document. This runs the checks without an Auth token.
+ * Writing summary and checkedAt does not change checksRequestedAt, so that write does not run the checks again. */
+export const inventoryBotRunWritten = onDocumentWritten({ ...checkOptions, document: "inventoryBot/main/runs/{date}" }, async (event) => {
+  const date = String(event.params.date || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const before = event.data?.before?.get("checksRequestedAt");
+  const after = event.data?.after?.get("checksRequestedAt");
+  if (!checksRequestChanged(before, after)) return;
+  await executeInventoryChecks(date);
 });
 
 export const inventoryBotGetToday = onCall(callable, async (request) => {
@@ -185,7 +205,7 @@ export const inventoryBotGetToday = onCall(callable, async (request) => {
   const [run, issues, main] = await Promise.all([col("runs").doc(date).get(), col("issues").where("date", "==", date).get(), root().get()]);
   const rows = issues.docs.map((doc) => publicIssue(doc.id, doc.data()));
   rows.sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.severity] - ({ high: 0, medium: 1, low: 2 })[b.severity] || b.dollarValue - a.dollarValue);
-  return { date, config: configOf(main.data()?.config), run: run.exists ? publicRun(date, run.data()) : null, issues: rows };
+  return { date, config: configFromMain(main.data()), run: run.exists ? publicRun(date, run.data()) : null, issues: rows };
 });
 
 export const inventoryBotUpdateIssue = onCall(callable, async (request) => {
