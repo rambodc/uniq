@@ -42,7 +42,7 @@ export const inventoryPreview: InventoryPreviewData = {
   },
   tickets: [ticket, { ...ticket, id: "mim_TT-100", source: "mim", company: "alchem", type: "TT", warehouseCode: "MIM-SK", warehouseName: "MIM Central", postedAt: "2026-11-02", shippedAt: "2026-11-02", total: 80, hasPdf: false, wellName: "North Pad" }],
   ticketDetails: {
-    [ticket.id]: { ...ticket, orderedBy: "Dana Cole", carrier: "Bandit", poAfe: "AFE-19", refTicket: "", relatedTickets: [], lines: [{ code: "ELX", name: "Elixir", qty: 4, unitWeight: 18, weight: 72 }], charges: [], collectedAt: "2026-11-02T12:01:00.000Z", runId: date },
+    [ticket.id]: { ...ticket, orderedBy: "Dana Cole", carrier: "Bandit", poAfe: "AFE-19", refTicket: "", lsdGrid: "9-26-55-4W4", pdfPath: "inventoryBot/tickets/xpress/WBFS-DT-000529.pdf", relatedTickets: ["xpress_WBFS-ST-000053"], lines: [{ code: "ELX", name: "Elixir", qty: 4, unit: "pail", unitWeight: 18, weight: 72, description: "Elixir pail", productId: "app_elixir" }], charges: [], collectedAt: "2026-11-02T12:01:00.000Z", runId: date, total: null },
   },
   warehouses: [{
     id: "2026-11-02_xpress_XV-AB", date, source: "xpress", company: "uniqenergy", warehouseCode: "XV-AB", warehouseName: "Xpress Vendor Alberta", previousDate: "2026-11-01",

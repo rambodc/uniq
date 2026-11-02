@@ -8,7 +8,7 @@ import { getStorage } from "firebase-admin/storage";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
-import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, lsdNorm, nameNorm, rigNorm, runChecks, todayKey } from "./inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. Answer only from the tool results. Never invent ticket numbers, quantities, or dollar amounts. Cite ticket ids and well names in the answer. If the tools do not contain the answer, say so. Keep the answer short.";
@@ -44,6 +44,7 @@ function ticketDetail(id, data) {
   return {
     ...ticketSummary(id, data),
     orderedBy: data.orderedBy || "", carrier: data.carrier || "", poAfe: data.poAfe || "", refTicket: data.refTicket || "",
+    lsdGrid: data.lsdGrid || "", pdfPath: isTicketPdfPath(data.pdfPath) ? data.pdfPath : "",
     relatedTickets: Array.isArray(data.relatedTickets) ? data.relatedTickets : [],
     lines: Array.isArray(data.lines) ? data.lines : [],
     charges: Array.isArray(data.charges) ? data.charges : [],
@@ -95,21 +96,23 @@ async function commitAll(ops) {
 async function queryTickets(filters) {
   const source = clip(filters.source, 40);
   const company = clip(filters.company, 40);
-  const type = clip(filters.type, 20).toUpperCase();
+  const type = clip(filters.type, 20);
   const warehouseCode = clip(filters.warehouseCode, 40);
   const rig = clip(filters.rig, 40);
   const lsd = clip(filters.lsd, 80);
   const from = dayKey(filters.from || filters.date);
   const to = dayKey(filters.to || filters.date);
-  const queryText = clip(filters.query, 120).toLowerCase();
+  const rawQuery = clip(filters.query, 160);
+  const queryText = rawQuery.toLowerCase();
   const limit = limitOf(filters.limit, 100);
-  if (queryText && /^[a-z0-9]+_[a-z0-9-]+$/i.test(queryText)) {
-    const direct = await col("tickets").doc(queryText).get();
+  const lookupId = ticketLookupId(rawQuery);
+  if (lookupId) {
+    const direct = await col("tickets").doc(lookupId).get();
     if (direct.exists) return [ticketDetail(direct.id, direct.data())];
   }
   let query = col("tickets");
   const norm = lsd ? lsdNorm(lsd) : "";
-  const equality = norm ? ["lsdNorm", norm] : [["rig", rig], ["warehouseCode", warehouseCode], ["type", type], ["source", source], ["company", company]].find(([, value]) => value);
+  const equality = norm ? ["lsdNorm", norm] : [["rig", rig], ["warehouseCode", warehouseCode], ["source", source], ["company", company]].find(([, value]) => value);
   if (equality) query = query.where(equality[0], "==", equality[1]);
   if (from) query = query.where("postedAt", ">=", from);
   if (to) query = query.where("postedAt", "<=", `${to}\uf8ff`);
@@ -117,7 +120,7 @@ async function queryTickets(filters) {
   return snap.docs.map((doc) => ticketDetail(doc.id, doc.data())).filter((ticket) => {
     if (source && ticket.source !== source) return false;
     if (company && ticket.company !== company) return false;
-    if (type && String(ticket.type).toUpperCase() !== type) return false;
+    if (type && !isTicketType(ticket.type, type)) return false;
     if (warehouseCode && ticket.warehouseCode !== warehouseCode) return false;
     if (rig && rigNorm(ticket.rig) !== rigNorm(rig)) return false;
     if (!queryText) return true;

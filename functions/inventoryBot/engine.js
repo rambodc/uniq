@@ -10,6 +10,18 @@ export const OUTBOUND_TYPES = ["DT", "CT", "ST", "STx", "TT"];
 export const ADJUSTMENT_TYPES = ["AT"];
 export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "completed-reviewed", "closed", "suspended"];
 const QTY_TOLERANCE = 0.01;
+
+export function isTicketType(value, expected) {
+  return String(value ?? "").trim().toLowerCase() === String(expected ?? "").trim().toLowerCase();
+}
+export function inTicketTypes(value, list) {
+  return (list || []).some((item) => isTicketType(value, item));
+}
+/** Doc ids keep their stored case. `xpress_TBAR-DT-001232` must not be lowercased before the lookup. */
+export function ticketLookupId(query) {
+  const text = String(query ?? "").trim();
+  return /^[A-Za-z0-9]+_[A-Za-z0-9-]+$/.test(text) ? text : "";
+}
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 };
 
 export function lsdNorm(value) {
@@ -247,10 +259,9 @@ export function normalizeAppTicket(entry) {
 export function stockEffect(type, qty) {
   const amount = Number(qty);
   if (!Number.isFinite(amount)) return 0;
-  const kind = String(type || "").toUpperCase();
-  if (INBOUND_TYPES.includes(kind)) return amount;
-  if (OUTBOUND_TYPES.includes(kind)) return -Math.abs(amount);
-  if (ADJUSTMENT_TYPES.includes(kind)) return amount;
+  if (inTicketTypes(type, INBOUND_TYPES)) return amount;
+  if (inTicketTypes(type, OUTBOUND_TYPES)) return -Math.abs(amount);
+  if (inTicketTypes(type, ADJUSTMENT_TYPES)) return amount;
   return 0;
 }
 
@@ -380,10 +391,9 @@ function fallbackTickets(entry, tickets, wells, index, windowDays) {
   const well = wells.find((item) => item.id === entry.wellId);
   if (!well) return [];
   const center = entry.date || dayKey(well.lastReportDate);
-  const wanted = new Set(kindsFor(entry));
   const products = appEntryLines(entry, index);
   return tickets.filter((ticket) => {
-    if (!wanted.has(String(ticket.type || "").toUpperCase())) return false;
+    if (!inTicketTypes(ticket.type, kindsFor(entry))) return false;
     if (matchWell(ticket, [well])?.id !== well.id) return false;
     if (!within(ticketDay(ticket), center, windowDays)) return false;
     if (!products.size) return true;
@@ -392,7 +402,7 @@ function fallbackTickets(entry, tickets, wells, index, windowDays) {
 }
 
 function deliveryIssues(issues, { date, settings, tickets, wells, index, appEntries }) {
-  const deliveries = tickets.filter((ticket) => DELIVERY_TYPES.includes(String(ticket.type || "").toUpperCase()));
+  const deliveries = tickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES));
   const byWell = new Map();
   for (const ticket of deliveries) {
     const day = ticketDay(ticket);
@@ -488,7 +498,7 @@ function receiptIssues(issues, { date, settings, tickets, wells, index, appEntri
     for (const [key, row] of received) {
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "received" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
       const center = row.dates[0] || dayKey(well.lastReportDate);
-      const matched = wellTickets.filter((ticket) => DELIVERY_TYPES.includes(String(ticket.type || "").toUpperCase()) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
+      const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
       const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => identityOf(index, line.code, line.name).key === key).reduce((inner, line) => inner + qtyOf(line), 0), 0);
       if (!matched.length) {
         add(issues, baseIssue({
@@ -513,7 +523,7 @@ function receiptIssues(issues, { date, settings, tickets, wells, index, appEntri
     for (const [key, row] of returned) {
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "returned" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
       const center = row.dates[0] || dayKey(well.lastReportDate);
-      const matched = wellTickets.filter((ticket) => RETURN_TYPES.includes(String(ticket.type || "").toUpperCase()) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
+      const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, RETURN_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
       const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => identityOf(index, line.code, line.name).key === key).reduce((inner, line) => inner + qtyOf(line), 0), 0);
       if (!matched.length || Math.abs(ticketQty - row.qty) <= QTY_TOLERANCE) continue;
       add(issues, baseIssue({
@@ -622,7 +632,7 @@ function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
       if ((previous.spudDate || previous.lastReportDate || "") === (next.spudDate || next.lastReportDate || "")) continue;
       const before = remainingMap(previous, index);
       const received = movementMap(next.received, index);
-      const deliveries = tickets.filter((ticket) => DELIVERY_TYPES.includes(String(ticket.type || "").toUpperCase()) && matchWell(ticket, [next])?.id === next.id);
+      const deliveries = tickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES) && matchWell(ticket, [next])?.id === next.id);
       const delivered = sumLines(deliveries, index, () => true).groups;
       for (const [key, row] of before.groups) {
         if (row.qty <= QTY_TOLERANCE) continue;
@@ -655,7 +665,7 @@ function returnIssues(issues, { date, settings, tickets, wells, index }) {
     const reportDay = dayKey(well.lastReportDate);
     for (const [key, row] of groups) {
       if (row.qty <= QTY_TOLERANCE) continue;
-      const covered = tickets.some((ticket) => TRANSFER_TYPES.includes(String(ticket.type || "").toUpperCase()) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
+      const covered = tickets.some((ticket) => inTicketTypes(ticket.type, TRANSFER_TYPES) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
       if (covered) continue;
       const price = priceOf(row.product, prices.get(key), settings.valuation);
       const value = dollars(row.qty, price);
@@ -749,7 +759,7 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
 function priceIssues(issues, { date, settings, tickets, index }) {
   const missing = new Map();
   for (const ticket of tickets) {
-    if (!DELIVERY_TYPES.includes(String(ticket.type || "").toUpperCase()) || ticketDay(ticket) !== date) continue;
+    if (!inTicketTypes(ticket.type, DELIVERY_TYPES) || ticketDay(ticket) !== date) continue;
     for (const line of linesOf(ticket)) {
       const row = identityOf(index, line.code, line.name);
       if (priceOf(row.product, null, settings.valuation) != null) continue;
@@ -782,10 +792,9 @@ function rigInventoryFor(date, wells, tickets, index) {
       const day = ticketDay(ticket);
       if (!day || (reportDay && day <= reportDay) || day > date) continue;
       if (matchWell(ticket, [well])?.id !== well.id) continue;
-      const kind = String(ticket.type || "").toUpperCase();
-      if (!DELIVERY_TYPES.includes(kind) && !RETURN_TYPES.includes(kind)) continue;
+      if (!inTicketTypes(ticket.type, DELIVERY_TYPES) && !inTicketTypes(ticket.type, RETURN_TYPES)) continue;
       related.push(ticket.id);
-      const sign = DELIVERY_TYPES.includes(kind) ? 1 : -1;
+      const sign = inTicketTypes(ticket.type, DELIVERY_TYPES) ? 1 : -1;
       for (const line of linesOf(ticket)) {
         const row = identityOf(index, line.code, line.name);
         const current = expected.get(row.key) || { ...row, qty: 0 };
@@ -810,7 +819,7 @@ function rigInventoryFor(date, wells, tickets, index) {
 
 export function mimTtCharges(tickets, date) {
   return (tickets || []).reduce((sum, ticket) => {
-    if (String(ticket.source || "") !== "mim" || String(ticket.type || "").toUpperCase() !== "TT") return sum;
+    if (String(ticket.source || "") !== "mim" || !isTicketType(ticket.type, "TT")) return sum;
     if (ticketDay(ticket) !== date) return sum;
     const charges = Array.isArray(ticket.charges) ? ticket.charges : [];
     return sum + charges.reduce((inner, charge) => inner + (Number(charge.total) || 0), 0);

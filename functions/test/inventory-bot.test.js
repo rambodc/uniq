@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { checksRequestChanged, configFromMain, isInactiveStatus, isTicketPdfPath, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigNorm, runChecks, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, inTicketTypes, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigNorm, runChecks, stockEffect, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -306,6 +306,25 @@ test("a run write requests checks only when checksRequestedAt changes", () => {
   assert.equal(checksRequestChanged(undefined, undefined), false);
   assert.equal(checksRequestChanged({ seconds: 1, nanoseconds: 0 }, { seconds: 1, nanoseconds: 0 }), false);
   assert.equal(checksRequestChanged({ toDate: () => new Date("2026-11-02T12:00:00.000Z") }, { toDate: () => new Date("2026-11-02T12:00:00.000Z") }), false);
+});
+
+test("STx transfers count toward warehouse stock in any case", () => {
+  assert.equal(stockEffect("STx", 4), -4);
+  assert.equal(stockEffect("stx", 4), -4);
+  assert.equal(stockEffect("STX", 4), -4);
+  assert.equal(inTicketTypes("STx", ["ST", "STx"]), true);
+  assert.equal(isTicketType("STx", "stx"), true);
+  assert.equal(ticketLookupId("xpress_TBAR-DT-001232"), "xpress_TBAR-DT-001232");
+  assert.equal(ticketLookupId("xpress_TBAR-DT-001232".toLowerCase()), "xpress_tbar-dt-001232");
+  const result = runChecks({
+    date: "2026-11-02", products,
+    stock: [
+      { date: "2026-11-01", source: "xpress", warehouseCode: "WBFS", warehouseName: "Xpress", items: [{ code: "ELX", name: "Elixir", onHand: 10, available: 10 }] },
+      { date: "2026-11-02", source: "xpress", warehouseCode: "WBFS", warehouseName: "Xpress", items: [{ code: "ELX", name: "Elixir", onHand: 6, available: 6 }] },
+    ],
+    tickets: [ticket({ id: "xpress_WBFS-ST-000053", type: "STx", postedAt: "2026-11-02", warehouseCode: "WBFS", lsd: "", rig: "", lines: [{ code: "ELX", name: "Elixir", qty: 4 }] })],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "warehouse_drift" && issue.severity === "medium"), false);
 });
 
 test("the chatbot calls one targeted tool and cites the tool result", async () => {
