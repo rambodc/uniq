@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { archiveContactInquiry, listContactInquiries, messageOf, restoreContactInquiry, type Inquiry } from "../core/api";
+import { previewInquiries } from "../auth/preview";
 import Shell from "../auth/Shell";
 
 export default function ContactInbox() {
@@ -8,12 +9,25 @@ export default function ContactInbox() {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<Inquiry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => previewInquiries() == null);
+  const [wide, setWide] = useState(() => { try { return globalThis.matchMedia?.("(min-width: 801px)")?.matches !== false; } catch { return true; } });
   const [reload, setReload] = useState(0);
   const [error, setError] = useState("");
-  const selected = items.find((item) => item.id === selectedId) ?? null;
+  const fixtures = previewInquiries();
+  const needle = query.trim().toLowerCase();
+  const shown = fixtures ? fixtures.filter((item) => item.archived === archived && (!needle || [item.name, item.email, item.company, item.message, item.inquiryType].some((value) => String(value || "").toLowerCase().includes(needle)))) : items;
+  const selected = shown.find((item) => item.id === selectedId) ?? (wide ? shown[0] ?? null : null);
 
   useEffect(() => {
+    const media = globalThis.matchMedia?.("(min-width: 801px)");
+    if (!media) return;
+    const sync = () => setWide(media.matches);
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (previewInquiries()) return;
     let active = true;
     listContactInquiries({ archived, query }).then((result) => {
       if (!active) return;
@@ -52,7 +66,7 @@ export default function ContactInbox() {
     setReload((value) => value + 1);
   }
 
-  return <Shell title="Contact Form" eyebrow="Inbox">
+  return <Shell title="Contact Form" eyebrow="Inbox" appId="contact" back>
     <p className="portal-lead">Messages from the public contact form. Archive a message when it has been handled.</p>
     <div className="portal-toolbar">
       <div className="portal-segment">
@@ -65,9 +79,9 @@ export default function ContactInbox() {
       </form>
     </div>
     {error && <div className="portal-status error" role="alert">{error}</div>}
-    <div className="portal-split">
+    <div className={selected ? "portal-split has-selection" : "portal-split"}>
       <div className="portal-list">
-        {loading ? <p className="portal-empty">Loading messages…</p> : items.length === 0 ? <p className="portal-empty">No messages found.</p> : items.map((item) => <button type="button" key={item.id} className={item.id === selectedId ? "selected" : ""} onClick={() => setSelectedId(item.id)}>
+        {loading ? <p className="portal-empty">Loading messages…</p> : shown.length === 0 ? <p className="portal-empty">No messages found.</p> : shown.map((item) => <button type="button" key={item.id} className={item.id === (selected?.id ?? selectedId) ? "selected" : ""} onClick={() => setSelectedId(item.id)}>
           <strong>{item.name}</strong>
           <small>{[item.inquiryType, item.company || item.email || item.phone].filter(Boolean).join(" · ")}</small>
           <em>{item.message}</em>
@@ -75,6 +89,7 @@ export default function ContactInbox() {
       </div>
       <article className="portal-detail">
         {selected ? <>
+          <button type="button" className="portal-detail-back" onClick={() => setSelectedId(null)}>Messages</button>
           <p className="portal-eyebrow">{selected.inquiryType}{selected.productName ? ` · ${selected.productName}` : ""}</p>
           <h2>{selected.name}</h2>
           <p>{[selected.email, selected.phone, selected.company].filter(Boolean).join(" · ")}</p>

@@ -3,13 +3,14 @@ import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 
 import { auth } from "../core/firebase";
 import { getMyPhoto, messageOf, removeMyPhoto, setMyPhoto } from "../core/api";
 import { useAuth } from "../auth/AuthContext";
+import { previewActive } from "../auth/preview";
 import Shell from "../auth/Shell";
 import Avatar from "../auth/Avatar";
 import { prepareAvatar } from "./avatar";
 import { checkPasswordChange, passwordErrorMessage } from "./password";
 
 export default function ProfileApp() {
-  const { profile, refreshAccess } = useAuth();
+  const { profile, refreshAccess, logout } = useAuth();
   const [full, setFull] = useState<string | null>(null);
   const [photoNotice, setPhotoNotice] = useState("");
   const [photoError, setPhotoError] = useState("");
@@ -22,6 +23,7 @@ export default function ProfileApp() {
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (previewActive()) return;
     let active = true;
     if (profile?.photo) getMyPhoto().then((result) => { if (active) setFull(result.dataUrl); }, () => undefined);
     return () => { active = false; };
@@ -67,12 +69,14 @@ export default function ProfileApp() {
     } catch (cause) { setPasswordError(passwordErrorMessage(cause)); } finally { setBusy(false); }
   }
 
-  return <Shell title="Profile" eyebrow="Your account">
+  return <Shell title="Profile" eyebrow="Your account" appId="profile" back>
+    <div className="portal-profile">
+    <div className="portal-profile-grid">
     <section className="portal-panel">
       <h2>Photo</h2>
       <div className="portal-photo">
         <Avatar src={full ?? profile.photo} firstName={profile.firstName} lastName={profile.lastName} size={96} />
-        <div>
+        <div className="portal-photo-copy">
           <p>JPEG, PNG or WebP, up to 5 MB. It is cropped to a square. Only you can change it.</p>
           <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => void choose(event.target.files?.[0])} />
           <div className="portal-row">
@@ -93,14 +97,19 @@ export default function ProfileApp() {
         <div><dt>Email</dt><dd>{profile.email}</dd></div>
       </dl>
     </section>
-    <form className="portal-panel" onSubmit={changePassword}>
-      <h2>Password</h2>
-      <label>Current password<input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} autoComplete="current-password" /></label>
-      <label>New password<input type="password" value={next} onChange={(event) => setNext(event.target.value)} autoComplete="new-password" /></label>
-      <label>Confirm new password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" /></label>
-      {passwordNotice && <div className="portal-status success" role="status">{passwordNotice}</div>}
-      {passwordError && <div className="portal-status error" role="alert">{passwordError}</div>}
-      <button className="button-primary" type="submit" disabled={busy}>Change password</button>
-    </form>
+    </div>
+    <details className="portal-panel portal-disclosure">
+      <summary>Change password</summary>
+      <form onSubmit={changePassword}>
+        <label>Current password<input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} autoComplete="current-password" /></label>
+        <label>New password<input type="password" value={next} onChange={(event) => setNext(event.target.value)} autoComplete="new-password" /></label>
+        <label>Confirm new password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" /></label>
+        {passwordNotice && <div className="portal-status success" role="status">{passwordNotice}</div>}
+        {passwordError && <div className="portal-status error" role="alert">{passwordError}</div>}
+        <button className="button-primary" type="submit" disabled={busy}>Change password</button>
+      </form>
+    </details>
+    <button type="button" className="portal-logout" onClick={() => void logout()}>Log out</button>
+    </div>
   </Shell>;
 }

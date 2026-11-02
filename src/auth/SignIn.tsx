@@ -7,6 +7,7 @@ import { safeNext } from "./next";
 import { NOT_AUTHORIZED, RESET_CONTINUE_URL, RESET_SENT, accessErrorMessage, resetOutcome, signInErrorMessage } from "./signInMessages";
 import { useAuth } from "./AuthContext";
 import LoadingScreen from "./LoadingScreen";
+import { ThemeToggle } from "./Theme";
 
 export default function SignIn() {
   const { user, type, loading, accessLoading } = useAuth();
@@ -43,6 +44,7 @@ export default function SignIn() {
   }
   return <main className="portal-auth">
     <Link className="portal-back" to="/">Back to UniqEnergy</Link>
+    <div className="portal-auth-tools"><ThemeToggle /></div>
     {mode === "signin"
       ? <form className="portal-card" onSubmit={signIn}>
         <img src="/brand/uniqenergy-mark-180.png" alt="UniqEnergy" width={72} height={72} />
