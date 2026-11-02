@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { checksRequestChanged, configFromMain, inTicketTypes, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigNorm, runChecks, stockEffect, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -306,6 +306,39 @@ test("a run write requests checks only when checksRequestedAt changes", () => {
   assert.equal(checksRequestChanged(undefined, undefined), false);
   assert.equal(checksRequestChanged({ seconds: 1, nanoseconds: 0 }, { seconds: 1, nanoseconds: 0 }), false);
   assert.equal(checksRequestChanged({ toDate: () => new Date("2026-11-02T12:00:00.000Z") }, { toDate: () => new Date("2026-11-02T12:00:00.000Z") }), false);
+});
+
+test("blank stock codes match on product id or name, and drums and pallets are not stock issues", () => {
+  assert.equal(stockItemKey({ code: "", productId: "app_elixir", name: "Elixir" }), stockItemKey({ productId: "app_Elixir" }));
+  assert.equal(stockItemKey({ code: " ", name: "Elixir 100" }), "elixir 100");
+  assert.deepEqual(configFromMain({}).ignoreStockNames, DEFAULT_IGNORE_STOCK_NAMES);
+  assert.equal(isIgnoredStockItem({ name: "Used Empty Drums" }, DEFAULT_IGNORE_STOCK_NAMES), true);
+  const result = runChecks({
+    date: "2026-11-02", products,
+    stock: [
+      { date: "2026-11-01", source: "xpress", warehouseCode: "WBFS", items: [
+        { code: "", productId: "app_elixir", name: "Elixir", onHand: 10, available: 10 },
+        { code: "", name: "Fusion", onHand: 8, available: 8 },
+        { code: "", name: "Empty Drums", onHand: 4, available: 4 },
+      ] },
+      { date: "2026-11-02", source: "xpress", warehouseCode: "WBFS", items: [
+        { code: "", productId: "app_elixir", name: "Elixir", onHand: 10, available: 10 },
+        { code: "", name: "Fusion", onHand: 1, available: 1 },
+        { code: "", name: "Empty Drums", onHand: -5, available: -5 },
+        { code: "", name: "Wood Pallets", onHand: -1, available: -1 },
+      ] },
+    ],
+  });
+  const drift = result.issues.filter((issue) => issue.rule === "warehouse_drift");
+  assert.equal(drift.length, 1);
+  assert.match(drift[0].title, /Fusion/);
+  const custom = runChecks({
+    date: "2026-11-02",
+    config: { ignoreStockNames: ["Sample Kit"] },
+    stock: [{ date: "2026-11-02", source: "xpress", warehouseCode: "WBFS", items: [{ code: "", name: "Sample Kit", onHand: -2, available: -2 }, { code: "", name: "Empty Drums", onHand: -3, available: -3 }] }],
+  });
+  assert.equal(custom.issues.some((issue) => /Sample Kit/.test(issue.title)), false);
+  assert.equal(custom.issues.some((issue) => /Empty Drums/.test(issue.title)), true);
 });
 
 test("STx transfers count toward warehouse stock in any case", () => {

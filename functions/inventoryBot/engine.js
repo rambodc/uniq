@@ -10,6 +10,7 @@ export const OUTBOUND_TYPES = ["DT", "CT", "ST", "STx", "TT"];
 export const ADJUSTMENT_TYPES = ["AT"];
 export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "completed-reviewed", "closed", "suspended"];
 const QTY_TOLERANCE = 0.01;
+export const DEFAULT_IGNORE_STOCK_NAMES = ["Empty Drums", "Empty Totes", "MSDS Book", "Pallets"];
 
 export function isTicketType(value, expected) {
   return String(value ?? "").trim().toLowerCase() === String(expected ?? "").trim().toLowerCase();
@@ -77,7 +78,24 @@ export function configOf(value) {
   const staleReportDays = Number.isFinite(source.staleReportDays) ? source.staleReportDays : DEFAULT_CONFIG.staleReportDays;
   const valuation = source.valuation === "cost" ? "cost" : "pricelist";
   const checksStartDate = /^\d{4}-\d{2}-\d{2}$/.test(String(source.checksStartDate || "")) ? String(source.checksStartDate) : "";
-  return { graceDays, receivedWindowDays, staleReportDays, valuation, checksStartDate };
+  const ignoreStockNames = Array.isArray(source.ignoreStockNames)
+    ? source.ignoreStockNames.map((item) => String(item).trim()).filter(Boolean)
+    : [...DEFAULT_IGNORE_STOCK_NAMES];
+  return { graceDays, receivedWindowDays, staleReportDays, valuation, checksStartDate, ignoreStockNames };
+}
+
+/** Blank warehouse codes are normal. Match on the first of code, product id, or name. */
+export function stockItemKey(item) {
+  const chosen = [item?.code, item?.productId, item?.name].map((value) => String(value ?? "").trim()).find(Boolean) || "";
+  return chosen.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() || "unknown";
+}
+
+export function isIgnoredStockItem(item, names = DEFAULT_IGNORE_STOCK_NAMES) {
+  const text = String(item?.name ?? "").toLowerCase();
+  return (names || []).some((needle) => {
+    const phrase = String(needle ?? "").trim().toLowerCase();
+    return phrase && text.includes(phrase);
+  });
 }
 
 /** `checksStartDate` lives on `config` or, as in the current main document, beside it. */
@@ -696,7 +714,7 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
     const ordered = [...list].sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const current = ordered.at(-1);
     const previous = ordered.length > 1 ? ordered.at(-2) : null;
-    const items = new Map((current.items || []).map((item) => [codeNorm(item.code) || nameNorm(item.name), item]));
+    const items = new Map((current.items || []).filter((item) => !isIgnoredStockItem(item, settings.ignoreStockNames)).map((item) => [stockItemKey(item), item]));
     for (const item of items.values()) {
       const onHand = Number(item.onHand);
       const available = Number(item.available);
@@ -718,37 +736,47 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
     }
     if (!previous) continue;
     const explained = new Map();
+    const explainAlias = new Map();
     const ticketIds = new Map();
     for (const ticket of tickets) {
       if (ticket.warehouseCode !== current.warehouseCode || ticket.source !== current.source) continue;
       const day = ticketDay(ticket);
       if (!day || day <= previous.date || day > current.date) continue;
       for (const line of linesOf(ticket)) {
-        const row = identityOf(index, line.code, line.name);
-        explained.set(row.key, (explained.get(row.key) || 0) + stockEffect(ticket.type, line.qty));
-        const ids = ticketIds.get(row.key) || [];
-        if (!ids.includes(ticket.id)) ids.push(ticket.id);
-        ticketIds.set(row.key, ids);
+        if (isIgnoredStockItem(line, settings.ignoreStockNames)) continue;
+        const row = identityOf(index, line.code, line.name || line.productId);
+        const keys = [...new Set([stockItemKey(line), row.key].filter(Boolean))];
+        const primary = keys[0];
+        explained.set(primary, (explained.get(primary) || 0) + stockEffect(ticket.type, line.qty));
+        for (const key of keys.slice(1)) if (!explained.has(key)) explainAlias.set(key, primary);
+        for (const key of keys) {
+          const ids = ticketIds.get(key) || [];
+          if (!ids.includes(ticket.id)) ids.push(ticket.id);
+          ticketIds.set(key, ids);
+        }
       }
     }
-    const previousItems = new Map((previous.items || []).map((item) => [identityOf(index, item.code, item.name).key, item]));
+    const previousItems = new Map((previous.items || []).filter((item) => !isIgnoredStockItem(item, settings.ignoreStockNames)).map((item) => [stockItemKey(item), item]));
     for (const item of current.items || []) {
-      const row = identityOf(index, item.code, item.name);
-      const before = Number(previousItems.get(row.key)?.onHand);
+      if (isIgnoredStockItem(item, settings.ignoreStockNames)) continue;
+      const key = stockItemKey(item);
+      const row = identityOf(index, item.code, item.name || item.productId);
+      const before = Number(previousItems.get(key)?.onHand);
       const after = Number(item.onHand);
       if (!Number.isFinite(before) || !Number.isFinite(after)) continue;
       const delta = after - before;
-      const net = explained.get(row.key) || 0;
+      const primary = explained.has(key) ? key : (explainAlias.get(key) || (explained.has(row.key) ? row.key : explainAlias.get(row.key)));
+      const net = primary ? explained.get(primary) || 0 : 0;
       if (Math.abs(delta - net) <= QTY_TOLERANCE) continue;
       const price = priceOf(row.product, null, settings.valuation);
       const gap = delta - net;
       const value = dollars(gap, price);
       add(issues, {
-        id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, row.key),
+        id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, key),
         date, rule: "warehouse_drift", severity: "medium",
         title: `${row.name} at ${current.warehouseName || current.warehouseCode} changed without tickets`,
         detail: `On hand went from ${roundQty(before)} to ${roundQty(after)} between ${previous.date} and ${current.date}. Tickets explain ${roundQty(net)} of that change.`,
-        wellId: "", rig: "", lsd: "", ticketIds: ticketIds.get(row.key) || [],
+        wellId: "", rig: "", lsd: "", ticketIds: ticketIds.get(key) || ticketIds.get(row.key) || [],
         products: [{ name: row.name, qty: roundQty(gap), value }],
         dollarValue: value, status: "open", note: "", resolvedBy: "", resolvedAt: null,
       });
