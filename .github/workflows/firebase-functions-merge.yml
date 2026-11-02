@@ -27,6 +27,6 @@ jobs:
       - run: find functions -path 'functions/node_modules' -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
       - run: npm run lint --prefix functions
       - run: env -u GOOGLE_APPLICATION_CREDENTIALS -u CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE -u GOOGLE_GHA_CREDS_PATH npm test --prefix functions
-      - run: npm install --global firebase-tools@14.15.2
+      - run: npm install --global firebase-tools@15.34.2
       # Deploy the whole codebase with --force so functions removed from index.js are deleted.
       - run: firebase deploy --only functions --project uniqenergy-de71c --non-interactive --force --message "CI functions deploy"
