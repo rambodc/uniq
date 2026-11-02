@@ -675,6 +675,8 @@ test("two pack sizes of one product keep their own prices", () => {
   assert.equal(lost.length, 2);
   assert.equal(lost.find((issue) => issue.products[0].name === "Terminox 1000L").dollarValue, 9000);
   assert.equal(lost.find((issue) => issue.products[0].name === "Terminox 19L").dollarValue, 3920);
+  assert.match(lost.find((issue) => issue.products[0].name === "Terminox 1000L").id, /_terminox-1000l$/);
+  assert.match(lost.find((issue) => issue.products[0].name === "Terminox 19L").id, /_terminox-20l$/);
   assert.equal(split.summary.dollarsAtRisk, 12920);
   const carried = runChecks({
     date: "2026-11-02", products: catalog,
@@ -695,6 +697,42 @@ test("two pack sizes of one product keep their own prices", () => {
   assert.equal(returns["Terminox 19L"], 1600);
   assert.equal(returns["Barite 22.68kg"], 320);
   assert.equal(returns["Terminox 1000L"], 0);
+});
+
+test("near pack sizes match a warehouse ticket, and 1000 L Bleach is the tote", () => {
+  const catalog = [
+    { id: "unipac", name: "UniPAC LVD", xpressCodes: ["UP"], mimCodes: [], appNames: [], unit: "25kg", price: 40, confirmed: true },
+    { id: "inertia", name: "Inertia", xpressCodes: ["IN"], mimCodes: [], appNames: [], unit: "20L", price: 30, confirmed: true },
+    { id: "detergent", name: "Detergent L", xpressCodes: ["DET"], mimCodes: [], appNames: [], unit: "20L", price: 20, confirmed: true },
+    { id: "sawdust", name: "Sawdust", xpressCodes: ["SAW"], mimCodes: [], appNames: [], unit: "7kg", price: 10, confirmed: true },
+    { id: "bleach-tote", name: "Bleach (Tote)", xpressCodes: ["BLT"], mimCodes: [], appNames: [], unit: "1000L", price: 500, confirmed: true },
+  ];
+  assert.equal(matchProduct(indexProducts(catalog), "", "Bleach", "1000 L").id, "bleach-tote");
+  assert.equal(matchProduct(indexProducts(catalog), "", "Bleach", "20L"), null);
+  const matched = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [well({ id: "w1", rig: "", lsd: "" })],
+    tickets: [
+      ticket({ id: "xpress_BRKS-DT-000537", postedAt: "2026-11-02", lines: [{ code: "UP", name: "UniPAC LVD", unit: "22.7 kg", qty: 4 }, { code: "IN", name: "Inertia", unit: "20 L", qty: 3 }] }),
+      ticket({ id: "xpress_WBFS-CT-000122", type: "CT", postedAt: "2026-11-02", lines: [{ code: "DET", name: "Detergent L", unit: "18.93 L", qty: 2 }] }),
+      ticket({ id: "xpress_WBFS-DT-000529", postedAt: "2026-11-02", lines: [{ code: "SAW", name: "Sawdust", unit: "7.3 kg", qty: 5 }] }),
+      ticket({ id: "xpress_WBFS-DT-000900", postedAt: "2026-11-02", lines: [{ code: "BLT", name: "Bleach (Tote)", unit: "1000L", qty: 1 }] }),
+    ],
+    appTickets: [
+      { id: "w1_a", wellId: "w1", rawTicket: "BRKS-DT-000537", date: "2026-11-02", lines: [{ name: "UniPAC LVD", unit: "22.68 kg", qty: 4, price: 10 }, { name: "Inertia", unit: "19 L", qty: 3, price: 10 }] },
+      { id: "w1_b", wellId: "w1", kind: "returned", rawTicket: "WBFS-CT-000122", date: "2026-11-02", lines: [{ name: "Detergent L", unit: "19 L", qty: 2, price: 10 }] },
+      { id: "w1_c", wellId: "w1", rawTicket: "WBFS-DT-000529", date: "2026-11-02", lines: [{ name: "Sawdust", unit: "6.8 kg", qty: 5, price: 10 }] },
+      { id: "w1_d", wellId: "w1", rawTicket: "WBFS-DT-000900", date: "2026-11-02", lines: [{ name: "Bleach", unit: "1000 L", qty: 1, price: 400 }] },
+    ],
+  });
+  assert.equal(matched.issues.some((issue) => issue.rule === "qty_mismatch"), false);
+  const pail = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [well({ id: "w1", rig: "", lsd: "" })],
+    tickets: [ticket({ id: "xpress_WBFS-DT-000901", postedAt: "2026-11-02", lines: [{ code: "BLT", name: "Bleach (Tote)", unit: "1000L", qty: 1 }] })],
+    appTickets: [{ id: "w1_e", wellId: "w1", rawTicket: "WBFS-DT-000901", date: "2026-11-02", lines: [{ name: "Bleach", unit: "20L", qty: 1, price: 40 }] }],
+  });
+  assert.equal(pail.issues.some((issue) => issue.rule === "qty_mismatch"), true);
 });
 
 test("pallet names are ignored on quantity and price checks", () => {
