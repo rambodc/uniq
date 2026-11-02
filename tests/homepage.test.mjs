@@ -102,11 +102,12 @@ test("public 3D scenes retain reduced-motion and visibility safeguards", async (
 
 test("workspace routes are sign-in, dashboard, and the three mini apps", async () => {
   const app = await read("src/App.tsx"), registry = await read("functions/miniApps.js"), firebase = await read("firebase.json");
-  for (const route of ["/signin", "/dashboard", "/contact-inbox", "/users", "/profile"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  for (const route of ["/signin", "/dashboard", "/contact-inbox", "/inventory-bot", "/users", "/profile"]) assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const gone of ['path="/portal"', 'path="/member"', 'path="/join/', "requestLoginCode", "signInWithCustomToken", "createUserWithEmailAndPassword", "/apps/fluidlab"]) assert.doesNotMatch(app, new RegExp(gone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(registry, /id: "profile"/);
   assert.match(registry, /id: "contact"/);
   assert.match(registry, /id: "users"/);
+  assert.match(registry, /id: "inventoryBot"/);
   assert.match(registry, /name: "Profile"/);
   assert.match(registry, /name: "Contact Form"/);
   assert.match(registry, /name: "User Access"/);
@@ -117,12 +118,12 @@ test("workspace routes are sign-in, dashboard, and the three mini apps", async (
 test("private routes stay out of the public index", async () => {
   const firebase = await read("firebase.json"), robots = await read("public/robots.txt"), main = await read("src/main.tsx"), sitemap = await read("public/sitemap.xml");
   const hosting = JSON.parse(firebase).hosting.headers;
-  for (const source of ["/signin", "/dashboard", "/contact-inbox", "/users", "/profile"]) {
+  for (const source of ["/signin", "/dashboard", "/contact-inbox", "/inventory-bot", "/users", "/profile"]) {
     assert.ok(hosting.some((entry) => entry.source === source && entry.headers.some((header) => header.key === "X-Robots-Tag" && header.value === "noindex, nofollow")));
     assert.match(robots, new RegExp(`Disallow: ${source}`));
   }
   assert.match(main, /isPrivatePage/);
-  assert.doesNotMatch(sitemap, /\/signin|\/dashboard|\/contact-inbox/);
+  assert.doesNotMatch(sitemap, /\/signin|\/dashboard|\/contact-inbox|\/inventory-bot/);
 });
 
 test("sign-in is email and password, and contact stays callable-only", async () => {

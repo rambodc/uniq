@@ -16,18 +16,18 @@ describe("mini-app registry", () => {
   });
   it("has an icon and one route for each app", () => {
     for (const app of MINI_APPS) expect(ICONS[app.icon]).toBeTruthy();
-    expect(MINI_APPS.map((app) => app.id)).toEqual(["profile", "contact", "users"]);
-    expect(MINI_APPS.map((app) => app.name)).toEqual(["Profile", "Contact Form", "User Access"]);
+    expect(MINI_APPS.map((app) => app.id)).toEqual(["profile", "contact", "inventoryBot", "users"]);
+    expect(MINI_APPS.map((app) => app.name)).toEqual(["Profile", "Contact Form", "Inventory Bot", "User Access"]);
   });
   it("guards every route and marks it noindex", () => {
     const app = read("src/App.tsx");
     const hosting = JSON.parse(read("firebase.json")).hosting.headers as { source: string; headers: { key: string; value: string }[] }[];
     for (const { id, route } of MINI_APPS) {
       expect(app).toContain(`<RequireMiniApp app="${id}" />`);
-      expect(app).toContain(`path="${route}"`);
+      expect(app.includes(`path="${route}"`) || app.includes(`path="${route}/*"`)).toBe(true);
       expect(hosting.some((entry) => entry.source === route && entry.headers.some((header) => header.key === "X-Robots-Tag" && header.value.includes("noindex")))).toBe(true);
     }
-    expect(PRIVATE_ROOTS).toEqual(["signin", "dashboard", "profile", "contact-inbox", "users"]);
+    expect(PRIVATE_ROOTS).toEqual(["signin", "dashboard", "profile", "contact-inbox", "inventory-bot", "users"]);
     expect(isPrivatePage("/users")).toBe(true);
     expect(isPrivatePage("/contact-us")).toBe(false);
     expect(safeNext("/users")).toBe("/users");

@@ -25,6 +25,7 @@ vi.mock("./contact/ContactInbox", () => ({ default: () => <span>Contact inbox</s
 vi.mock("./contact/ContactDetail", () => ({ default: () => <span>Contact message</span> }));
 vi.mock("./users/UsersApp", () => ({ default: () => <span>User access</span> }));
 vi.mock("./profile/ProfileApp", () => ({ default: () => <span>Profile</span> }));
+vi.mock("./inventory/InventoryApp", () => ({ default: () => <span>Inventory Bot</span> }));
 import App from "./App";
 
 const render = (path: string) => renderToString(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>);
@@ -47,6 +48,7 @@ describe("workspace routes", () => {
     expect(render("/dashboard")).toContain("Redirect to /signin");
     expect(render("/contact-inbox")).toContain("Redirect to /signin");
     expect(render("/contact-inbox/abc")).toContain("Redirect to /signin");
+    expect(render("/inventory-bot")).toContain("Redirect to /signin");
   });
   it("opens the dashboard and profile for an authorized account", () => {
     session.user = { emailVerified: true };
@@ -55,6 +57,7 @@ describe("workspace routes", () => {
     expect(render("/dashboard")).toContain("Dashboard");
     expect(render("/profile")).toContain("Profile");
     expect(render("/users")).toContain("Redirect to /dashboard");
+    expect(render("/inventory-bot")).toContain("Redirect to /dashboard");
   });
   it("opens contact and user access only when granted", () => {
     session.user = { emailVerified: true };
@@ -62,6 +65,8 @@ describe("workspace routes", () => {
     session.can = () => true;
     expect(render("/contact-inbox")).toContain("Contact inbox");
     expect(render("/contact-inbox/abc")).toContain("Contact message");
+    expect(render("/inventory-bot")).toContain("Inventory Bot");
+    expect(render("/inventory-bot/tickets/xpress_WBFS-DT-1")).toContain("Inventory Bot");
     expect(render("/users")).toContain("User access");
   });
   it("keeps the public site on marketing routes", () => {

@@ -10,6 +10,8 @@ import ContactDetail from "./contact/ContactDetail";
 import UsersApp from "./users/UsersApp";
 import ProfileApp from "./profile/ProfileApp";
 import type { Inquiry, UserRecord } from "./core/api";
+import InventoryApp from "./inventory/InventoryApp";
+import { inventoryPreview } from "./inventory/previewData";
 import "./styles.css";
 import "./auth/portal.css";
 
@@ -18,7 +20,7 @@ const authState = {
   user: { emailVerified: true },
   loading: false,
   type: "super_admin",
-  miniApps: ["profile", "contact", "users"],
+  miniApps: ["profile", "contact", "inventoryBot", "users"],
   profile,
   refreshAccess: async () => {},
   accessError: null,
@@ -38,7 +40,7 @@ const users: UserRecord[] = [
   { uid: "you", firstName: "Rambod", lastName: "Admin", photo: null, email: "rambodr@uniquem.ca", type: "super_admin", miniApps: [], disabled: false, createdAt: null, updatedAt: null, createdBy: "wipe-script", invite: null, lastSignInAt: "2026-11-02T18:00:00.000Z", you: true },
   { uid: "ann", firstName: "Ann", lastName: "Nguyen", photo: null, email: "ann@uniqenergy.com", type: "staff", miniApps: ["contact"], disabled: false, createdAt: null, updatedAt: null, createdBy: "rambodr@uniquem.ca", invite: { status: "delivered", at: "2026-11-01T12:00:00.000Z", by: "rambodr@uniquem.ca", error: null, checkedAt: null }, lastSignInAt: null, you: false },
 ];
-Object.assign(globalThis, { __UNIQ_PREVIEW__: true, __UNIQ_PREVIEW_AUTH__: authState, __UNIQ_PREVIEW_DATA__: { inquiries, users } });
+Object.assign(globalThis, { __UNIQ_PREVIEW__: true, __UNIQ_PREVIEW_AUTH__: authState, __UNIQ_PREVIEW_DATA__: { inquiries, users, inventory: inventoryPreview } });
 
 createRoot(document.getElementById("root")!).render(<StrictMode><HashRouter><AuthProvider><ThemeProvider><Routes>
   <Route path="/" element={<Dashboard />} />
@@ -47,4 +49,5 @@ createRoot(document.getElementById("root")!).render(<StrictMode><HashRouter><Aut
   <Route path="/contact-inbox/:inquiryId" element={<ContactDetail />} />
   <Route path="/users" element={<UsersApp />} />
   <Route path="/profile" element={<ProfileApp />} />
+  <Route path="/inventory-bot/*" element={<InventoryApp />} />
 </Routes></ThemeProvider></AuthProvider></HashRouter></StrictMode>);

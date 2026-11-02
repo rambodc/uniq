@@ -1,4 +1,12 @@
 {
-  "indexes": [],
+  "indexes": [
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "source", "order": "ASCENDING" }, { "fieldPath": "postedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "company", "order": "ASCENDING" }, { "fieldPath": "postedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "type", "order": "ASCENDING" }, { "fieldPath": "postedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "warehouseCode", "order": "ASCENDING" }, { "fieldPath": "postedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "rig", "order": "ASCENDING" }, { "fieldPath": "postedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "lsdNorm", "order": "ASCENDING" }, { "fieldPath": "postedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "stock", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "warehouseCode", "order": "ASCENDING" }, { "fieldPath": "date", "order": "DESCENDING" }] }
+  ],
   "fieldOverrides": []
 }

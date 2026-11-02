@@ -1,6 +1,6 @@
 # UniqEnergy
 
-Public marketing site and a private workspace for UniqEnergy staff. The public pages stay as they are. The workspace is email-and-password only, with three mini apps: Profile, Contact Form, and User Access.
+Public marketing site and a private workspace for UniqEnergy staff. The public pages stay as they are. The workspace is email-and-password only, with four mini apps: Profile, Contact Form, Inventory Bot, and User Access.
 
 ## Architecture
 
@@ -12,9 +12,10 @@ Mini apps are declared once in `functions/miniApps.js`. The browser imports that
 | --- | --- | --- | --- |
 | Profile | `profile` | `/profile` | Every signed-in user |
 | Contact Form | `contact` | `/contact-inbox` | Staff who are assigned it, and every super admin |
+| Inventory Bot | `inventoryBot` | `/inventory-bot` | Staff who are assigned it, and every super admin |
 | User Access | `users` | `/users` | Super admins only |
 
-Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/users`, `/profile`. The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
+Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/inventory-bot`, `/users`, `/profile`. The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
 
 Access is checked on the server with `requireMiniApp(request, "<id>")` or `requireSuperAdmin(request)` in `functions/core.js`. A missing user record, a mismatched email, an unverified email, an unknown type, missing names, or `disabled: true` means no access.
 
@@ -22,7 +23,7 @@ Access is checked on the server with `requireMiniApp(request, "<id>")` or `requi
 
 ## Firestore schema
 
-Only two top-level collections. Browsers cannot read or write them.
+Three top-level collections. Browsers cannot read or write them. Inventory Bot's document shapes, including what the external collector must write, are in [docs/inventory-bot.md](docs/inventory-bot.md).
 
 ### `users/{uid}`
 
@@ -31,7 +32,7 @@ Only two top-level collections. Browsers cannot read or write them.
 | `email` | Lowercase. Must match the verified Firebase Auth email. |
 | `firstName`, `lastName` | Required, 1–60 characters. A super admin sets them. |
 | `type` | `super_admin` or `staff`. |
-| `miniApps` | Staff: assignable mini app ids (`contact` today). Always `[]` for a super admin, who receives every mini app automatically. |
+| `miniApps` | Staff: assignable mini app ids (`contact` and `inventoryBot`). Always `[]` for a super admin, who receives every mini app automatically. |
 | `photo` | `null`, or `{ path, thumb }`. `path` is the Storage object under `profile-photos/{uid}/`. `thumb` is a small JPEG data URL. Only that person can change it. |
 | `invite` | `null`, or `{ status, at, by, resendId, error, checkedAt }`. Status is `sent`, `delivered`, `delayed`, `bounced`, `complained`, or `failed`. |
 | `disabled` | When `true`, the Auth account is disabled and the record grants no access. |
@@ -69,6 +70,7 @@ Deployed functions:
 - `getAccess`
 - `setMyPhoto`, `removeMyPhoto`, `getMyPhoto`
 - `listUsers`, `createUser`, `updateUser`, `setUserDisabled`, `sendUserInvite`
+- `inventoryBotGetToday`, `inventoryBotUpdateIssue`, `inventoryBotListWells`, `inventoryBotGetWell`, `inventoryBotListTickets`, `inventoryBotGetTicket`, `inventoryBotTicketUrl`, `inventoryBotListWarehouses`, `inventoryBotListChat`, `inventoryBotChat`, `inventoryBotRunChecks`
 
 Removed with this workspace (deleted on the production functions deploy because it uses `--force`): FluidLab (`listFluidWells`, `createFluidWell`, `renameFluidWell`, `getFluidWell`, `getFluidSources`, `getFluidHistory`, `beginFluidImport`, `completeFluidImport`, `retryFluidImport`, `cancelFluidImport`, `getFluidImport`, `processFluidImport`, `saveFluidWell`, `restoreFluidVersion`, `deleteFluidWell`, `getFluidChat`, `askFluidChat`, `cleanupFluidImports`, `generateFluidGeometry`, `analyzeFluidLosses`, `beginFluidPason`, `completeFluidPason`, `getFluidPason`, `cancelFluidPason`, `removeFluidPason`, `saveFluidPasonAnalysis`, `prepareFluidWellDetails`, `newFluidChatSession`), LSD Finder (`resolveLsdLocation`, `listLsdLocations`, `updateLsdLocation`, `removeLsdLocation`), Invoice QB (`invoiceQbConnection`, `invoiceQbConnect`, `invoiceQbOauthCallback`, `invoiceQbDisconnect`, `invoiceQbLabels`, `invoiceQbMessages`, `invoiceQbMessage`, `invoiceQbDownload`, `invoiceQbAdd`, `invoiceQbQueue`, `invoiceQbQueueBody`, `invoiceQbExtract`, `invoiceQbSaveDraft`, `invoiceQbUpdate`, `invoiceQbRemove`), email-code login (`requestLoginCode`, `verifyLoginCode`, `revokeMySessions`, `getCurrentUser`, `updateCurrentUser`), the old user-access callables (`adminListUsers`, `adminUpdateUserAccess`), and UEX (`uexListParties`, `uexGuests`, `uexAddGuests`, `uexRevokeGuest`, `uexSendEmails`, `uexMyParties`, `uexGetMyParty`, `uexRsvp`, `uexInvitationEntry`, `uexConfirmGuestNames`, `uexCreateDraft`, `uexBuilder`, `uexBuilderMessage`, `uexBuilderAction`, `uexAsset`). `processFluidImport` was a task queue and `cleanupFluidImports` was a schedule; both leave with that deploy.
 
@@ -83,7 +85,7 @@ node scripts/wipe-portal-data.mjs
 node scripts/wipe-portal-data.mjs --execute
 ```
 
-`wipe-portal-data.mjs --execute` writes a complete recursive Firestore export (every document and subcollection) to `uniqenergy-firestore-export-<timestamp>.json` in the current directory, reads that file back, and checks the document count. Pass `--out <file>` to choose the path. If the export fails, the script stops and does not revoke QuickBooks or delete anything. After a verified export it revokes the QuickBooks refresh token stored on `invoiceQbPrivate/connection` at Intuit's revoke endpoint, using the client id, secret, and encryption key in the `INVOICE_QB_CONFIG` secret. It then deletes every top-level collection except `contactInquiries`, deletes Storage files under `fluidlab/`, deletes every Firebase Auth user, and creates the super admin `rambodr@uniquem.ca` (first name Rambod, last name Admin) and emails the set-password invite. That person can change their own name in User Access.
+`wipe-portal-data.mjs --execute` writes a complete recursive Firestore export (every document and subcollection) to `uniqenergy-firestore-export-<timestamp>.json` in the current directory, reads that file back, and checks the document count. Pass `--out <file>` to choose the path. If the export fails, the script stops and does not revoke QuickBooks or delete anything. After a verified export it revokes the QuickBooks refresh token stored on `invoiceQbPrivate/connection` at Intuit's revoke endpoint, using the client id, secret, and encryption key in the `INVOICE_QB_CONFIG` secret. It then deletes every top-level collection except `contactInquiries` and `inventoryBot`, deletes Storage files under `fluidlab/`, deletes every Firebase Auth user, and creates the super admin `rambodr@uniquem.ca` (first name Rambod, last name Admin) and emails the set-password invite. That person can change their own name in User Access.
 
 Keep the export file. It contains personal data. It is gitignored.
 

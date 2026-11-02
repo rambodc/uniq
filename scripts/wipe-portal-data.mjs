@@ -128,7 +128,7 @@ try {
     revokeQuickBooks: () => revokeQuickBooks(token),
     deleteOtherCollections: async () => {
       for (const collection of await db.listCollections()) {
-        if (collection.id === "contactInquiries") continue;
+        if (collection.id === "contactInquiries" || collection.id === "inventoryBot") continue;
         await db.recursiveDelete(collection);
         console.log(`Deleted collection ${collection.id}`);
       }
