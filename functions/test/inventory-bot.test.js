@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigIdentity, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -60,15 +60,28 @@ test("a logged receipt, or a report that predates the ticket, is not a missing d
 });
 
 test("an app receipt with no nearby ticket is logged_no_ticket, and a quantity gap is qty_mismatch", () => {
+  const reports = [
+    { date: "2026-10-20", received: [{ product: "Fusion", qty: 0 }], returned: [{ product: "Elixir", qty: 0 }] },
+    { date: "2026-10-28", received: [{ product: "Fusion", qty: 2 }], returned: [] },
+  ];
   const missing = runChecks({
     date: "2026-11-02", products,
-    wells: [well({ received: [{ product: "Fusion", qty: 2, date: "2026-10-28" }] })],
+    wells: [well({ reports })],
     tickets: [],
   });
   assert.equal(missing.issues.some((issue) => issue.rule === "logged_no_ticket"), true);
+  const cumulative = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ received: [{ product: "Fusion", qty: 80, date: "2026-10-28" }] })],
+    tickets: [ticket({ id: "xpress_fus", postedAt: "2026-10-27", lines: [{ code: "FUS", name: "Fusion", qty: 2 }] })],
+  });
+  assert.equal(cumulative.issues.some((issue) => issue.rule === "logged_no_ticket" || issue.rule === "qty_mismatch"), false);
   const gap = runChecks({
     date: "2026-11-02", products,
-    wells: [well({ received: [{ product: "Fusion", qty: 10, date: "2026-10-28" }], returned: [{ product: "Elixir", qty: 5, date: "2026-10-28" }] })],
+    wells: [well({ reports: [
+      { date: "2026-10-20", received: [{ product: "Fusion", qty: 0 }], returned: [{ product: "Elixir", qty: 0 }] },
+      { date: "2026-10-28", received: [{ product: "Fusion", qty: 10 }], returned: [{ product: "Elixir", qty: 5 }] },
+    ] })],
     tickets: [
       ticket({ id: "xpress_fus", postedAt: "2026-10-27", lines: [{ code: "FUS", name: "Fusion", qty: 6 }] }),
       ticket({ id: "xpress_sr", type: "SR", postedAt: "2026-10-27", lines: [{ code: "ELX", name: "Elixir", qty: 2 }] }),
@@ -358,6 +371,64 @@ test("STx transfers count toward warehouse stock in any case", () => {
     tickets: [ticket({ id: "xpress_WBFS-ST-000053", type: "STx", postedAt: "2026-11-02", warehouseCode: "WBFS", lsd: "", rig: "", lines: [{ code: "ELX", name: "Elixir", qty: 4 }] })],
   });
   assert.equal(result.issues.some((issue) => issue.rule === "warehouse_drift" && issue.severity === "medium"), false);
+});
+
+test("supplier references and cross-source numbers are not fuzzy ticket matches", () => {
+  assert.equal(ticketNorm("DW2632").thirdParty, true);
+  assert.equal(ticketsMatch(ticketNorm("DW2632"), ticketNorm("NK-000891")), "none");
+  assert.equal(ticketsMatch(ticketNorm("DW2632"), ticketNorm("CTAWEY001777")), "none");
+  assert.equal(ticketsMatch(ticketNorm("NK-DT-004764"), ticketNorm("CANNK-DT-004764")), "fuzzy");
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "north-pad" })],
+    tickets: [
+      ticket({ id: "xpress_NK-000891", postedAt: "2026-10-28", lines: [{ code: "ELX", name: "Elixir", qty: 1 }] }),
+      ticket({ id: "mim_CTAWEY001777", source: "mim", postedAt: "2026-10-28", lines: [{ code: "ELX", name: "Elixir", qty: 1 }] }),
+    ],
+    appTickets: [{ id: "north-pad_r_0", wellId: "north-pad", rawTicket: "DW2632", date: "2026-10-28", lines: [{ name: "Heavy brine", qty: 1, price: 10 }] }],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "ticket_typo"), false);
+});
+
+test("equal transfer quantities a day apart are a pair even when the LSD text differs", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "from", name: "From", lsd: "1-14-74-25W5", lsdNorm: "1-14-74-25W5" }),
+      well({ id: "to", name: "To", lsd: "1-10-74-25W5", lsdNorm: "1-10-74-25W5" }),
+    ],
+    appTickets: [
+      { id: "to_r_0", wellId: "to", kind: "transferIn", rawTicket: "move-a", date: "2026-10-21", otherWellUWI: "1-14-74-25W5", lines: [{ name: "Elixir", qty: 4, price: 250 }] },
+      { id: "from_r_0", wellId: "from", kind: "transferOut", rawTicket: "move-b", date: "2026-10-20", otherWellUWI: "1-10-74-25W5", lines: [{ name: "Elixir", qty: 4, price: 250 }] },
+    ],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "transfer_mismatch"), false);
+});
+
+test("a rig move compares contractor and rig number", () => {
+  assert.equal(rigIdentity({ contractor: "Ensign", rig: "Rig 245" }), rigIdentity({ contractor: "ensign", rig: "245" }));
+  assert.notEqual(rigIdentity({ contractor: "Ensign", rig: "245" }), rigIdentity({ contractor: "Precision", rig: "245" }));
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", contractor: "Ensign", spudDate: "2026-09-01", remaining: [{ product: "Elixir", qty: 8 }] }),
+      well({ id: "new", contractor: "Precision", spudDate: "2026-10-01", received: [] }),
+    ],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "lost_on_rig_move"), false);
+});
+
+test("unlinked delivery lines share one unpriced-items issue", () => {
+  const result = runChecks({
+    date: "2026-11-02",
+    products: [...products, { id: "nox", name: "No Price", xpressCodes: ["NOX"], mimCodes: [], appNames: [], price: undefined, confirmed: false }],
+    tickets: [ticket({ id: "xpress_custom", postedAt: "2026-11-02", lsd: "", rig: "", lines: [{ code: "CUSTOM", name: "Shop blend", qty: 2 }, { code: "WAIT", name: "Wait time", qty: 1 }, { code: "NOX", name: "No Price", qty: 1 }] })],
+  });
+  const priced = result.issues.filter((issue) => issue.rule === "missing_price");
+  assert.equal(priced.length, 2);
+  assert.equal(priced.filter((issue) => issue.title === "Unpriced items").length, 1);
+  assert.match(priced.find((issue) => issue.title === "Unpriced items").detail, /Shop blend/);
+  assert.match(priced.find((issue) => issue.title === "Unpriced items").detail, /Wait time/);
 });
 
 test("the chatbot calls one targeted tool and cites the tool result", async () => {
