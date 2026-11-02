@@ -76,15 +76,25 @@ test("an app receipt with no nearby ticket is logged_no_ticket, and a quantity g
     tickets: [ticket({ id: "xpress_fus", postedAt: "2026-10-27", lines: [{ code: "FUS", name: "Fusion", qty: 2 }] })],
   });
   assert.equal(cumulative.issues.some((issue) => issue.rule === "logged_no_ticket" || issue.rule === "qty_mismatch"), false);
-  const gap = runChecks({
+  const nearby = runChecks({
     date: "2026-11-02", products,
     wells: [well({ reports: [
-      { date: "2026-10-20", received: [{ product: "Fusion", qty: 0 }], returned: [{ product: "Elixir", qty: 0 }] },
-      { date: "2026-10-28", received: [{ product: "Fusion", qty: 10 }], returned: [{ product: "Elixir", qty: 5 }] },
+      { date: "2026-10-20", received: [{ product: "Fusion", qty: 0 }] },
+      { date: "2026-10-28", received: [{ product: "Fusion", qty: 10 }] },
     ] })],
+    tickets: [ticket({ id: "xpress_other", postedAt: "2026-10-27", lines: [{ code: "FUS", name: "Fusion", qty: 1 }] })],
+  });
+  assert.equal(nearby.issues.some((issue) => issue.rule === "qty_mismatch"), false);
+  const gap = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "w1" })],
     tickets: [
-      ticket({ id: "xpress_fus", postedAt: "2026-10-27", lines: [{ code: "FUS", name: "Fusion", qty: 6 }] }),
-      ticket({ id: "xpress_sr", type: "SR", postedAt: "2026-10-27", lines: [{ code: "ELX", name: "Elixir", qty: 2 }] }),
+      ticket({ id: "xpress_WBFS-DT-10", postedAt: "2026-10-28", lines: [{ code: "FUS", name: "Fusion", qty: 6 }] }),
+      ticket({ id: "xpress_WBFS-SR-2", type: "SR", postedAt: "2026-10-28", lines: [{ code: "ELX", name: "Elixir", qty: 2 }] }),
+    ],
+    appTickets: [
+      { id: "w1_a", wellId: "w1", rawTicket: "WBFS-DT-10", date: "2026-10-28", lines: [{ code: "FUS", name: "Fusion", qty: 10 }] },
+      { id: "w1_b", wellId: "w1", kind: "returned", rawTicket: "WBFS-SR-2", date: "2026-10-28", lines: [{ code: "ELX", name: "Elixir", qty: 5 }] },
     ],
   });
   const mismatches = gap.issues.filter((issue) => issue.rule === "qty_mismatch");
@@ -478,6 +488,50 @@ test("negative available is described as available", () => {
   const issue = result.issues.find((item) => /negative/.test(item.title));
   assert.match(issue.detail, /available/);
   assert.doesNotMatch(issue.detail, /on hand/);
+});
+
+test("every product left on the old well is flagged unless that product was carried", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "spl-14-3", name: "SPL 14-3", contractor: "Ensign", rig: "361", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Chrome Free Desco II", qty: 4, price: 100 }, { product: "Elixir", qty: 28, price: 250 }] }),
+      well({ id: "spl-5-22", name: "SPL 5-22", contractor: "Ensign", rig: "361", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [] }),
+    ],
+    tickets: [ticket({ id: "xpress_NK-DT-9", postedAt: "2026-10-15", rig: "361", lsd: "", lines: [{ code: "ELX", name: "Elixir", qty: 28 }] })],
+    appTickets: [
+      { id: "spl-5-22_in", wellId: "spl-5-22", kind: "transferIn", rawTicket: "1730000000000_transferTo_by-ops", date: "2026-10-02", lines: [{ name: "Chrome Free Desco II", qty: 4, price: 100 }] },
+      { id: "spl-14-3_out", wellId: "spl-14-3", kind: "transferOut", rawTicket: "1730000000000_transferFrom_by-ops", date: "2026-10-02", lines: [{ name: "Chrome Free Desco II", qty: 4, price: 100 }] },
+    ],
+  });
+  const lost = result.issues.filter((issue) => issue.rule === "lost_on_rig_move");
+  assert.deepEqual(lost.map((issue) => issue.products[0].name), ["Elixir"]);
+  assert.equal(lost[0].products[0].qty, 28);
+  assert.equal(lost[0].dollarValue, 7000);
+  assert.equal(result.issues.some((issue) => issue.rule === "should_be_returned"), false);
+  assert.equal(result.summary.dollarsAtRisk, 7000);
+
+  const partial = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", name: "Old Hole", contractor: "Ensign", rig: "361", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Chrome Free Desco II", qty: 10, price: 100 }, { product: "Elixir", qty: 8, price: 250 }, { product: "Fusion", qty: 2, price: 40 }] }),
+      well({ id: "new", name: "New Hole", contractor: "Ensign", rig: "361", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [{ product: "Elixir", qty: 8, date: "2026-10-05" }], reports: [{ date: "2026-10-02", remaining: [{ product: "Fusion", qty: 2 }], received: [] }] }),
+    ],
+    appTickets: [{ id: "new_in", wellId: "new", kind: "transferIn", rawTicket: "1730000000000_transferTo_by-ops", date: "2026-10-02", lines: [{ name: "Chrome Free Desco II", qty: 4, price: 100 }] }],
+  });
+  const gaps = Object.fromEntries(partial.issues.filter((issue) => issue.rule === "lost_on_rig_move").map((issue) => [issue.products[0].name, issue.products[0].qty]));
+  assert.deepEqual(gaps, { "Chrome Free Desco II": 6, Elixir: 8 });
+  assert.equal(partial.issues.some((issue) => issue.rule === "should_be_returned"), false);
+});
+
+test("pallet names are ignored on quantity and price checks", () => {
+  assert.equal(isIgnoredStockItem({ name: "Pallet Recycling" }, DEFAULT_IGNORE_STOCK_NAMES), true);
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "w1", lsd: "", rig: "" })],
+    tickets: [ticket({ id: "xpress_WBFS-DT-77", postedAt: "2026-11-02", lsd: "", rig: "", lines: [{ code: "PAL", name: "PALLETS", qty: 2 }] })],
+    appTickets: [{ id: "w1_p", wellId: "w1", rawTicket: "WBFS-DT-77", date: "2026-11-02", lines: [{ name: "Pallet Recycling", qty: 9 }] }],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "qty_mismatch" || issue.rule === "missing_price"), false);
 });
 
 test("the chatbot calls one targeted tool and cites the tool result", async () => {

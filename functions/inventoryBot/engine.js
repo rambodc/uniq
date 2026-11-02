@@ -98,10 +98,13 @@ export function stockItemKey(item) {
 }
 
 export function isIgnoredStockItem(item, names = DEFAULT_IGNORE_STOCK_NAMES) {
-  const text = String(item?.name ?? "").toLowerCase();
+  const text = `${item?.name ?? ""} ${item?.code ?? ""}`.toLowerCase();
   return (names || []).some((needle) => {
     const phrase = String(needle ?? "").trim().toLowerCase();
-    return phrase && text.includes(phrase);
+    if (!phrase) return false;
+    if (text.includes(phrase)) return true;
+    const stem = phrase.endsWith("s") ? phrase.slice(0, -1) : phrase;
+    return stem.length >= 4 && text.includes(stem);
   });
 }
 
@@ -461,6 +464,18 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
       level = "none";
     }
     const matched = level === "none" ? [] : chosen.map((hit) => hit.ticket);
+    if (level === "none") {
+      const row = [...appEntryLines(entry, index).values()][0] || { name: entry.rawTicket || "product", qty: 0, product: null, price: null };
+      if (!isIgnoredStockItem(row, settings.ignoreStockNames)) {
+        add(issues, baseIssue({
+          date, rule: "logged_no_ticket", severity: "medium", well, key: entry.id || entry.rawTicket || row.key, row,
+          title: `${row.name} was logged at ${well.name || well.id} with no warehouse ticket`,
+          detail: `The app cites ${entry.rawTicket || entry.ticketNorm || "a receipt"} and no warehouse ticket has that number.`,
+          valuation: settings.valuation, fallbackPrice: row.price,
+        }));
+      }
+      continue;
+    }
     if (level === "fuzzy") {
       add(issues, {
         id: issueId(date, "ticket_typo", entry.id || entry.rawTicket, well.id),
@@ -473,18 +488,9 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
       });
     }
     const appLines = appEntryLines(entry, index);
-    if (!matched.length) {
-      const row = [...appLines.values()][0] || { name: entry.rawTicket || "product", qty: 0, product: null, price: null };
-      add(issues, baseIssue({
-        date, rule: "logged_no_ticket", severity: "medium", well, key: entry.id || entry.rawTicket || row.key, row,
-        title: `${row.name} was logged at ${well.name || well.id} with no warehouse ticket`,
-        detail: `The app cites ${entry.rawTicket || entry.ticketNorm || "a receipt"} and no warehouse ticket has that number. A supplier reference is not compared with nearby warehouse tickets.`,
-        valuation: settings.valuation, fallbackPrice: row.price,
-      }));
-      continue;
-    }
     if (!appLines.size) continue;
     for (const [key, row] of appLines) {
+      if (isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
       const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => identityOf(index, line.code, line.name).key === key).reduce((inner, line) => inner + qtyOf(line), 0), 0);
       if (Math.abs(ticketQty - row.qty) <= QTY_TOLERANCE) continue;
       add(issues, baseIssue({
@@ -535,7 +541,6 @@ function receiptIssues(issues, { date, settings, tickets, wells, index, appEntri
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "received" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
       const center = row.dates[0] || dayKey(well.lastReportDate);
       const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
-      const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => identityOf(index, line.code, line.name).key === key).reduce((inner, line) => inner + qtyOf(line), 0), 0);
       if (!matched.length) {
         add(issues, baseIssue({
           date, rule: "logged_no_ticket", severity: "medium", well, key, row,
@@ -545,30 +550,20 @@ function receiptIssues(issues, { date, settings, tickets, wells, index, appEntri
         }));
         continue;
       }
-      if (Math.abs(ticketQty - row.qty) > QTY_TOLERANCE) {
-        const gap = roundQty(row.qty - ticketQty);
-        add(issues, baseIssue({
-          date, rule: "qty_mismatch", severity: "medium", well, key, row: { ...row, qty: gap },
-          title: `${row.name} received at ${well.name || well.id} does not match the tickets`,
-          detail: `The app logged ${roundQty(row.qty)} ${row.name} and the delivery tickets in the same window total ${roundQty(ticketQty)}.`,
-          ticketIds: matched.map((ticket) => ticket.id),
-          valuation: settings.valuation,
-        }));
-      }
     }
     for (const [key, row] of returned) {
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "returned" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
       const center = row.dates[0] || dayKey(well.lastReportDate);
       const matched = wellTickets.filter((ticket) => inTicketTypes(ticket.type, RETURN_TYPES) && within(ticketDay(ticket), center, windowDays) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
-      const ticketQty = matched.reduce((sum, ticket) => sum + linesOf(ticket).filter((line) => identityOf(index, line.code, line.name).key === key).reduce((inner, line) => inner + qtyOf(line), 0), 0);
-      if (!matched.length || Math.abs(ticketQty - row.qty) <= QTY_TOLERANCE) continue;
-      add(issues, baseIssue({
-        date, rule: "qty_mismatch", severity: "medium", well, key, row: { ...row, qty: row.qty - ticketQty },
-        title: `${row.name} returned from ${well.name || well.id} does not match the tickets`,
-        detail: `The app logged ${roundQty(row.qty)} ${row.name} returned and the return tickets in the same window total ${roundQty(ticketQty)}.`,
-        ticketIds: matched.map((ticket) => ticket.id),
-        valuation: settings.valuation,
-      }));
+      if (!matched.length) {
+        if (isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
+        add(issues, baseIssue({
+          date, rule: "logged_no_ticket", severity: "medium", well, key, row,
+          title: `${row.name} returned from ${well.name || well.id} with no return ticket`,
+          detail: `The mud report shows ${roundQty(row.qty)} ${row.name} returned since the previous report, and no return ticket matches it within ${windowDays} days.`,
+          valuation: settings.valuation,
+        }));
+      }
     }
   }
 }
@@ -670,7 +665,40 @@ function baseIssue({ date, rule, severity, well, key, row, title, detail, ticket
   };
 }
 
-function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
+function isInboundCarry(entry) {
+  if (!entry || entry.kind === "transferOut" || entry.kind === "returned") return false;
+  if (entry.kind === "transferIn") return true;
+  return /transfer/i.test(`${entry.description || ""} ${entry.rawTicket || ""}`);
+}
+
+function openingCarry(next, key, index) {
+  if (Array.isArray(next.openingRemaining) && next.openingRemaining.length) return movementMap(next.openingRemaining, index).get(key)?.qty || 0;
+  if (!Array.isArray(next.reports) || !next.reports.length) return null;
+  const first = [...next.reports].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))[0];
+  const onHand = movementMap(first.remaining || [], index).get(key)?.qty || 0;
+  const received = movementMap(first.received || [], index).get(key)?.qty || 0;
+  return Math.max(onHand, received);
+}
+
+function carriedOnto(next, key, index, appEntries) {
+  let transfer = 0;
+  let sawTransfer = false;
+  for (const entry of appEntries || []) {
+    if (entry.wellId !== next.id || !isInboundCarry(entry)) continue;
+    sawTransfer = true;
+    transfer += appEntryLines(entry, index).get(key)?.qty || 0;
+  }
+  for (const line of next.received || []) {
+    if (!/transfer/i.test(`${line.description || ""} ${line.rawTicket || ""}`)) continue;
+    sawTransfer = true;
+    transfer += movementMap([line], index).get(key)?.qty || 0;
+  }
+  const opening = openingCarry(next, key, index);
+  if (sawTransfer || opening != null) return Math.max(transfer, opening || 0);
+  return movementMap(next.received, index).get(key)?.qty || 0;
+}
+
+function rigMoveIssues(issues, { date, settings, wells, index, appEntries }) {
   const claimed = new Set();
   const groups = new Map();
   for (const well of wells) {
@@ -687,23 +715,22 @@ function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
       const next = ordered[indexWell];
       if ((previous.spudDate || previous.lastReportDate || "") === (next.spudDate || next.lastReportDate || "")) continue;
       const before = remainingMap(previous, index);
-      const received = movementMap(next.received, index);
-      const deliveries = tickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES) && matchWell(ticket, [next])?.id === next.id);
-      const delivered = sumLines(deliveries, index, () => true).groups;
       for (const [key, row] of before.groups) {
         if (row.qty <= QTY_TOLERANCE) continue;
-        claimed.add(`${previous.id}|${key}`);
-        if ((delivered.get(key)?.qty || 0) > QTY_TOLERANCE) continue;
-        const carried = received.get(key)?.qty || 0;
+        const carried = carriedOnto(next, key, index, appEntries);
         const missing = row.qty - carried;
-        if (missing <= QTY_TOLERANCE) continue;
+        if (missing <= QTY_TOLERANCE) {
+          claimed.add(`${previous.id}|${key}`);
+          continue;
+        }
         const price = priceOf(row.product, before.prices.get(key), settings.valuation);
         const value = dollars(missing, price);
+        claimed.add(`${previous.id}|${key}`);
         add(issues, {
           id: issueId(date, "lost_on_rig_move", previous.id, next.id, key),
           date, rule: "lost_on_rig_move", severity: "high",
           title: `${row.name} did not follow rig ${next.rig} to ${next.name || next.id}`,
-          detail: `${previous.name || previous.id} still showed ${roundQty(row.qty)} ${row.name}. ${next.name || next.id} carried in ${roundQty(carried)}, and no delivery ticket covers the gap.`,
+          detail: `${previous.name || previous.id} still showed ${roundQty(row.qty)} ${row.name}. ${next.name || next.id} carried over ${roundQty(carried)}, leaving ${roundQty(missing)} unaccounted.`,
           wellId: next.id, rig: next.rig || "", lsd: next.lsd || previous.lsd || "",
           ticketIds: [],
           products: [{ name: row.name, qty: roundQty(missing), value }],
@@ -715,25 +742,14 @@ function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
   return claimed;
 }
 
-function newerActiveRig(well, wells) {
-  const identity = rigIdentity(well);
-  if (!identity) return false;
-  const stamp = well.spudDate || well.lastReportDate || "";
-  return wells.some((other) => {
-    if (other.id === well.id || rigIdentity(other) !== identity || isInactiveStatus(other.status)) return false;
-    return (other.spudDate || other.lastReportDate || "") > stamp;
-  });
-}
-
 function returnIssues(issues, { date, settings, tickets, wells, index, claimed }) {
   for (const well of wells) {
     const stale = !well.lastReportDate || daysBetween(date, dayKey(well.lastReportDate)) > settings.staleReportDays;
     if (!isInactiveStatus(well.status) && !stale) continue;
-    if (newerActiveRig(well, wells)) continue;
     const { groups, prices } = remainingMap(well, index);
     const reportDay = dayKey(well.lastReportDate);
     for (const [key, row] of groups) {
-      if (row.qty <= QTY_TOLERANCE) continue;
+      if (row.qty <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
       if (claimed?.has(`${well.id}|${key}`)) continue;
       const covered = tickets.some((ticket) => inTicketTypes(ticket.type, TRANSFER_TYPES) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
       if (covered) continue;
@@ -849,6 +865,7 @@ function priceIssues(issues, { date, settings, tickets, index }) {
     for (const line of linesOf(ticket)) {
       const row = identityOf(index, line.code, line.name);
       if (priceOf(row.product, null, settings.valuation) != null) continue;
+      if (isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
       if (!row.product) {
         unlinked.push({ name: row.name, qty: qtyOf(line), ticketId: ticket.id });
         continue;
