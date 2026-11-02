@@ -175,9 +175,13 @@ export function indexProducts(products) {
   return { byCode, byName };
 }
 
-export function matchProduct(index, code, name) {
+export function matchProduct(index, code, name, unit) {
   const coded = code ? index.byCode.get(codeNorm(code)) : undefined;
   if (coded) return coded;
+  if (name && isToteSize(unit)) {
+    const tote = index.byName.get(nameNorm(`${name} (Tote)`));
+    if (tote) return tote;
+  }
   const named = name ? index.byName.get(nameNorm(name)) : undefined;
   return named || null;
 }
@@ -293,15 +297,15 @@ export function stockEffect(type, qty) {
   return 0;
 }
 
-function identityOf(index, code, name) {
-  const product = matchProduct(index, code, name);
+function identityOf(index, code, name, unit) {
+  const product = matchProduct(index, code, name, unit);
   const key = product?.id || nameNorm(name) || codeNorm(code) || "unknown";
   return { product, key, name: product?.name || name || code || "Unknown product" };
 }
 
 function lineIdentity(index, line) {
-  const item = identityOf(index, line?.code, line?.name || line?.product || line?.productname);
   const unit = loggedUnit(line);
+  const item = identityOf(index, line?.code, line?.name || line?.product || line?.productname, unit);
   const pack = packKey(unit);
   return { ...item, unit, key: pack ? `${item.key}|${pack}` : item.key, name: unit ? `${item.name} ${unit}` : item.name };
 }
@@ -343,6 +347,8 @@ function unitFamily(raw) {
   return "";
 }
 
+const PACK_TOLERANCE = 0.15;
+
 function packSize(unit) {
   const match = String(unit ?? "").toLowerCase().replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*([a-z]+)/);
   if (!match) return null;
@@ -352,19 +358,30 @@ function packSize(unit) {
   return { amount, family };
 }
 
+function sizesClose(left, right) {
+  if (!left || !right || left.family !== right.family) return false;
+  return Math.abs(left.amount - right.amount) / Math.max(left.amount, right.amount) <= PACK_TOLERANCE;
+}
+
+function canonicalAmount(amount) {
+  const step = amount >= 100 ? 100 : amount >= 10 ? 5 : 1;
+  return Math.round(amount / step) * step;
+}
+
 function packKey(unit) {
   const size = packSize(unit);
-  if (size) return `${Math.round(size.amount * 1000) / 1000}${size.family}`;
+  if (size) return `${canonicalAmount(size.amount)}${size.family}`;
   return unitToken(unit);
+}
+
+function isToteSize(unit) {
+  return sizesClose(packSize(unit), packSize("1000L"));
 }
 
 function unitsDiffer(logged, listed) {
   const left = packSize(logged);
   const right = packSize(listed);
-  if (left && right) {
-    if (left.family !== right.family) return true;
-    return Math.abs(left.amount - right.amount) / Math.max(left.amount, right.amount) > 0.15;
-  }
+  if (left && right) return !sizesClose(left, right);
   const a = unitToken(logged);
   const b = unitToken(listed);
   if (!a || !b) return false;
