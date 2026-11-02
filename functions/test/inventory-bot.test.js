@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { isTicketPdfPath, lsdNorm, matchProduct, matchWell, indexProducts, parseAppDescription, rigNorm, runChecks, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, isInactiveStatus, isTicketPdfPath, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigNorm, runChecks, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -253,6 +253,59 @@ test("transfer-to and transfer-from quantities have to agree", () => {
   assert.ok(mismatch);
   assert.equal(mismatch.products[0].qty, 3);
   assert.equal(mismatch.dollarValue, 750);
+});
+
+test("checks ignore tickets and app entries before checksStartDate", () => {
+  const config = configFromMain({ checksStartDate: "2026-10-30", config: { graceDays: 3 } });
+  assert.equal(config.checksStartDate, "2026-10-30");
+  assert.equal(config.graceDays, 3);
+  assert.equal(configFromMain({ config: { checksStartDate: "2026-11-01" } }).checksStartDate, "2026-11-01");
+  assert.equal(configFromMain({ config: { checksStartDate: "October" } }).checksStartDate, "");
+  const early = runChecks({
+    date: "2026-11-02", config,
+    products,
+    wells: [well({})],
+    tickets: [ticket({ postedAt: "2026-10-20" })],
+    appTickets: [{ id: "w1_r_received-0", wellId: "w1", rawTicket: "WBFS-DT-1", date: "2026-10-20", lines: [{ name: "Elixir", qty: 9, price: 10 }] }],
+    stock: [
+      { date: "2026-10-01", source: "xpress", warehouseCode: "XV-AB", items: [{ code: "ELX", name: "Elixir", onHand: 10, available: 10 }] },
+      { date: "2026-10-15", source: "xpress", warehouseCode: "XV-AB", items: [{ code: "ELX", name: "Elixir", onHand: 1, available: 1 }] },
+    ],
+  });
+  assert.equal(early.issues.some((issue) => issue.rule === "delivered_not_logged"), false);
+  assert.equal(early.issues.some((issue) => issue.rule === "ticket_typo" || issue.rule === "qty_mismatch" || issue.rule === "logged_no_ticket"), false);
+  assert.equal(early.issues.some((issue) => issue.rule === "warehouse_drift"), false);
+  const later = runChecks({
+    date: "2026-11-02", config,
+    products,
+    wells: [well({ status: "completed-reviewed", lastReportDate: "2026-11-01", remaining: [{ product: "Elixir", qty: 2, price: 250 }] })],
+  });
+  assert.equal(later.issues.some((issue) => issue.rule === "should_be_returned"), true);
+  assert.equal(isInactiveStatus("completed-other"), true);
+  assert.equal(isInactiveStatus("active"), false);
+});
+
+test("mirror well fields, app_ product ids, and app ticket id suffixes are accepted", () => {
+  const parsed = normalizeAppTicket({ id: "north_pad_report9_returned-2", description: "Ticket:BRKS-CT-000174,Products returned", date: "2026-11-01", lines: [{ name: "Elixir", qty: 1, price: 5 }] });
+  assert.equal(kindFromAppTicketId(parsed.id), "returned");
+  assert.equal(parsed.kind, "returned");
+  const result = runChecks({
+    date: "2026-11-02",
+    products: [{ id: "app_elixir", name: "Elixir", xpressCodes: ["ELX"], mimCodes: [], appNames: ["Elixir"], price: 250, cost: 100, confirmed: true }],
+    wells: [well({ remaining: [], remainingSource: "opening", openingRemaining: [{ product: "Elixir", qty: 6, price: 250 }], newestReportId: "report-9", status: "completed-reviewed", lastReportDate: "2026-11-01" })],
+  });
+  const issue = result.issues.find((item) => item.rule === "should_be_returned");
+  assert.equal(issue.products[0].qty, 6);
+  assert.equal(issue.dollarValue, 1500);
+});
+
+test("a run write requests checks only when checksRequestedAt changes", () => {
+  assert.equal(checksRequestChanged(undefined, "2026-11-02T12:00:00.000Z"), true);
+  assert.equal(checksRequestChanged("2026-11-02T12:00:00.000Z", "2026-11-02T12:00:00.000Z"), false);
+  assert.equal(checksRequestChanged("2026-11-02T12:00:00.000Z", "2026-11-02T13:00:00.000Z"), true);
+  assert.equal(checksRequestChanged(undefined, undefined), false);
+  assert.equal(checksRequestChanged({ seconds: 1, nanoseconds: 0 }, { seconds: 1, nanoseconds: 0 }), false);
+  assert.equal(checksRequestChanged({ toDate: () => new Date("2026-11-02T12:00:00.000Z") }, { toDate: () => new Date("2026-11-02T12:00:00.000Z") }), false);
 });
 
 test("the chatbot calls one targeted tool and cites the tool result", async () => {

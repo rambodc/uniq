@@ -35,6 +35,7 @@ Doc ids use letters, numbers, `_` and `-` only. Do not put `/` in an id. Dates a
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `config.graceDays` | number | A delivery is "not logged" only after this many days. Default 3. |
+| `config.checksStartDate` | `YYYY-MM-DD` | Ignore warehouse tickets, app entries, and stock snapshots dated before this day (America/Edmonton). The live main document stores this beside `config` as `checksStartDate` (`2026-10-30`); either place is read. Blank means no cutoff. |
 | `config.valuation` | `"pricelist"` or `"cost"` | Dollar values use `products.price` or `products.cost`. Default `pricelist`. |
 | `config.receivedWindowDays` | number | App receipts match tickets within this many days. Default 5. |
 | `config.staleReportDays` | number | No report for longer than this, with product still on the well, raises `should_be_returned`. Default 7. |
@@ -120,11 +121,16 @@ Optional movement on each item, or a parallel `movement` array of the same shape
 | `lsd`, `lsdNorm` | string |
 | `rig` | string |
 | `contractor`, `operator`, `province` | string |
-| `status` | string. `paused`, `inactive`, `released`, `completed`, `closed`, and `suspended` are inactive. |
+| `status` | string. `paused`, `inactive`, `released`, `completed`, `completed-reviewed`, `closed`, and `suspended` are inactive. Any status that starts with `completed` is inactive too. |
 | `spudDate` | `YYYY-MM-DD` or null |
 | `pricelist` | string |
-| `lastReportId` | string |
+| `lastReportId` | string. `newestReportId` is used when this is blank. |
 | `lastReportDate` | `YYYY-MM-DD` or null |
+| `newestReportId` | string, optional mirror id of the newest report |
+| `openingReportId` | string, optional |
+| `openingReportDate` | `YYYY-MM-DD` or null, optional |
+| `openingRemaining` | `{ product, qty, price }[]`, optional. Used when `remainingSource` is `opening`, or when `remaining` is absent. |
+| `remainingSource` | string, optional. `opening` selects `openingRemaining`. |
 | `remaining` | `{ product, qty, price }[]` from the latest mirror report's `remainingInventoryAfterReport` |
 | `received`, `returned`, `used` | `{ product, qty, date?, price?, description?, rawTicket? }[]` from that same report. `date` is `YYYY-MM-DD` when the report has one. |
 | `costs` | Latest report costs: `dailyProductCost`, `totalProductCost`, `dailyServiceCost`, `totalServiceCost`, `dailyTotalCost`. Numbers. |
@@ -136,9 +142,9 @@ Optional movement on each item, or a parallel `movement` array of the same shape
 
 ## App tickets
 
-`inventoryBot/main/appTickets/{wellId}_{reportId}_{n}`
+`inventoryBot/main/appTickets/{wellId}_{reportId}_{received|returned}-{n}`
 
-One document per `received.<n>` or `returned.<n>` line on a mud report. `n` is that index.
+One document per `received.<n>` or `returned.<n>` line on a mud report. The id suffix is `received-0` or `returned-3` (the mirror index). `wellId` and `reportId` are also stored as fields. If `kind` is omitted, the suffix supplies it.
 
 | Field | Type |
 | --- | --- |
@@ -172,7 +178,7 @@ How to read `description`:
 
 | Field | Type |
 | --- | --- |
-| `name` | string, canonical |
+| `name` | string, canonical. Mirror products use ids `app_<name>`, for example `app_elixir`. The id is only a key; matching still uses codes and names. |
 | `xpressCodes`, `mimCodes`, `appNames` | string[] |
 | `unit` | string |
 | `price` | number, pricelist dollars per unit |
@@ -261,11 +267,15 @@ Upload the file to `inventoryBot/tickets/{source}/{file}.pdf` and store that pat
 
 ## After ingest
 
-`inventoryBotRunChecks` does not use App Check, because the collector is not the web app. It still requires a signed-in super admin.
+Set `checksRequestedAt` on `inventoryBot/main/runs/{YYYY-MM-DD}` to a new ISO timestamp after the day's documents are written. `inventoryBotRunWritten` watches that document and runs the checks when `checksRequestedAt` is created or changed. The checks write `summary` and `checkedAt` only, so that write does not request another run. No Auth token and no App Check token are required for this path.
+
+`inventoryBotRunChecks` is still available. It does not use App Check, because a script is not the web app. It still requires a signed-in super admin.
 
 1. Write tickets, stock, wells, products, `appTickets`, and `runs/{date}.sources` with the Admin SDK.
 2. Upload PDFs.
-3. Create a custom token for the super admin uid, exchange it for an ID token, and POST:
+3. Set `runs/{date}.checksRequestedAt` to a new ISO timestamp. `inventoryBotRunWritten` runs the checks.
+
+The callable remains for a super admin or a script that already has an ID token:
 
 ```bash
 curl -s -X POST \
