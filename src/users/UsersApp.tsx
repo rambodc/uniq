@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ASSIGNABLE_MINI_APP_IDS, MINI_APPS, USER_TYPE_LABELS, type MiniAppId, type UserType } from "../auth/miniApps";
 import { createUser, listUsers, messageOf, sendUserInvite, setUserDisabled, updateUser, type InviteResult, type UserInput, type UserRecord } from "../core/api";
+import { previewUsers } from "../auth/preview";
 import Shell from "../auth/Shell";
 import Avatar from "../auth/Avatar";
 
@@ -8,8 +9,8 @@ const empty: UserInput = { firstName: "", lastName: "", email: "", type: "staff"
 const problems = new Set(["bounced", "complained", "failed"]);
 
 export default function UsersApp() {
-  const [users, setUsers] = useState<UserRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<UserRecord[]>(() => previewUsers() ?? []);
+  const [loading, setLoading] = useState(() => previewUsers() == null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<(UserInput & { uid?: string; you?: boolean }) | null>(null);
@@ -19,7 +20,12 @@ export default function UsersApp() {
     setLoading(true);
     return listUsers().then((result) => { setUsers(result.users); setError(""); }, (cause: unknown) => setError(messageOf(cause, "Users could not be loaded."))).finally(() => setLoading(false));
   }
-  useEffect(() => { let active = true; listUsers().then((result) => { if (active) { setUsers(result.users); setLoading(false); } }, (cause: unknown) => { if (active) { setError(messageOf(cause, "Users could not be loaded.")); setLoading(false); } }); return () => { active = false; }; }, []);
+  useEffect(() => {
+    if (previewUsers()) return;
+    let active = true;
+    listUsers().then((result) => { if (active) { setUsers(result.users); setLoading(false); } }, (cause: unknown) => { if (active) { setError(messageOf(cause, "Users could not be loaded.")); setLoading(false); } });
+    return () => { active = false; };
+  }, []);
 
   function inviteNote(result: InviteResult) {
     setNotice(result.sent ? "Invite sent." : `Invite was not sent. ${result.reason}`);
@@ -53,7 +59,7 @@ export default function UsersApp() {
   }
   const alerts = users.filter((user) => user.invite && problems.has(user.invite.status));
 
-  return <Shell title="User Access" eyebrow="Super admin">
+  return <Shell title="User Access" eyebrow="Super admin" appId="users" back>
     <p className="portal-lead">Invite people with email and password. Staff only see the mini apps you assign. Profile is available to everyone.</p>
     {alerts.length > 0 && <div className="portal-status error" role="alert">{alerts.length} invite{alerts.length === 1 ? "" : "s"} need attention.</div>}
     {error && <div className="portal-status error" role="alert">{error}</div>}
@@ -80,6 +86,7 @@ export default function UsersApp() {
     </ul>}
     {editing && <form className="portal-card portal-form" onSubmit={save}>
       <h2>{editing.uid ? "Edit user" : "Invite user"}</h2>
+      <div className="portal-form-grid">
       <label>First name<input value={editing.firstName} onChange={(event) => setEditing({ ...editing, firstName: event.target.value })} required maxLength={60} /></label>
       <label>Last name<input value={editing.lastName} onChange={(event) => setEditing({ ...editing, lastName: event.target.value })} required maxLength={60} /></label>
       <label>Email<input type="email" value={editing.email} onChange={(event) => setEditing({ ...editing, email: event.target.value })} required disabled={editing.you} autoComplete="off" /></label>
@@ -87,11 +94,12 @@ export default function UsersApp() {
         <option value="staff">Staff</option>
         <option value="super_admin">Super admin</option>
       </select></label>
-      {editing.type === "staff" && <fieldset disabled={editing.you}>
+      {editing.type === "staff" && <fieldset className="portal-span" disabled={editing.you}>
         <legend>Mini apps</legend>
         {ASSIGNABLE_MINI_APP_IDS.map((id) => <label key={id} className="portal-check"><input type="checkbox" checked={editing.miniApps.includes(id)} onChange={() => toggleApp(id)} />{MINI_APPS.find((app) => app.id === id)?.name}</label>)}
       </fieldset>}
-      {editing.type === "super_admin" && <p>Super admins can open every mini app, including ones added later.</p>}
+      {editing.type === "super_admin" && <p className="portal-span">Super admins can open every mini app, including ones added later.</p>}
+      </div>
       <div className="portal-row">
         <button className="button-primary" type="submit" disabled={busy}>{busy ? "Saving…" : editing.uid ? "Save" : "Send invite"}</button>
         <button type="button" onClick={() => setEditing(null)}>Cancel</button>

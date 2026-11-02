@@ -10,9 +10,11 @@ const greeting = (hour: number) => hour < 12 ? "Good morning" : hour < 18 ? "Goo
 export default function Dashboard() {
   const { can, profile, type } = useAuth();
   const apps = MINI_APPS.filter((app) => can(app.id));
-  return <Shell title={profile ? `${greeting(new Date().getHours())}, ${profile.firstName}` : "Dashboard"} eyebrow="Workspace">
-    {profile && <p className="portal-lead">{type ? USER_TYPE_LABELS[type] : ""} · {profile.email}</p>}
-    {profile && <Avatar src={profile.photo} firstName={profile.firstName} lastName={profile.lastName} size={64} />}
+  return <Shell title={profile ? `${greeting(new Date().getHours())}, ${profile.firstName}` : "Dashboard"} eyebrow="Workspace" watermark>
+    {profile && <div className="portal-welcome">
+      <Avatar src={profile.photo} firstName={profile.firstName} lastName={profile.lastName} size={56} />
+      <p className="portal-lead">{type ? USER_TYPE_LABELS[type] : ""} · {profile.email}</p>
+    </div>}
     <section className="portal-tiles" aria-label="Mini apps">
       {apps.map(({ id, route, name, description, icon, accent }) => {
         const Icon = ICONS[icon];

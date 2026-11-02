@@ -5,7 +5,7 @@ import { getAccess, type Access, type Profile } from "../core/api";
 import type { MiniAppId, UserType } from "./miniApps";
 import { accessErrorMessage } from "./signInMessages";
 
-type AuthState = {
+export type AuthState = {
   user: User | null;
   loading: boolean;
   type: UserType | null;
@@ -20,7 +20,7 @@ type AuthState = {
 const NO_ACCESS: Access = { type: null, miniApps: [], profile: null };
 const Context = createContext<AuthState | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+function AuthProviderLive({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [access, setAccess] = useState<{ uid: string; value: Access } | null>(null);
@@ -76,6 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user, loading, uid, verified, access, accessError]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  if (import.meta.env.DEV) {
+    const injected = (globalThis as { __UNIQ_PREVIEW_AUTH__?: AuthState }).__UNIQ_PREVIEW_AUTH__;
+    if (injected) return <Context.Provider value={injected}>{children}</Context.Provider>;
+  }
+  return <AuthProviderLive>{children}</AuthProviderLive>;
 }
 
 export function useAuth() {
