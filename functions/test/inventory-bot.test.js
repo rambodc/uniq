@@ -107,7 +107,7 @@ test("chemicals that do not follow a rig move are priced from the pricelist", ()
   const result = runChecks({
     date: "2026-11-02", products,
     wells: [
-      well({ id: "old", name: "Old Hole", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Elixir", qty: 8, price: 10 }] }),
+      well({ id: "old", name: "Old Hole", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Elixir", qty: 8 }] }),
       well({ id: "new", name: "New Hole", spudDate: "2026-10-01", lastReportDate: "2026-10-28", remaining: [], received: [{ product: "Elixir", qty: 3, date: "2026-10-02" }] }),
     ],
     tickets: [],
@@ -616,6 +616,48 @@ test("a transfer is one issue, and a missing sender is not dollars at risk", () 
   assert.equal(unloaded[0].products.length, 2);
   assert.match(unloaded[0].detail, /13-20-63-3W4/);
   assert.equal(missingSender.summary.dollarsAtRisk, 0);
+});
+
+test("an app line price is used instead of a different pack size on the pricelist", () => {
+  const clay = { id: "clay", name: "Clay-Control", xpressCodes: ["CLAY"], mimCodes: [], appNames: ["Clay-Control"], unit: "1000L", price: 5629, cost: 4000, confirmed: true };
+  const catalog = [...products, clay];
+  const transfer = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [
+      well({ id: "old", name: "Old Hole", lsd: "9-26-55-4W4", lsdNorm: "9-26-55-4W4" }),
+      well({ id: "new", name: "North Pad", lsd: "16-1-1-1W5", lsdNorm: "16-1-1-1W5" }),
+    ],
+    appTickets: [
+      { id: "new_r_0", wellId: "new", kind: "transferIn", rawTicket: "1730000_transferTo_by-ops", date: "2026-10-20", lines: [{ name: "Clay-Control", unit: "pail", qty: 29, price: 190 }] },
+      { id: "old_r_0", wellId: "old", kind: "transferOut", rawTicket: "1730000_transferFrom_by-ops", date: "2026-10-20", lines: [{ name: "Clay-Control", unit: "pail", qty: 0, price: 190 }] },
+    ],
+  });
+  const mismatch = transfer.issues.find((issue) => issue.rule === "transfer_mismatch");
+  assert.equal(mismatch.products[0].qty, 29);
+  assert.equal(mismatch.dollarValue, 5510);
+  const lost = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [
+      well({ id: "old", name: "Old Hole", contractor: "Ensign", rig: "361", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Clay-Control", unit: "pail", qty: 29, price: 190 }] }),
+      well({ id: "new", name: "New Hole", contractor: "Ensign", rig: "361", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [] }),
+    ],
+  });
+  assert.equal(lost.issues.find((issue) => issue.rule === "lost_on_rig_move").dollarValue, 5510);
+  const returned = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [well({ status: "paused", remaining: [{ product: "Clay-Control", unit: "pail", qty: 29, price: 190 }] })],
+  });
+  assert.equal(returned.issues.find((issue) => issue.rule === "should_be_returned").dollarValue, 5510);
+  const unmatched = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [well({ status: "paused", remaining: [{ product: "Clay-Control", unit: "pail", qty: 29 }] })],
+  });
+  assert.equal(unmatched.issues.find((issue) => issue.rule === "should_be_returned").dollarValue, 0);
+  const samePack = runChecks({
+    date: "2026-11-02", products: catalog,
+    wells: [well({ status: "paused", remaining: [{ product: "Clay-Control", unit: "1000L", qty: 2 }] })],
+  });
+  assert.equal(samePack.issues.find((issue) => issue.rule === "should_be_returned").dollarValue, 11258);
 });
 
 test("pallet names are ignored on quantity and price checks", () => {

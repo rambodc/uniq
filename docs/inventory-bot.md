@@ -230,7 +230,7 @@ Checks rewrite these for the date. Resolved and ignored issues keep their status
 | `wellId`, `rig`, `lsd` | string, empty when the rule is not about a well |
 | `ticketIds` | string[] |
 | `products` | `{ name, qty, value }[]` |
-| `dollarValue` | number from the pricelist (or cost, when config says so). A remaining line's own `price` is used when the product has none. |
+| `dollarValue` | number. The app line's own `price` (or `unitCost`) is used first. The pricelist, or `cost` when config says so, is used only when that price is missing and the product unit matches the logged unit. A different pack size, such as a 1000L tote price on a pail line, is not used. |
 | `status` | `open`, `resolved`, or `ignored` |
 | `note` | string |
 | `resolvedBy` | email, or empty |
@@ -246,7 +246,7 @@ Rules:
 6. `lost_on_rig_move` (high). On the same contractor and rig number, every product still remaining on the old well is compared with the new well. The comparison is skipped when the new well has no mud report yet, or when the old well's last report is within `graceDays` of the check date. The carried quantity for a product is the larger of what arrived on a Transfer-To or other carried-over entry and what that product shows on the new well's opening inventory or first report. Each product with a shortfall is its own issue, for the quantity difference. A delivery ticket on the new well does not clear it. Names in `ignoreStockNames` are skipped. Rig `245` for two contractors is not a move. `should_be_returned` is suppressed only for a product that this rule already flagged or whose carried quantity covers the old remaining quantity. Other products on that well are still flagged.
 7. `should_be_returned` (medium). The well is inactive, or the last report is older than `staleReportDays`, remaining is above zero, and no `SR`, `ST`, `STx`, or `TT` for that product is dated on or after the report. Names in `ignoreStockNames` are skipped.
 8. `warehouse_drift` (high when on-hand or available is negative, otherwise medium). The text names `on hand` or `available` according to which field is negative. The on-hand change between the two latest snapshots on or before the date is not the signed ticket quantity between those dates.
-9. Money. Every issue carries `dollarValue`. The price is the app line price when the mud report has one, otherwise the pricelist (or cost, when config says so). `missing_price` (low) flags a priced product on a `DT` that has no pricelist price. Lines that are not linked to a product are one `Unpriced items` issue for the day, not one issue per line. `summary.mimTtCharges` sums that day's MIM `TT` charges. `summary.appProductCost`, `summary.appServiceCost`, and `summary.appTotalCost` sum the daily cost fields from reports dated that day.
+9. Money. Every issue carries `dollarValue`. The price is the app line's own `price` or `unitCost` when the mud report has one, on every rule. Otherwise the pricelist (or cost, when config says so) is used, and only when the product's unit matches the logged unit. A tote list price is not applied to a pail line. `missing_price` (low) flags a product on a `DT` that has no pricelist price. Lines that are not linked to a product are one `Unpriced items` issue for the day, not one issue per line. `summary.mimTtCharges` sums that day's MIM `TT` charges. `summary.appProductCost`, `summary.appServiceCost`, and `summary.appTotalCost` sum the daily cost fields from reports dated that day.
 
 ## Chat
 
