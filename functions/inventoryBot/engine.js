@@ -406,24 +406,6 @@ function numberMatch(ticket, entries) {
   return { level: "none", hits: [] };
 }
 
-function kindsFor(entry) {
-  return entry.kind === "returned" || entry.kind === "transferOut" ? ["SR", "CT"] : ["DT"];
-}
-
-function fallbackTickets(entry, tickets, wells, index, windowDays) {
-  const well = wells.find((item) => item.id === entry.wellId);
-  if (!well) return [];
-  const center = entry.date || dayKey(well.lastReportDate);
-  const products = appEntryLines(entry, index);
-  return tickets.filter((ticket) => {
-    if (!inTicketTypes(ticket.type, kindsFor(entry))) return false;
-    if (matchWell(ticket, [well])?.id !== well.id) return false;
-    if (!within(ticketDay(ticket), center, windowDays)) return false;
-    if (!products.size) return true;
-    return linesOf(ticket).some((line) => products.has(identityOf(index, line.code, line.name).key));
-  });
-}
-
 function deliveryIssues(issues, { date, settings, tickets, wells, index, appEntries }) {
   const deliveries = tickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES));
   const byWell = new Map();
@@ -478,8 +460,7 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
       chosen = [];
       level = "none";
     }
-    const fallback = level === "none" ? fallbackTickets(entry, tickets, wells, index, settings.receivedWindowDays) : [];
-    const matched = level === "none" ? fallback : chosen.map((hit) => hit.ticket);
+    const matched = level === "none" ? [] : chosen.map((hit) => hit.ticket);
     if (level === "fuzzy") {
       add(issues, {
         id: issueId(date, "ticket_typo", entry.id || entry.rawTicket, well.id),
@@ -497,7 +478,7 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
       add(issues, baseIssue({
         date, rule: "logged_no_ticket", severity: "medium", well, key: entry.id || entry.rawTicket || row.key, row,
         title: `${row.name} was logged at ${well.name || well.id} with no warehouse ticket`,
-        detail: `The app cites ${entry.rawTicket || entry.ticketNorm || "a receipt"} and no warehouse ticket matches that number, or the LSD, rig, and date window.`,
+        detail: `The app cites ${entry.rawTicket || entry.ticketNorm || "a receipt"} and no warehouse ticket has that number. A supplier reference is not compared with nearby warehouse tickets.`,
         valuation: settings.valuation, fallbackPrice: row.price,
       }));
       continue;
@@ -606,13 +587,16 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
   const incoming = appEntries.filter((entry) => entry.kind === "transferIn");
   const outgoing = appEntries.filter((entry) => entry.kind === "transferOut");
   const used = new Set();
+  function differentWell(entry, other) {
+    return !entry.wellId || !other.wellId || entry.wellId !== other.wellId;
+  }
   function partner(entry) {
     const stamp = transferStamp(entry);
-    const byStamp = stamp ? outgoing.find((other) => !used.has(other) && transferStamp(other) === stamp) : null;
+    const byStamp = stamp ? outgoing.find((other) => !used.has(other) && differentWell(entry, other) && transferStamp(other) === stamp) : null;
     if (byStamp) return byStamp;
     const well = wells.find((item) => item.id === entry.wellId);
     const byWell = outgoing.find((other) => {
-      if (used.has(other)) return false;
+      if (used.has(other) || !differentWell(entry, other)) return false;
       const otherWell = wells.find((item) => item.id === other.wellId);
       const fromHere = well && lsdNorm(other.otherWellUWI) === (well.lsdNorm || lsdNorm(well.lsd));
       const toThere = otherWell && lsdNorm(entry.otherWellUWI) === (otherWell.lsdNorm || lsdNorm(otherWell.lsd));
@@ -622,7 +606,7 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
     const lines = appEntryLines(entry, index);
     if (!entry.date || !lines.size) return null;
     return outgoing.find((other) => {
-      if (used.has(other) || !other.date || !within(entry.date, other.date, 1)) return false;
+      if (used.has(other) || !differentWell(entry, other) || !other.date || !within(entry.date, other.date, 1)) return false;
       const otherLines = appEntryLines(other, index);
       if (otherLines.size !== lines.size) return false;
       for (const [key, row] of lines) {
@@ -633,6 +617,10 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
   }
   for (const entry of incoming) {
     const pair = partner(entry);
+    if (!pair && outgoing.some((other) => !differentWell(entry, other))) {
+      for (const other of outgoing) if (!differentWell(entry, other)) used.add(other);
+      continue;
+    }
     if (pair) used.add(pair);
     const well = wells.find((item) => item.id === entry.wellId) || { id: entry.wellId || "transfer", name: "Receiving well", rig: "", lsd: "" };
     const left = appEntryLines(entry, index);
@@ -683,6 +671,7 @@ function baseIssue({ date, rule, severity, well, key, row, title, detail, ticket
 }
 
 function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
+  const claimed = new Set();
   const groups = new Map();
   for (const well of wells) {
     const rig = rigIdentity(well);
@@ -703,6 +692,7 @@ function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
       const delivered = sumLines(deliveries, index, () => true).groups;
       for (const [key, row] of before.groups) {
         if (row.qty <= QTY_TOLERANCE) continue;
+        claimed.add(`${previous.id}|${key}`);
         if ((delivered.get(key)?.qty || 0) > QTY_TOLERANCE) continue;
         const carried = received.get(key)?.qty || 0;
         const missing = row.qty - carried;
@@ -722,16 +712,29 @@ function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
       }
     }
   }
+  return claimed;
 }
 
-function returnIssues(issues, { date, settings, tickets, wells, index }) {
+function newerActiveRig(well, wells) {
+  const identity = rigIdentity(well);
+  if (!identity) return false;
+  const stamp = well.spudDate || well.lastReportDate || "";
+  return wells.some((other) => {
+    if (other.id === well.id || rigIdentity(other) !== identity || isInactiveStatus(other.status)) return false;
+    return (other.spudDate || other.lastReportDate || "") > stamp;
+  });
+}
+
+function returnIssues(issues, { date, settings, tickets, wells, index, claimed }) {
   for (const well of wells) {
     const stale = !well.lastReportDate || daysBetween(date, dayKey(well.lastReportDate)) > settings.staleReportDays;
     if (!isInactiveStatus(well.status) && !stale) continue;
+    if (newerActiveRig(well, wells)) continue;
     const { groups, prices } = remainingMap(well, index);
     const reportDay = dayKey(well.lastReportDate);
     for (const [key, row] of groups) {
       if (row.qty <= QTY_TOLERANCE) continue;
+      if (claimed?.has(`${well.id}|${key}`)) continue;
       const covered = tickets.some((ticket) => inTicketTypes(ticket.type, TRANSFER_TYPES) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
       if (covered) continue;
       const price = priceOf(row.product, prices.get(key), settings.valuation);
@@ -767,16 +770,21 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
     for (const item of items.values()) {
       const onHand = Number(item.onHand);
       const available = Number(item.available);
-      if ((Number.isFinite(onHand) && onHand < -QTY_TOLERANCE) || (Number.isFinite(available) && available < -QTY_TOLERANCE)) {
+      const onHandNegative = Number.isFinite(onHand) && onHand < -QTY_TOLERANCE;
+      const availableNegative = Number.isFinite(available) && available < -QTY_TOLERANCE;
+      if (onHandNegative || availableNegative) {
         const row = identityOf(index, item.code, item.name);
         const price = priceOf(row.product, null, settings.valuation);
-        const qty = Number.isFinite(onHand) && onHand < 0 ? onHand : available;
+        const parts = [];
+        if (onHandNegative) parts.push(`${roundQty(onHand)} on hand`);
+        if (availableNegative) parts.push(`${roundQty(available)} available`);
+        const qty = onHandNegative ? onHand : available;
         const value = dollars(qty, price);
         add(issues, {
           id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, row.key, "negative"),
           date, rule: "warehouse_drift", severity: "high",
           title: `${row.name} is negative at ${current.warehouseName || current.warehouseCode}`,
-          detail: `${current.source} ${current.warehouseCode} shows ${roundQty(qty)} on hand on ${current.date}.`,
+          detail: `${current.source} ${current.warehouseCode} shows ${parts.join(" and ")} on ${current.date}.`,
           wellId: "", rig: "", lsd: "", ticketIds: [],
           products: [{ name: row.name, qty: roundQty(qty), value }],
           dollarValue: value, status: "open", note: "", resolvedBy: "", resolvedAt: null,
@@ -994,8 +1002,8 @@ export function runChecks({ date, config, tickets = [], wells = [], products = [
   ticketLinkIssues(issues, input);
   receiptIssues(issues, input);
   transferMismatchIssues(issues, input);
-  rigMoveIssues(issues, input);
-  returnIssues(issues, input);
+  const carried = rigMoveIssues(issues, input);
+  returnIssues(issues, { ...input, claimed: carried });
   warehouseIssues(issues, input);
   priceIssues(issues, input);
   const issueList = [...issues.values()].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.id.localeCompare(b.id));

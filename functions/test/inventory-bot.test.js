@@ -431,6 +431,55 @@ test("unlinked delivery lines share one unpriced-items issue", () => {
   assert.match(priced.find((issue) => issue.title === "Unpriced items").detail, /Wait time/);
 });
 
+test("a supplier ticket is not line-compared with warehouse tickets on the same pad", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "north-pad", lsd: "104/9-26-55-4W4", lsdNorm: "9-26-55-4W4", rig: "245" })],
+    tickets: [
+      ticket({ id: "xpress_NK-000891", postedAt: "2026-11-01", lines: [{ code: "TERM", name: "Terminox", qty: 20 }] }),
+      ticket({ id: "mim_CTAWEY001777", source: "mim", postedAt: "2026-11-01", lines: [{ code: "TERM", name: "Terminox", qty: 5 }] }),
+    ],
+    appTickets: [{ id: "north-pad_r_0", wellId: "north-pad", rawTicket: "DW2632", date: "2026-10-28", lines: [{ name: "Terminox", qty: 1, price: 40 }] }],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "qty_mismatch"), false);
+  assert.equal(result.issues.some((issue) => issue.ticketIds?.includes("mim_CTAWEY001777") || issue.ticketIds?.includes("xpress_NK-000891")), false);
+});
+
+test("a transfer that stays on one well is not a mismatch", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "same", name: "Same Pad" })],
+    appTickets: [
+      { id: "same_in", wellId: "same", kind: "transferIn", rawTicket: "self-a", date: "2026-10-20", lines: [{ name: "Elixir", qty: 4, price: 250 }] },
+      { id: "same_out", wellId: "same", kind: "transferOut", rawTicket: "self-b", date: "2026-10-20", lines: [{ name: "Elixir", qty: 1, price: 250 }] },
+    ],
+  });
+  assert.equal(result.issues.some((issue) => issue.rule === "transfer_mismatch"), false);
+});
+
+test("a stale well whose rig moved does not also bill should_be_returned", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", name: "Old Hole", contractor: "Ensign", rig: "245", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Elixir", qty: 8, price: 250 }] }),
+      well({ id: "new", name: "New Hole", contractor: "Ensign", rig: "245", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [] }),
+    ],
+  });
+  assert.equal(result.issues.filter((issue) => issue.rule === "lost_on_rig_move").length, 1);
+  assert.equal(result.issues.some((issue) => issue.rule === "should_be_returned"), false);
+  assert.equal(result.summary.dollarsAtRisk, 2000);
+});
+
+test("negative available is described as available", () => {
+  const result = runChecks({
+    date: "2026-11-02", products,
+    stock: [{ date: "2026-11-02", source: "xpress", warehouseCode: "WBFS", items: [{ code: "ELX", name: "Elixir", onHand: 2, available: -3 }] }],
+  });
+  const issue = result.issues.find((item) => /negative/.test(item.title));
+  assert.match(issue.detail, /available/);
+  assert.doesNotMatch(issue.detail, /on hand/);
+});
+
 test("the chatbot calls one targeted tool and cites the tool result", async () => {
   assert.deepEqual(TOOLS.map((tool) => tool.function.name), ["search_tickets", "get_ticket", "get_well_inventory", "list_issues", "get_warehouse_stock", "find_product"]);
   const calls = [];
