@@ -1,6 +1,8 @@
 /** Pure Inventory Bot checks. No Firebase imports, so the rules can be unit tested on their own.
  * The collector writes the documents described in docs/inventory-bot.md. This module only reads plain objects. */
 
+import { createHash } from "node:crypto";
+
 export const DEFAULT_CONFIG = { graceDays: 3, valuation: "pricelist", receivedWindowDays: 5, staleReportDays: 7 };
 export const DELIVERY_TYPES = ["DT"];
 export const RETURN_TYPES = ["SR"];
@@ -323,17 +325,43 @@ function qtyOf(line) {
   return Number.isFinite(qty) ? qty : 0;
 }
 
+function slugText(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 export function docSlug(value) {
-  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "item";
+  return slugText(value).slice(0, 80) || "item";
+}
+
+function shortHash(parts) {
+  return createHash("sha1").update(JSON.stringify(parts.map((part) => String(part ?? "")))).digest("hex").slice(0, 12);
 }
 
 function issueId(date, rule, ...parts) {
-  return `${date}_${rule}_${docSlug(parts.join("-"))}`;
+  const productKey = parts.length ? parts[parts.length - 1] : "item";
+  return `${date}_${rule}_${shortHash(parts.slice(0, -1))}_${slugText(productKey) || "item"}`;
+}
+
+function issueBody(issue) {
+  return JSON.stringify({
+    rule: issue.rule, severity: issue.severity, title: issue.title, detail: issue.detail,
+    wellId: issue.wellId, rig: issue.rig, lsd: issue.lsd, ticketIds: issue.ticketIds,
+    products: issue.products, dollarValue: issue.dollarValue,
+  });
 }
 
 function add(issues, issue) {
-  issues.set(issue.id, issue);
+  let id = issue.id;
+  let suffix = 2;
+  while (issues.has(id)) {
+    if (issueBody(issues.get(id)) === issueBody(issue)) return;
+    id = `${issue.id}_${suffix}`;
+    suffix += 1;
+  }
+  issues.set(id, id === issue.id ? issue : { ...issue, id });
 }
+
+export { add as addIssue };
 
 function roundQty(qty) {
   return Math.round(qty * 1000) / 1000;
@@ -716,7 +744,7 @@ function rigMoveIssues(issues, { date, settings, wells, index, appEntries }) {
       if ((previous.spudDate || previous.lastReportDate || "") === (next.spudDate || next.lastReportDate || "")) continue;
       const before = remainingMap(previous, index);
       for (const [key, row] of before.groups) {
-        if (row.qty <= QTY_TOLERANCE) continue;
+        if (row.qty <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
         const carried = carriedOnto(next, key, index, appEntries);
         const missing = row.qty - carried;
         if (missing <= QTY_TOLERANCE) {
@@ -797,7 +825,7 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
         const qty = onHandNegative ? onHand : available;
         const value = dollars(qty, price);
         add(issues, {
-          id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, row.key, "negative"),
+          id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, "negative", row.key),
           date, rule: "warehouse_drift", severity: "high",
           title: `${row.name} is negative at ${current.warehouseName || current.warehouseCode}`,
           detail: `${current.source} ${current.warehouseCode} shows ${parts.join(" and ")} on ${current.date}.`,
