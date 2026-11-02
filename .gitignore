@@ -45,4 +45,6 @@ firebase-debug.log*
 firestore-debug.log*
 storage-debug.log*
 *.tsbuildinfo
+uniqenergy-firestore-export-*.json
+uniqenergy-firestore-export-*.json.tmp
 .lighthouse-*.json

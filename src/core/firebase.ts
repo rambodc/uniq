@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
 import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
-import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
 const app = initializeApp({
@@ -28,5 +27,3 @@ if (appCheckKey && typeof window !== "undefined") {
 }
 
 export const functions = getFunctions(app, "us-central1");
-
-export const wellStorage = getStorage(app);

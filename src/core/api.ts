@@ -1,21 +1,47 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "./firebase";
-import type { ContactInquiry, ContactInquiryCounts, ContactInquiryType, ManagedMiniAppId, PortalUser, UserRole } from "./types";
+import type { MiniAppId, UserType } from "../auth/miniApps";
 
-async function invoke<TRequest, TResponse>(name: string, data?: TRequest): Promise<TResponse> {
-  return (await httpsCallable<TRequest, TResponse>(functions, name)(data as TRequest)).data;
+const isRead = (name: string) => /^(list|get)[A-Z]/.test(name);
+const retryable = (error: unknown) => /deadline-exceeded|unavailable|internal/.test(String((error as { code?: string })?.code ?? ""));
+async function invoke<TRequest, TResponse>(name: string, data?: TRequest) {
+  const call = () => httpsCallable<TRequest, TResponse>(functions, name, { timeout: isRead(name) ? 20_000 : 30_000 })(data as TRequest);
+  try { return (await call()).data; } catch (error) {
+    if (!isRead(name) || !retryable(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return (await call()).data;
+  }
 }
 
-export const getCurrentUser = async () => (await invoke<void, { user: PortalUser }>("getCurrentUser")).user;
-export const updateCurrentUser = async (firstName: string, lastName: string) =>
-  (await invoke("updateCurrentUser", { firstName, lastName }) as { user: PortalUser }).user;
-export const requestLoginCode = (email: string) => invoke<{ email: string }, { challengeId: string }>("requestLoginCode", { email });
-export const verifyLoginCode = (challengeId: string, code: string) => invoke<{ challengeId: string; code: string }, { customToken: string }>("verifyLoginCode", { challengeId, code });
-export const revokeMySessions = () => invoke("revokeMySessions");
-export const adminListUsers = (data: { query?: string; cursor?: string } = {}) => invoke<typeof data, { users: PortalUser[]; cursor: string | null }>("adminListUsers", data);
-export const adminUpdateUserAccess = (data: { uid: string; role: UserRole; status: "active" | "disabled"; enabledMiniApps: ManagedMiniAppId[] }) => invoke<typeof data, { user: PortalUser }>("adminUpdateUserAccess", data);
-export interface ContactInquiryListRequest { archiveState: "active" | "archived"; inquiryType: ContactInquiryType | "all"; query: string; cursor?: number; pageSize?: number }
-export interface ContactInquiryListResponse { inquiries: ContactInquiry[]; counts: ContactInquiryCounts; nextCursor: number | null; total: number; limited: boolean }
-export const listContactInquiries = (data: ContactInquiryListRequest) => invoke<ContactInquiryListRequest, ContactInquiryListResponse>("listContactInquiries", data);
-export const archiveContactInquiry = (inquiryId: string) => invoke<{ inquiryId: string }, { inquiry: ContactInquiry }>("archiveContactInquiry", { inquiryId });
-export const restoreContactInquiry = (inquiryId: string) => invoke<{ inquiryId: string }, { inquiry: ContactInquiry }>("restoreContactInquiry", { inquiryId });
+export function messageOf(error: unknown, fallback: string) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
+  const message = error instanceof Error ? error.message : "";
+  if (!message || code.endsWith("internal")) return fallback;
+  return message;
+}
+
+export type InquiryLegacy = Record<string, unknown>;
+export type Inquiry = { id: string; inquiryType: string; productName?: string; name: string; email?: string; company?: string; phone?: string; message: string; createdAt: string | null; archived: boolean; legacy?: InquiryLegacy };
+export type InquiryList = { inquiries: Inquiry[]; total: number; nextCursor: null };
+export const listContactInquiries = (data: { archived: boolean; query?: string }) => invoke<typeof data, InquiryList>("listContactInquiries", data);
+export const archiveContactInquiry = (inquiryId: string) => invoke("archiveContactInquiry", { inquiryId });
+export const restoreContactInquiry = (inquiryId: string) => invoke("restoreContactInquiry", { inquiryId });
+
+export type Profile = { firstName: string; lastName: string; email: string; photo: string | null };
+export type Access = { type: UserType | null; miniApps: MiniAppId[]; profile: Profile | null };
+export const getAccess = () => invoke<undefined, Access>("getAccess");
+
+export type InviteStatus = "sent" | "delivered" | "delayed" | "bounced" | "complained" | "failed";
+export type UserInvite = { status: InviteStatus; at: string | null; by: string; error: string | null; checkedAt: string | null };
+export type InviteResult = { sent: true; id: string } | { sent: false; reason: string };
+export type UserRecord = { uid: string; firstName: string; lastName: string; photo: string | null; email: string; type: UserType; miniApps: MiniAppId[]; disabled: boolean; createdAt: string | null; updatedAt: string | null; createdBy: string; invite: UserInvite | null; lastSignInAt: string | null; you: boolean };
+export type UserInput = { firstName: string; lastName: string; email: string; type: UserType; miniApps: MiniAppId[] };
+export const listUsers = () => invoke<undefined, { users: UserRecord[] }>("listUsers");
+export const createUser = (data: UserInput) => invoke<typeof data, { uid: string; email: string; invite: InviteResult }>("createUser", data);
+export const updateUser = (uid: string, data: UserInput) => invoke("updateUser", { uid, ...data });
+export const setUserDisabled = (uid: string, disabled: boolean) => invoke("setUserDisabled", { uid, disabled });
+export const sendUserInvite = (uid: string) => invoke<{ uid: string }, { invite: InviteResult }>("sendUserInvite", { uid });
+
+export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);
+export const removeMyPhoto = () => invoke("removeMyPhoto");
+export const getMyPhoto = () => invoke<undefined, { dataUrl: string | null }>("getMyPhoto");

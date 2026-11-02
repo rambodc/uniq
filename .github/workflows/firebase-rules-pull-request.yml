@@ -15,7 +15,7 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix functions
       - run: npm install --global firebase-tools@14.15.2
-      - name: Test private storage and library lifecycle
+      - name: Test deny-all rules
         env:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: firebase emulators:exec --only firestore,storage "node --test tests/rules.test.mjs && npm test --prefix functions"

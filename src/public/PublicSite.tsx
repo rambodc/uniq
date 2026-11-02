@@ -1,4 +1,3 @@
-import { usePortalAuth } from "../portal/AuthContext";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   lazy,
@@ -749,7 +748,7 @@ function SafetyPage({ navigate }: { navigate: (path: string) => void }) {
 
 function ContactPage({ navigate }: { navigate: (path: string) => void }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [form, setForm] = useState({ inquiryType: "operations", name: "", email: "", phone: "", company: "", areaOfInterest: "", linkedinUrl: "", message: "", website: "" });
+  const [form, setForm] = useState({ inquiryType: "operations", name: "", email: "", phone: "", company: "", productName: "", message: "", website: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitState, setSubmitState] = useState<"idle" | "pending" | "success" | "error">("idle");
   const setField = (field: string, value: string) => {
@@ -764,10 +763,11 @@ function ContactPage({ navigate }: { navigate: (path: string) => void }) {
   const validate = () => {
     const next: Record<string, string> = {};
     if (form.name.trim().length < 2) next.name = "Enter your name.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = "Enter a valid email address.";
+    const email = form.email.trim();
+    const phone = form.phone.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = "Enter a valid email address.";
+    if (!email && !phone) next.email = "Enter an email address or a phone number.";
     if (form.message.trim().length < 10) next.message = "Tell us a little more about your inquiry.";
-    if (form.inquiryType === "careers" && !form.areaOfInterest.trim()) next.areaOfInterest = "Enter an area of interest.";
-    if (form.linkedinUrl) { try { const url = new URL(form.linkedinUrl.trim()); if (url.protocol !== "https:" || !/(^|\.)linkedin\.com$/i.test(url.hostname)) throw new Error(); } catch { next.linkedinUrl = "Use a full HTTPS LinkedIn URL."; } }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -778,7 +778,7 @@ function ContactPage({ navigate }: { navigate: (path: string) => void }) {
     try {
       const send = httpsCallable(functions, "submitContactInquiry");
       await send(form);
-      setForm({ inquiryType: form.inquiryType, name: "", email: "", phone: "", company: "", areaOfInterest: "", linkedinUrl: "", message: "", website: "" });
+      setForm({ inquiryType: form.inquiryType, name: "", email: "", phone: "", company: "", productName: "", message: "", website: "" });
       setSubmitState("success");
     } catch {
       setSubmitState("error");
@@ -819,12 +819,12 @@ function ContactPage({ navigate }: { navigate: (path: string) => void }) {
         </Reveal>
         <Reveal>
           <form ref={formRef} className="contact-inquiry-form" onSubmit={submit} noValidate>
-            <fieldset><legend>Inquiry type</legend><div className="contact-type-picker">{[["operations", "Operations"], ["general", "General"], ["careers", "Careers"]].map(([value, label]) => <label className={form.inquiryType === value ? "active" : ""} key={value}><input type="radio" name="inquiryType" value={value} checked={form.inquiryType === value} onChange={() => chooseType(value)} />{label}</label>)}</div></fieldset>
+            <fieldset><legend>Inquiry type</legend><div className="contact-type-picker">{[["operations", "Operations"], ["product", "Product"], ["general", "General"], ["careers", "Careers"]].map(([value, label]) => <label className={form.inquiryType === value ? "active" : ""} key={value}><input type="radio" name="inquiryType" value={value} checked={form.inquiryType === value} onChange={() => chooseType(value)} />{label}</label>)}</div></fieldset>
             <label>Name<input value={form.name} onChange={(e) => setField("name", e.target.value)} maxLength={100} aria-invalid={Boolean(errors.name)} /><small>{errors.name}</small></label>
-            <label>Email<input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} maxLength={254} aria-invalid={Boolean(errors.email)} /><small>{errors.email}</small></label>
+            <label>Email<input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} maxLength={200} aria-invalid={Boolean(errors.email)} /><small>{errors.email}</small></label>
             <label>Phone <span>Optional</span><input type="tel" value={form.phone} onChange={(e) => setField("phone", e.target.value)} maxLength={40} /></label>
-            {form.inquiryType === "operations" && <label>Company <span>Optional</span><input value={form.company} onChange={(e) => setField("company", e.target.value)} maxLength={120} /></label>}
-            {form.inquiryType === "careers" && <><label>Area of interest<input value={form.areaOfInterest} onChange={(e) => setField("areaOfInterest", e.target.value)} maxLength={120} aria-invalid={Boolean(errors.areaOfInterest)} /><small>{errors.areaOfInterest}</small></label><label>LinkedIn URL <span>Optional</span><input type="url" value={form.linkedinUrl} onChange={(e) => setField("linkedinUrl", e.target.value)} maxLength={500} placeholder="https://linkedin.com/in/..." aria-invalid={Boolean(errors.linkedinUrl)} /><small>{errors.linkedinUrl}</small></label></>}
+            <label>Company <span>Optional</span><input value={form.company} onChange={(e) => setField("company", e.target.value)} maxLength={120} /></label>
+            <label>Product <span>Optional</span><input value={form.productName} onChange={(e) => setField("productName", e.target.value)} maxLength={120} /></label>
             <label className="contact-message">Message<textarea value={form.message} onChange={(e) => setField("message", e.target.value)} maxLength={3000} rows={6} aria-invalid={Boolean(errors.message)} /><small>{errors.message}</small></label>
             <label className="contact-honeypot" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => setField("website", e.target.value)} /></label>
             <button className="button-primary" disabled={submitState === "pending"}>{submitState === "pending" ? "Sending…" : "Send inquiry"}<b aria-hidden="true">↗</b></button>
@@ -1004,7 +1004,6 @@ function Footer({
 
 export default function App() {
   const portalNavigate = useNavigate();
-  const { user: account } = usePortalAuth();
   const [path, setPath] = useState(() => {
     const normalized = validPath(location.pathname);
     if (normalized !== location.pathname)
@@ -1042,7 +1041,7 @@ export default function App() {
     setPath(normalized);
     window.scrollTo(0, 0);
   }, []);
-  const lab = useCallback(() => portalNavigate(account ? account.role === "member" ? "/member" : "/portal" : "/signin"), [portalNavigate, account]);
+  const lab = useCallback(() => portalNavigate("/signin"), [portalNavigate]);
   useEffect(() => {
     const route = seoByPath.get(path);
     if (route) applySeo(route);

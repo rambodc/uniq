@@ -2,7 +2,7 @@ name: "Production: Firebase Rules"
 on:
   push:
     branches: [production]
-    paths: ["functions/scripts/verify-fluid-well-indexes.js", "firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
+    paths: ["firestore.rules", "storage.rules", "storage.cors.json", "firestore.indexes.json", "tests/rules.test.mjs", "firebase.json", "package.json", "package-lock.json", ".github/workflows/firebase-rules-merge.yml"]
   workflow_dispatch:
 concurrency: { group: rules-production, cancel-in-progress: false }
 jobs:
@@ -12,27 +12,6 @@ jobs:
     permissions: { id-token: write, contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: Check for rule or storage configuration changes
-        id: changes
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          python3 - <<'PYCODE'
-          import json, os, subprocess
-          before = os.environ.get("BEFORE_SHA", "")
-          changed = True
-          if before and set(before) != {"0"}:
-              paths = set(subprocess.check_output(["git", "diff", "--name-only", before, os.environ["GITHUB_SHA"]], text=True).splitlines())
-              changed = bool(paths & {"firestore.rules", "storage.rules", "storage.cors.json", "scripts/configure-fluid-storage.py", "firestore.indexes.json", ".firebaserc"})
-              if "firebase.json" in paths:
-                  previous = json.loads(subprocess.check_output(["git", "show", before + ":firebase.json"], text=True))
-                  with open("firebase.json") as config:
-                      current = json.load(config)
-                  changed = changed or any(previous.get(key) != current.get(key) for key in ("firestore", "storage"))
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write("deploy=" + str(changed).lower() + "\n")
-          PYCODE
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - uses: actions/setup-java@v4
@@ -45,20 +24,11 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
-      - uses: google-github-actions/setup-gcloud@v2
-      - name: Configure Fluid Labs Storage access
-        if: steps.changes.outputs.deploy == 'true'
-        run: python3 scripts/configure-fluid-storage.py
       - run: npm ci
       - run: npm ci --prefix functions
       - run: npm install --global firebase-tools@14.15.2
-      - name: Test shared storage and well lifecycle
+      - name: Test deny-all rules
         env:
           FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
         run: firebase emulators:exec --only firestore,storage "node --test tests/rules.test.mjs && npm test --prefix functions"
-      - if: steps.changes.outputs.deploy == 'true'
-        run: firebase deploy --only firestore:rules,firestore:indexes,storage --project uniqenergy-de71c --non-interactive --message "CI rules deploy"
-      - name: Verify Fluid Labs indexes and real queries
-        env:
-          FIREBASE_CONFIG: '{"projectId":"uniqenergy-de71c","storageBucket":"uniqenergy-de71c.firebasestorage.app"}'
-        run: node functions/scripts/verify-fluid-well-indexes.js
+      - run: firebase deploy --only firestore:rules,firestore:indexes,storage --project uniqenergy-de71c --non-interactive --force --message "CI rules deploy"

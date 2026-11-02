@@ -2,7 +2,7 @@ name: "Production: Firebase Hosting"
 on:
   push:
     branches: [production]
-    paths: ["src/**", "scripts/wait-for-api-workflows.py", "public/**", "index.html", "package.json", "package-lock.json", "vite.config.ts", "firebase.json", ".firebaserc", ".github/workflows/firebase-hosting-merge.yml"]
+    paths: ["src/**", "functions/miniApps.js", "scripts/wait-for-api-workflows.py", "public/**", "index.html", "package.json", "package-lock.json", "vite.config.ts", "firebase.json", ".firebaserc", ".github/workflows/firebase-hosting-merge.yml"]
   workflow_dispatch:
 concurrency: { group: hosting-production, cancel-in-progress: false }
 jobs:
@@ -17,8 +17,6 @@ jobs:
       VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
       VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
       VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-      VITE_LSD_TILE_URL: ${{ vars.VITE_LSD_TILE_URL }}
-      VITE_LSD_TILE_ATTRIBUTION: ${{ vars.VITE_LSD_TILE_ATTRIBUTION }}
       VITE_APPCHECK_SITE_KEY: ${{ secrets.VITE_APPCHECK_SITE_KEY }}
     steps:
       - uses: actions/checkout@v4
