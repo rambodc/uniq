@@ -129,6 +129,7 @@
 .inv-lines-ticket li{grid-template-columns:minmax(0,1.6fr) minmax(4.5rem,.7fr) auto auto auto}
 .inv-lines-head li{color:var(--portal-muted);font-size:12px}
 .inv-lines span{overflow-wrap:anywhere}
+.inv-variants{display:block;color:var(--portal-muted);font-size:12px;font-weight:500}
 .portal-panel h2{margin:0;font-size:22px}
 .inv-chat{list-style:none;display:grid;gap:12px;margin:0 0 16px;padding:0}
 .inv-chat li{display:grid;gap:4px;max-width:70ch;padding:14px 16px;border:1px solid var(--portal-line);border-radius:18px;background:var(--portal-panel)}

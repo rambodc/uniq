@@ -36,6 +36,7 @@ Doc ids use letters, numbers, `_` and `-` only. Do not put `/` in an id. Dates a
 | --- | --- | --- |
 | `config.graceDays` | number | A delivery is "not logged" only after this many days. Default 3. |
 | `config.checksStartDate` | `YYYY-MM-DD` | Ignore warehouse tickets, app entries, and stock snapshots dated before this day (America/Edmonton). The live main document stores this beside `config` as `checksStartDate` (`2026-10-30`); either place is read. Blank means no cutoff. |
+| `config.ignoreStockNames` | string[] | Stock rows whose name contains one of these phrases (case-insensitive) are skipped by the negative-stock and warehouse-drift checks. Default: `Empty Drums`, `Empty Totes`, `MSDS Book`, `Pallets`. |
 | `config.valuation` | `"pricelist"` or `"cost"` | Dollar values use `products.price` or `products.cost`. Default `pricelist`. |
 | `config.receivedWindowDays` | number | App receipts match tickets within this many days. Default 5. |
 | `config.staleReportDays` | number | No report for longer than this, with product still on the well, raises `should_be_returned`. Default 7. |
@@ -107,7 +108,7 @@ A ticket matches a well on `lsdNorm` when the ticket number did not find an app 
 | `company` | `uniqenergy` or `alchem` |
 | `warehouseCode` | string |
 | `warehouseName` | string |
-| `items` | `{ code, name, unitWeight, onHand, committed, inTransit, available }[]` |
+| `items` | `{ code, productId, name, unit, unitWeight, onHand, committed, inTransit, available, variants }[]`. `code` is often blank. Yesterday and today are matched on the first of `code`, `productId`, or `name`, compared after lowercasing and stripping punctuation. `variants` is an optional list of merged pack sizes (`name`, `unit` or `pack` or `size`, and `qty` or `onHand`). |
 
 Optional movement on each item, or a parallel `movement` array of the same shape: `{ code, openBal, mr, st, ct, dt, at, closeBal }`. Checks explain the on-hand change from tickets. They flag negative `onHand` or `available`, and any change the tickets do not explain.
 

@@ -46,7 +46,10 @@ export const inventoryPreview: InventoryPreviewData = {
   },
   warehouses: [{
     id: "2026-11-02_xpress_XV-AB", date, source: "xpress", company: "uniqenergy", warehouseCode: "XV-AB", warehouseName: "Xpress Vendor Alberta", previousDate: "2026-11-01",
-    items: [{ code: "ELX", name: "Elixir", unitWeight: 18, onHand: 40, committed: 4, inTransit: 0, available: 36, previousOnHand: 44, delta: -4 }],
+    items: [
+      { key: "app elixir", code: "", productId: "app_elixir", name: "Elixir", unit: "pail", unitWeight: 18, onHand: 40, committed: 4, inTransit: 0, available: 36, previousOnHand: 44, delta: -4, variants: [{ unit: "pail", qty: 30 }, { unit: "tote", qty: 10 }] },
+      { key: "fusion", code: "", productId: "app_fusion", name: "Fusion", unit: "pail", unitWeight: 20, onHand: 12, committed: 0, inTransit: 0, available: 12, previousOnHand: 12, delta: 0, variants: [] },
+    ],
   }],
   messages: [],
 };

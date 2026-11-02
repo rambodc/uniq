@@ -8,7 +8,7 @@ import { getStorage } from "firebase-admin/storage";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
-import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
+import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, stockItemKey, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. Answer only from the tool results. Never invent ticket numbers, quantities, or dollar amounts. Cite ticket ids and well names in the answer. If the tools do not contain the answer, say so. Keep the answer short.";
@@ -291,15 +291,17 @@ export const inventoryBotListWarehouses = onCall(callable, async (request) => {
   }
   const warehouses = [...latest.values()].map((current) => {
     const prior = previous.get(`${current.source}|${current.warehouseCode}`);
-    const priorItems = new Map((prior?.items || []).map((item) => [String(item.code || ""), item]));
+    const priorItems = new Map((prior?.items || []).map((item) => [stockItemKey(item), item]));
     const items = (current.items || []).map((item) => {
-      const before = priorItems.get(String(item.code || ""));
+      const key = stockItemKey(item);
+      const before = priorItems.get(key);
       const onHand = asNumber(item.onHand);
       const previousOnHand = before ? asNumber(before.onHand) : null;
       return {
-        code: item.code || "", name: item.name || "", unitWeight: asNumber(item.unitWeight),
+        key, code: item.code || "", productId: item.productId || "", name: item.name || "", unit: item.unit || "", unitWeight: asNumber(item.unitWeight),
         onHand, committed: asNumber(item.committed), inTransit: asNumber(item.inTransit), available: asNumber(item.available),
         previousOnHand, delta: onHand != null && previousOnHand != null ? Math.round((onHand - previousOnHand) * 1000) / 1000 : null,
+        variants: Array.isArray(item.variants) ? item.variants : [],
       };
     });
     return { id: current.id, date: current.date || "", source: current.source || "", company: current.company || "", warehouseCode: current.warehouseCode || "", warehouseName: current.warehouseName || current.warehouseCode || "", previousDate: prior?.date || null, items };
@@ -352,10 +354,10 @@ async function runTool(name, args) {
     const current = rows[0];
     if (!current) return { error: "Warehouse not found." };
     const prior = rows[1];
-    const priorItems = new Map((prior?.items || []).map((item) => [String(item.code || ""), item]));
+    const priorItems = new Map((prior?.items || []).map((item) => [stockItemKey(item), item]));
     return {
       date: current.date, source: current.source, warehouseCode: current.warehouseCode, warehouseName: current.warehouseName || "",
-      items: (current.items || []).slice(0, 80).map((item) => ({ code: item.code || "", name: item.name || "", onHand: asNumber(item.onHand), available: asNumber(item.available), previousOnHand: asNumber(priorItems.get(String(item.code || ""))?.onHand) })),
+      items: (current.items || []).slice(0, 80).map((item) => ({ key: stockItemKey(item), code: item.code || "", productId: item.productId || "", name: item.name || "", unit: item.unit || "", onHand: asNumber(item.onHand), available: asNumber(item.available), previousOnHand: asNumber(priorItems.get(stockItemKey(item))?.onHand), variants: Array.isArray(item.variants) ? item.variants : [] })),
     };
   }
   if (name === "find_product") {
