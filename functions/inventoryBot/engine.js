@@ -299,12 +299,53 @@ function identityOf(index, code, name) {
   return { product, key, name: product?.name || name || code || "Unknown product" };
 }
 
-function priceOf(product, fallback, valuation) {
-  const field = valuation === "cost" ? "cost" : "price";
-  const listed = product?.[field];
-  if (typeof listed === "number" && Number.isFinite(listed)) return listed;
-  if (typeof fallback === "number" && Number.isFinite(fallback)) return fallback;
+function money(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
   return null;
+}
+
+function appLinePrice(line) {
+  if (!line) return null;
+  return money(line.price) ?? money(line.unitCost) ?? money(line.unitcost);
+}
+
+function loggedUnit(line) {
+  if (!line) return "";
+  return String(line.unit || line.pack || line.packSize || line.size || "").trim();
+}
+
+function productUnit(product) {
+  if (!product) return "";
+  return String(product.unit || product.pack || product.packSize || product.size || "").trim();
+}
+
+function unitToken(value) {
+  const token = String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token;
+}
+
+function unitsDiffer(logged, listed) {
+  const left = unitToken(logged);
+  const right = unitToken(listed);
+  if (!left || !right) return false;
+  return left !== right;
+}
+
+/** App line price first. The pricelist (or cost) is used only when that price is missing and the product unit matches the logged unit. */
+function unitPrice(row, valuation) {
+  const app = appLinePrice(row);
+  if (app != null) return app;
+  const product = row?.product;
+  if (!product || unitsDiffer(loggedUnit(row), productUnit(product))) return null;
+  const listed = valuation === "cost" ? product.cost : product.price;
+  return typeof listed === "number" && Number.isFinite(listed) ? listed : null;
+}
+
+function catalogPrice(product, valuation) {
+  if (!product) return null;
+  const listed = valuation === "cost" ? product.cost : product.price;
+  return typeof listed === "number" && Number.isFinite(listed) ? listed : null;
 }
 
 function dollars(qty, price) {
@@ -376,6 +417,7 @@ function sumLines(tickets, index, accept) {
       const item = identityOf(index, line.code, line.name);
       const current = groups.get(item.key) || { ...item, qty: 0 };
       current.qty += qtyOf(line);
+      if (!current.unit && loggedUnit(line)) current.unit = loggedUnit(line);
       groups.set(item.key, current);
       const ids = ticketIds.get(item.key) || [];
       if (!ids.includes(ticket.id)) ids.push(ticket.id);
@@ -390,10 +432,13 @@ function remainingMap(well, index) {
   const prices = new Map();
   for (const line of remainingList(well)) {
     const item = identityOf(index, line.code, line.product || line.name);
-    const current = groups.get(item.key) || { ...item, qty: 0 };
+    const current = groups.get(item.key) || { ...item, qty: 0, price: null, unit: "" };
     current.qty += qtyOf(line);
+    const linePrice = appLinePrice(line);
+    if (current.price == null && linePrice != null) current.price = linePrice;
+    if (!current.unit && loggedUnit(line)) current.unit = loggedUnit(line);
     groups.set(item.key, current);
-    if (Number.isFinite(Number(line.price))) prices.set(item.key, Number(line.price));
+    if (current.price != null) prices.set(item.key, current.price);
   }
   return { groups, prices };
 }
@@ -415,9 +460,10 @@ function appEntryLines(entry, index) {
   const groups = new Map();
   for (const line of entry.lines || []) {
     const item = identityOf(index, line.code, line.name || line.product);
-    const current = groups.get(item.key) || { ...item, qty: 0, price: null };
+    const current = groups.get(item.key) || { ...item, qty: 0, price: null, unit: "" };
     current.qty += qtyOf(line);
-    if (current.price == null && typeof line.price === "number") current.price = line.price;
+    if (current.price == null) current.price = appLinePrice(line);
+    if (!current.unit && loggedUnit(line)) current.unit = loggedUnit(line);
     groups.set(item.key, current);
   }
   return groups;
@@ -457,7 +503,7 @@ function deliveryIssues(issues, { date, settings, tickets, wells, index, appEntr
     for (const [key, row] of groups) {
       const numbered = appEntries.some((entry) => entry.wellId === well.id && entry.kind === "received" && entry.parsed?.number && !entry.parsed.thirdParty);
       if (received.has(key) && !numbered) continue;
-      const price = priceOf(row.product, null, settings.valuation);
+      const price = unitPrice(row, settings.valuation);
       const value = dollars(row.qty, price);
       add(issues, {
         id: issueId(date, "delivered_not_logged", well.id, key),
@@ -652,7 +698,7 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
     const left = appEntryLines(entry, index);
     const right = pair ? appEntryLines(pair, index) : new Map();
     for (const key of new Set([...left.keys(), ...right.keys()])) {
-      const row = left.get(key) || right.get(key);
+      const row = transferRow(left.get(key), right.get(key));
       addTransferLine(groups, groupKey(sender, receiver, entry.date || pair?.date || "", entry.otherWellUWI), row, (left.get(key)?.qty || 0) - (right.get(key)?.qty || 0), settings);
     }
   }
@@ -710,17 +756,23 @@ function addTransferLine(groups, key, row, gap, settings) {
   const group = groups.get(key);
   if (!group || !row || Math.abs(gap) <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) return;
   const qty = Math.abs(gap);
-  const price = typeof row.price === "number" ? row.price : null;
-  const value = dollars(qty, priceOf(row.product, price, settings.valuation));
+  const value = dollars(qty, unitPrice(row, settings.valuation));
   const current = group.lines.get(row.key) || { name: row.name, qty: 0, value: 0 };
   current.qty += qty;
   current.value = Math.round((current.value + value) * 100) / 100;
   group.lines.set(row.key, current);
 }
 
+function transferRow(left, right) {
+  const base = left || right;
+  if (!base) return null;
+  const price = appLinePrice(left) ?? appLinePrice(right);
+  const unit = loggedUnit(left) || loggedUnit(right);
+  return { ...base, price: price ?? base.price ?? null, unit: unit || base.unit || "" };
+}
+
 function baseIssue({ date, rule, severity, well, key, row, title, detail, ticketIds, valuation, fallbackPrice }) {
-  const appPrice = typeof fallbackPrice === "number" ? fallbackPrice : (typeof row.price === "number" ? row.price : null);
-  const price = appPrice != null ? appPrice : priceOf(row.product, null, valuation);
+  const price = unitPrice({ ...row, price: fallbackPrice ?? row.price }, valuation);
   const value = dollars(row.qty, price);
   return {
     id: issueId(date, rule, well.id, key),
@@ -802,7 +854,7 @@ function rigMoveIssues(issues, { date, settings, wells, index, appEntries }) {
           claimed.add(`${previous.id}|${key}`);
           continue;
         }
-        const price = priceOf(row.product, before.prices.get(key), settings.valuation);
+        const price = unitPrice(row, settings.valuation);
         const value = dollars(missing, price);
         claimed.add(`${previous.id}|${key}`);
         add(issues, {
@@ -825,14 +877,14 @@ function returnIssues(issues, { date, settings, tickets, wells, index, claimed }
   for (const well of wells) {
     const stale = !well.lastReportDate || daysBetween(date, dayKey(well.lastReportDate)) > settings.staleReportDays;
     if (!isInactiveStatus(well.status) && !stale) continue;
-    const { groups, prices } = remainingMap(well, index);
+    const { groups } = remainingMap(well, index);
     const reportDay = dayKey(well.lastReportDate);
     for (const [key, row] of groups) {
       if (row.qty <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
       if (claimed?.has(`${well.id}|${key}`)) continue;
       const covered = tickets.some((ticket) => inTicketTypes(ticket.type, TRANSFER_TYPES) && matchWell(ticket, [well])?.id === well.id && (!reportDay || ticketDay(ticket) >= reportDay) && linesOf(ticket).some((line) => identityOf(index, line.code, line.name).key === key));
       if (covered) continue;
-      const price = priceOf(row.product, prices.get(key), settings.valuation);
+      const price = unitPrice(row, settings.valuation);
       const value = dollars(row.qty, price);
       const why = isInactiveStatus(well.status) ? `status is ${well.status}` : `no app report in more than ${settings.staleReportDays} days`;
       add(issues, {
@@ -869,7 +921,7 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
       const availableNegative = Number.isFinite(available) && available < -QTY_TOLERANCE;
       if (onHandNegative || availableNegative) {
         const row = identityOf(index, item.code, item.name);
-        const price = priceOf(row.product, null, settings.valuation);
+        const price = unitPrice({ ...row, unit: item.unit || item.pack || item.packSize }, settings.valuation);
         const parts = [];
         if (onHandNegative) parts.push(`${roundQty(onHand)} on hand`);
         if (availableNegative) parts.push(`${roundQty(available)} available`);
@@ -920,7 +972,7 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
       const primary = explained.has(key) ? key : (explainAlias.get(key) || (explained.has(row.key) ? row.key : explainAlias.get(row.key)));
       const net = primary ? explained.get(primary) || 0 : 0;
       if (Math.abs(delta - net) <= QTY_TOLERANCE) continue;
-      const price = priceOf(row.product, null, settings.valuation);
+      const price = unitPrice({ ...row, unit: item.unit || item.pack || item.packSize }, settings.valuation);
       const gap = delta - net;
       const value = dollars(gap, price);
       add(issues, {
@@ -943,7 +995,7 @@ function priceIssues(issues, { date, settings, tickets, index }) {
     if (!inTicketTypes(ticket.type, DELIVERY_TYPES) || ticketDay(ticket) !== date) continue;
     for (const line of linesOf(ticket)) {
       const row = identityOf(index, line.code, line.name);
-      if (priceOf(row.product, null, settings.valuation) != null) continue;
+      if (catalogPrice(row.product, settings.valuation) != null) continue;
       if (isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
       if (!row.product) {
         unlinked.push({ name: row.name, qty: qtyOf(line), ticketId: ticket.id });
