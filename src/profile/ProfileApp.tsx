@@ -76,7 +76,7 @@ export default function ProfileApp() {
       <h2>Photo</h2>
       <div className="portal-photo">
         <Avatar src={full ?? profile.photo} firstName={profile.firstName} lastName={profile.lastName} size={96} />
-        <div>
+        <div className="portal-photo-copy">
           <p>JPEG, PNG or WebP, up to 5 MB. It is cropped to a square. Only you can change it.</p>
           <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => void choose(event.target.files?.[0])} />
           <div className="portal-row">
