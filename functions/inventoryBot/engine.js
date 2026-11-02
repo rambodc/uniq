@@ -38,6 +38,13 @@ export function rigNorm(value) {
   return String(value ?? "").replace(/\D/g, "").replace(/^0+/, "");
 }
 
+/** Same rig number for two contractors is not the same rig. */
+export function rigIdentity(record) {
+  const rig = rigNorm(record?.rig);
+  if (!rig) return "";
+  return `${nameNorm(record?.contractor || "")}|${rig}`;
+}
+
 export function nameNorm(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -190,7 +197,7 @@ const PREFIX_PAIRS = [["NK", "CANNK"], ["BRKS", "SBBRK"]];
 export function ticketNorm(value) {
   const exact = String(value ?? "").toUpperCase().replace(/[^A-Z0-9-]/g, "");
   if (!exact) return null;
-  if (/^\d+$/.test(exact)) return { exact, prefix: "", type: "", number: String(Number(exact)), thirdParty: true };
+  if (/^\d+$/.test(exact) || !exact.includes("-")) return { exact, prefix: "", type: "", number: "", thirdParty: true };
   const typed = exact.match(/^([A-Z][A-Z0-9]*?)-([A-Z]{1,4})-(\d+)$/);
   if (typed) return { exact, prefix: typed[1], type: typed[2], number: String(Number(typed[3])), thirdParty: false };
   const plain = exact.match(/^([A-Z][A-Z0-9]*?)-(\d+)$/);
@@ -205,10 +212,8 @@ export function warehouseTicketNumber(ticket) {
 }
 
 function prefixClose(left, right) {
-  if (left === right) return true;
   if (!left || !right) return false;
-  const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
-  if (shorter.length >= 2 && longer.endsWith(shorter)) return true;
+  if (left === right) return true;
   return PREFIX_PAIRS.some(([a, b]) => (a === left && b === right) || (a === right && b === left));
 }
 
@@ -466,8 +471,13 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
       if (level !== "none") numbered.push({ ticket, level });
     }
     const exact = numbered.filter((hit) => hit.level === "exact");
-    const chosen = exact.length ? exact : numbered;
-    const level = exact.length ? "exact" : numbered.length ? "fuzzy" : "none";
+    let chosen = exact.length ? exact : numbered;
+    let level = exact.length ? "exact" : numbered.length ? "fuzzy" : "none";
+    const sources = new Set(chosen.map((hit) => hit.ticket.source).filter(Boolean));
+    if (level === "fuzzy" && sources.size > 1) {
+      chosen = [];
+      level = "none";
+    }
     const fallback = level === "none" ? fallbackTickets(entry, tickets, wells, index, settings.receivedWindowDays) : [];
     const matched = level === "none" ? fallback : chosen.map((hit) => hit.ticket);
     if (level === "fuzzy") {
@@ -507,11 +517,38 @@ function ticketLinkIssues(issues, { date, settings, tickets, wells, index, appEn
   }
 }
 
+function periodMovement(well, side, index, start) {
+  const reports = Array.isArray(well.reports) ? well.reports.filter((report) => report && typeof report === "object").slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))) : [];
+  let currentLines = well[side] || [];
+  let previousLines = null;
+  if (reports.length >= 2) {
+    const latest = reports.at(-1);
+    const prior = reports.at(-2);
+    if (start && (dayKey(latest.date) < start || dayKey(prior.date) < start)) return new Map();
+    currentLines = latest[side] || [];
+    previousLines = prior[side] || [];
+  } else if (Array.isArray(well[side === "received" ? "previousReceived" : "previousReturned"])) {
+    previousLines = well[side === "received" ? "previousReceived" : "previousReturned"];
+  } else {
+    return new Map();
+  }
+  const current = movementMap(currentLines, index);
+  const previous = movementMap(previousLines, index);
+  const delta = new Map();
+  for (const key of new Set([...current.keys(), ...previous.keys()])) {
+    const qty = (current.get(key)?.qty || 0) - (previous.get(key)?.qty || 0);
+    if (qty <= QTY_TOLERANCE) continue;
+    delta.set(key, { ...(current.get(key) || previous.get(key)), qty });
+  }
+  return delta;
+}
+
 function receiptIssues(issues, { date, settings, tickets, wells, index, appEntries }) {
   const windowDays = settings.receivedWindowDays;
   for (const well of wells) {
-    const received = movementMap(well.received, index);
-    const returned = movementMap(well.returned, index);
+    if (appEntries.some((entry) => entry.wellId === well.id && !entry.lifted && (entry.kind === "received" || entry.kind === "returned"))) continue;
+    const received = periodMovement(well, "received", index, settings.checksStartDate);
+    const returned = periodMovement(well, "returned", index, settings.checksStartDate);
     const wellTickets = tickets.filter((ticket) => matchWell(ticket, [well])?.id === well.id);
     for (const [key, row] of received) {
       if (appEntries.some((entry) => entry.wellId === well.id && entry.kind === "received" && entry.parsed?.number && !entry.parsed.thirdParty && appEntryLines(entry, index).has(key))) continue;
@@ -574,12 +611,24 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
     const byStamp = stamp ? outgoing.find((other) => !used.has(other) && transferStamp(other) === stamp) : null;
     if (byStamp) return byStamp;
     const well = wells.find((item) => item.id === entry.wellId);
-    return outgoing.find((other) => {
+    const byWell = outgoing.find((other) => {
       if (used.has(other)) return false;
       const otherWell = wells.find((item) => item.id === other.wellId);
       const fromHere = well && lsdNorm(other.otherWellUWI) === (well.lsdNorm || lsdNorm(well.lsd));
       const toThere = otherWell && lsdNorm(entry.otherWellUWI) === (otherWell.lsdNorm || lsdNorm(otherWell.lsd));
       return fromHere && toThere;
+    });
+    if (byWell) return byWell;
+    const lines = appEntryLines(entry, index);
+    if (!entry.date || !lines.size) return null;
+    return outgoing.find((other) => {
+      if (used.has(other) || !other.date || !within(entry.date, other.date, 1)) return false;
+      const otherLines = appEntryLines(other, index);
+      if (otherLines.size !== lines.size) return false;
+      for (const [key, row] of lines) {
+        if (Math.abs((otherLines.get(key)?.qty || 0) - row.qty) > QTY_TOLERANCE) return false;
+      }
+      return true;
     });
   }
   for (const entry of incoming) {
@@ -636,7 +685,7 @@ function baseIssue({ date, rule, severity, well, key, row, title, detail, ticket
 function rigMoveIssues(issues, { date, settings, tickets, wells, index }) {
   const groups = new Map();
   for (const well of wells) {
-    const rig = rigNorm(well.rig);
+    const rig = rigIdentity(well);
     if (!rig) continue;
     const list = groups.get(rig) || [];
     list.push(well);
@@ -786,16 +835,32 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
 
 function priceIssues(issues, { date, settings, tickets, index }) {
   const missing = new Map();
+  const unlinked = [];
   for (const ticket of tickets) {
     if (!inTicketTypes(ticket.type, DELIVERY_TYPES) || ticketDay(ticket) !== date) continue;
     for (const line of linesOf(ticket)) {
       const row = identityOf(index, line.code, line.name);
       if (priceOf(row.product, null, settings.valuation) != null) continue;
+      if (!row.product) {
+        unlinked.push({ name: row.name, qty: qtyOf(line), ticketId: ticket.id });
+        continue;
+      }
       const current = missing.get(row.key) || { ...row, qty: 0, ticketIds: [] };
       current.qty += qtyOf(line);
       if (!current.ticketIds.includes(ticket.id)) current.ticketIds.push(ticket.id);
       missing.set(row.key, current);
     }
+  }
+  if (unlinked.length) {
+    const names = [...new Set(unlinked.map((item) => item.name))].slice(0, 12).join(", ");
+    add(issues, {
+      id: issueId(date, "missing_price", "unpriced-items"),
+      date, rule: "missing_price", severity: "low",
+      title: "Unpriced items",
+      detail: `${unlinked.length} delivered ${unlinked.length === 1 ? "line is" : "lines are"} not linked to a product, so ${unlinked.length === 1 ? "it has" : "they have"} no pricelist price: ${names}.`,
+      wellId: "", rig: "", lsd: "", ticketIds: [...new Set(unlinked.map((item) => item.ticketId))],
+      products: [], dollarValue: 0, status: "open", note: "", resolvedBy: "", resolvedAt: null,
+    });
   }
   for (const [key, row] of missing) {
     add(issues, {
@@ -888,13 +953,22 @@ export function summaryOf({ date, issues, mimCharges, sources, costs }) {
   return { text: sentences.join(" "), issueCounts: counts, dollarsAtRisk, mimTtCharges: Math.round((mimCharges || 0) * 100) / 100, appProductCost: costs?.appProductCost || 0, appServiceCost: costs?.appServiceCost || 0, appTotalCost: costs?.appTotalCost || 0 };
 }
 
-function liftedEntries(wells) {
+function liftedEntries(wells, appTickets) {
+  const coveredReports = new Set();
+  const coveredWells = new Set();
+  for (const entry of appTickets) {
+    if (!entry.wellId) continue;
+    coveredWells.add(entry.wellId);
+    if (entry.reportId) coveredReports.add(`${entry.wellId}|${entry.reportId}`);
+  }
   const entries = [];
   for (const well of wells) {
     for (const [side, kind] of [["received", "received"], ["returned", "returned"]]) {
       for (const [index, line] of (well[side] || []).entries()) {
         if (!line?.description && !line?.rawTicket) continue;
-        entries.push(normalizeAppTicket({ ...line, id: `${well.id}_${side}_${index}`, wellId: well.id, kind, date: line.date }));
+        const reportId = line.reportId || well.lastReportId || "";
+        if (coveredWells.has(well.id) && (!reportId || coveredReports.has(`${well.id}|${reportId}`) || !appTickets.some((entry) => entry.wellId === well.id && entry.reportId))) continue;
+        entries.push(normalizeAppTicket({ ...line, id: `${well.id}_${side}_${index}`, wellId: well.id, kind, date: line.date, lifted: true }));
       }
     }
   }
@@ -911,7 +985,8 @@ export function runChecks({ date, config, tickets = [], wells = [], products = [
     lastReportId: well.lastReportId || well.newestReportId || "",
     remaining: remainingList(well),
   }));
-  const appEntries = [...appTickets.map((entry) => normalizeAppTicket(entry)), ...liftedEntries(preparedWells)].filter((entry) => datedOnOrAfter(entry.date, settings.checksStartDate));
+  const normalizedApps = appTickets.map((entry) => normalizeAppTicket(entry));
+  const appEntries = [...normalizedApps, ...liftedEntries(preparedWells, normalizedApps)].filter((entry) => datedOnOrAfter(entry.date, settings.checksStartDate));
   const stockInWindow = (stock || []).filter((row) => datedOnOrAfter(row.date, settings.checksStartDate));
   const issues = new Map();
   const input = { date, settings, tickets: preparedTickets, wells: preparedWells, index, stock: stockInWindow, appEntries };
