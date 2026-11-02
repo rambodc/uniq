@@ -336,6 +336,7 @@ test("blank stock codes match on product id or name, and drums and pallets are n
   assert.equal(stockItemKey({ code: " ", name: "Elixir 100" }), "elixir 100");
   assert.deepEqual(configFromMain({}).ignoreStockNames, DEFAULT_IGNORE_STOCK_NAMES);
   assert.equal(isIgnoredStockItem({ name: "Used Empty Drums" }, DEFAULT_IGNORE_STOCK_NAMES), true);
+  assert.equal(isIgnoredStockItem({ name: "SHRINK WRAP" }), true);
   const result = runChecks({
     date: "2026-11-02", products,
     stock: [
@@ -556,6 +557,65 @@ test("a repeated issue id with a different payload keeps both", () => {
   assert.equal(issues.size, 2);
   assert.equal(issues.get(first.id).dollarValue, 1000);
   assert.equal(issues.get(`${first.id}_2`).products[0].name, "Fusion");
+});
+
+test("a rig move waits until the old well is outside grace and the new well has a report", () => {
+  const durham = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "creek", name: "DURHAM CREEK", contractor: "Ensign", rig: "419", spudDate: "2026-10-01", lastReportDate: "2026-11-02", status: "active", remaining: [{ product: "Elixir", qty: 31, price: 250 }] }),
+      well({ id: "hz", name: "DURHAM 6HZ", contractor: "Ensign", rig: "419", spudDate: "2026-11-02", lastReportDate: "", status: "active", remaining: [] }),
+    ],
+  });
+  assert.equal(durham.issues.some((issue) => issue.rule === "lost_on_rig_move"), false);
+  const noReport = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", name: "Old Hole", contractor: "Ensign", rig: "419", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Elixir", qty: 4, price: 250 }] }),
+      well({ id: "new", name: "New Hole", contractor: "Ensign", rig: "419", spudDate: "2026-11-02", lastReportDate: null, remaining: [], received: [] }),
+    ],
+  });
+  assert.equal(noReport.issues.some((issue) => issue.rule === "lost_on_rig_move"), false);
+  const recent = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", contractor: "Ensign", rig: "419", spudDate: "2026-09-01", lastReportDate: "2026-11-01", status: "active", remaining: [{ product: "Elixir", qty: 4 }] }),
+      well({ id: "new", contractor: "Ensign", rig: "419", spudDate: "2026-11-02", lastReportDate: "2026-11-02", status: "active", remaining: [], received: [] }),
+    ],
+  });
+  assert.equal(recent.issues.some((issue) => issue.rule === "lost_on_rig_move"), false);
+});
+
+test("a transfer is one issue, and a missing sender is not dollars at risk", () => {
+  const grouped = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: "old", name: "Old Hole", lsd: "100/09-26-055-04W4/00", lsdNorm: "9-26-55-4W4" }),
+      well({ id: "new", name: "North Pad", lsd: "16-1-1-1W5", lsdNorm: "16-1-1-1W5" }),
+    ],
+    appTickets: [
+      { id: "new_r_0", wellId: "new", description: "Transfer-To Ticket: 1730000_transferTo_by-ann@uniqenergy.com,Transferring from FromWell (Old Hole at 100/09-26-055-04W4/00)", date: "2026-10-20", lines: [{ name: "Elixir", qty: 4, price: 250 }, { name: "Fusion", qty: 2, price: 100 }] },
+      { id: "old_r_0", wellId: "old", description: "Transfer-From Ticket: 1730000_transferFrom_by-ann@uniqenergy.com,Transferred inventory from the well: Old Hole,100/09-26-055-04W4/00, to the ImportedToWell: North Pad", date: "2026-10-20", lines: [{ name: "Elixir", qty: 1, price: 250 }] },
+    ],
+  });
+  const mismatch = grouped.issues.filter((issue) => issue.rule === "transfer_mismatch");
+  assert.equal(mismatch.length, 1);
+  assert.deepEqual(mismatch[0].products.map((line) => line.name).sort(), ["Elixir", "Fusion"]);
+  assert.equal(mismatch[0].dollarValue, 950);
+  assert.equal(grouped.summary.dollarsAtRisk, 950);
+  const missingSender = runChecks({
+    date: "2026-11-02", products,
+    wells: [well({ id: "new", name: "North Pad", lsd: "16-1-1-1W5", lsdNorm: "16-1-1-1W5" })],
+    appTickets: [{ id: "new_r_0", wellId: "new", kind: "transferIn", rawTicket: "1730000_transferTo_by-ann", otherWellUWI: "13-20-63-3W4", date: "2026-10-20", lines: [{ name: "Elixir", qty: 4, price: 250 }, { name: "Fusion", qty: 2, price: 100 }] }],
+  });
+  const unloaded = missingSender.issues.filter((issue) => issue.rule === "transfer_mismatch");
+  assert.equal(unloaded.length, 1);
+  assert.equal(unloaded[0].severity, "low");
+  assert.equal(unloaded[0].title, "Transfer sender not loaded");
+  assert.equal(unloaded[0].dollarValue, 0);
+  assert.equal(unloaded[0].products.length, 2);
+  assert.match(unloaded[0].detail, /13-20-63-3W4/);
+  assert.equal(missingSender.summary.dollarsAtRisk, 0);
 });
 
 test("pallet names are ignored on quantity and price checks", () => {

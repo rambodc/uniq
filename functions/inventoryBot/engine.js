@@ -12,7 +12,7 @@ export const OUTBOUND_TYPES = ["DT", "CT", "ST", "STx", "TT"];
 export const ADJUSTMENT_TYPES = ["AT"];
 export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "completed-reviewed", "closed", "suspended"];
 const QTY_TOLERANCE = 0.01;
-export const DEFAULT_IGNORE_STOCK_NAMES = ["Empty Drums", "Empty Totes", "MSDS Book", "Pallets"];
+export const DEFAULT_IGNORE_STOCK_NAMES = ["Empty Drums", "Empty Totes", "MSDS Book", "Pallets", "Shrink Wrap"];
 
 export function isTicketType(value, expected) {
   return String(value ?? "").trim().toLowerCase() === String(expected ?? "").trim().toLowerCase();
@@ -638,6 +638,7 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
       return true;
     });
   }
+  const groups = new Map();
   for (const entry of incoming) {
     const pair = partner(entry);
     if (!pair && outgoing.some((other) => !differentWell(entry, other))) {
@@ -645,38 +646,76 @@ function transferMismatchIssues(issues, { date, settings, wells, index, appEntri
       continue;
     }
     if (pair) used.add(pair);
-    const well = wells.find((item) => item.id === entry.wellId) || { id: entry.wellId || "transfer", name: "Receiving well", rig: "", lsd: "" };
+    const receiver = wells.find((item) => item.id === entry.wellId) || { id: entry.wellId || "transfer", name: "Receiving well", rig: "", lsd: "" };
+    const sender = (pair && wells.find((item) => item.id === pair.wellId)) || wellByUwi(wells, entry.otherWellUWI);
+    noteTransfer(groups, { sender, receiver, transferDay: entry.date || pair?.date || "", senderHint: entry.otherWellUWI });
     const left = appEntryLines(entry, index);
     const right = pair ? appEntryLines(pair, index) : new Map();
-    const keys = new Set([...left.keys(), ...right.keys()]);
-    for (const key of keys) {
+    for (const key of new Set([...left.keys(), ...right.keys()])) {
       const row = left.get(key) || right.get(key);
-      const gap = (left.get(key)?.qty || 0) - (right.get(key)?.qty || 0);
-      if (Math.abs(gap) <= QTY_TOLERANCE) continue;
-      const other = wells.find((item) => item.id === pair?.wellId);
-      add(issues, baseIssue({
-        date, rule: "transfer_mismatch", severity: "medium", well, key: `${entry.id || entry.rawTicket}-${key}`, row: { ...row, qty: gap },
-        title: `${row.name} transferred onto ${well.name || well.id} does not match the sending well`,
-        detail: pair
-          ? `${well.name || well.id} received ${roundQty(left.get(key)?.qty || 0)} ${row.name} and ${other?.name || pair.wellId} sent ${roundQty(right.get(key)?.qty || 0)}.`
-          : `${well.name || well.id} received ${roundQty(left.get(key)?.qty || 0)} ${row.name} and no Transfer-From entry matches ${entry.otherWellUWI || entry.rawTicket || "that well"}.`,
-        valuation: settings.valuation, fallbackPrice: row.price,
-      }));
+      addTransferLine(groups, groupKey(sender, receiver, entry.date || pair?.date || "", entry.otherWellUWI), row, (left.get(key)?.qty || 0) - (right.get(key)?.qty || 0), settings);
     }
   }
   for (const entry of outgoing) {
     if (used.has(entry)) continue;
-    const well = wells.find((item) => item.id === entry.wellId) || { id: entry.wellId || "transfer", name: "Sending well", rig: "", lsd: "" };
-    for (const [, row] of appEntryLines(entry, index)) {
-      if (row.qty <= QTY_TOLERANCE) continue;
-      add(issues, baseIssue({
-        date, rule: "transfer_mismatch", severity: "medium", well, key: `${entry.id || entry.rawTicket}-out`, row,
-        title: `${row.name} left ${well.name || well.id} with no matching Transfer-To`,
-        detail: `${well.name || well.id} transferred out ${roundQty(row.qty)} ${row.name} and no receiving well has the matching Transfer-To entry.`,
-        valuation: settings.valuation, fallbackPrice: row.price,
-      }));
-    }
+    const sender = wells.find((item) => item.id === entry.wellId) || null;
+    const receiver = wellByUwi(wells, entry.otherWellUWI) || { id: lsdNorm(entry.otherWellUWI) || "transfer", name: "Receiving well", rig: "", lsd: lsdNorm(entry.otherWellUWI) || "" };
+    noteTransfer(groups, { sender, receiver, transferDay: entry.date || "", senderHint: entry.wellId });
+    for (const [, row] of appEntryLines(entry, index)) addTransferLine(groups, groupKey(sender, receiver, entry.date || "", entry.wellId), row, row.qty, settings);
   }
+  for (const group of groups.values()) {
+    const lines = [...group.lines.values()].filter((line) => line.qty > QTY_TOLERANCE);
+    if (!lines.length) continue;
+    const senderLoaded = Boolean(group.sender && wells.some((item) => item.id === group.sender.id));
+    const senderName = group.sender?.name || lsdNorm(group.senderHint) || group.senderHint || "the sending well";
+    const receiverName = group.receiver?.name || group.receiver?.id || "the receiving well";
+    const listed = lines.map((line) => `${roundQty(line.qty)} ${line.name}`).join(", ");
+    const counted = senderLoaded ? Math.round(lines.reduce((sum, line) => sum + line.value, 0) * 100) / 100 : 0;
+    add(issues, {
+      id: issueId(date, "transfer_mismatch", group.sender?.id || group.senderHint || "sender", group.receiver?.id || "receiver", group.transferDay || "transfer"),
+      date, rule: "transfer_mismatch", severity: senderLoaded ? "medium" : "low",
+      title: senderLoaded ? `Transfer from ${senderName} to ${receiverName} does not match` : "Transfer sender not loaded",
+      detail: senderLoaded
+        ? `${senderName} to ${receiverName} on ${group.transferDay || "an undated transfer"} does not balance: ${listed}.`
+        : `${receiverName} received ${listed} on ${group.transferDay || "an undated transfer"} from ${senderName}, and that sending well is not loaded. Its dollars are not counted.`,
+      wellId: wells.some((item) => item.id === group.receiver?.id) ? group.receiver.id : (group.sender?.id || ""),
+      rig: group.receiver?.rig || group.sender?.rig || "",
+      lsd: group.receiver?.lsd || group.sender?.lsd || "",
+      ticketIds: [],
+      products: lines.map((line) => ({ name: line.name, qty: roundQty(line.qty), value: senderLoaded ? line.value : 0 })),
+      dollarValue: counted, status: "open", note: "", resolvedBy: "", resolvedAt: null,
+    });
+  }
+}
+
+function wellByUwi(wells, uwi) {
+  const norm = lsdNorm(uwi);
+  if (!norm) return null;
+  return wells.find((item) => (item.lsdNorm || lsdNorm(item.lsd)) === norm) || null;
+}
+
+function groupKey(sender, receiver, transferDay, hint) {
+  return `${sender?.id || lsdNorm(hint) || hint || "sender"}|${receiver?.id || "receiver"}|${transferDay || ""}`;
+}
+
+function noteTransfer(groups, { sender, receiver, transferDay, senderHint }) {
+  const key = groupKey(sender, receiver, transferDay, senderHint);
+  const current = groups.get(key) || { sender, receiver, transferDay, senderHint, lines: new Map() };
+  if (!current.sender && sender) current.sender = sender;
+  groups.set(key, current);
+  return current;
+}
+
+function addTransferLine(groups, key, row, gap, settings) {
+  const group = groups.get(key);
+  if (!group || !row || Math.abs(gap) <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) return;
+  const qty = Math.abs(gap);
+  const price = typeof row.price === "number" ? row.price : null;
+  const value = dollars(qty, priceOf(row.product, price, settings.valuation));
+  const current = group.lines.get(row.key) || { name: row.name, qty: 0, value: 0 };
+  current.qty += qty;
+  current.value = Math.round((current.value + value) * 100) / 100;
+  group.lines.set(row.key, current);
 }
 
 function baseIssue({ date, rule, severity, well, key, row, title, detail, ticketIds, valuation, fallbackPrice }) {
@@ -726,6 +765,17 @@ function carriedOnto(next, key, index, appEntries) {
   return movementMap(next.received, index).get(key)?.qty || 0;
 }
 
+function hasMudReport(well) {
+  if (dayKey(well?.lastReportDate)) return true;
+  return Array.isArray(well?.reports) && well.reports.some((report) => dayKey(report?.date));
+}
+
+function reportedWithinGrace(well, date, graceDays) {
+  const day = dayKey(well?.lastReportDate);
+  if (!day) return false;
+  return daysBetween(date, day) <= graceDays;
+}
+
 function rigMoveIssues(issues, { date, settings, wells, index, appEntries }) {
   const claimed = new Set();
   const groups = new Map();
@@ -742,6 +792,7 @@ function rigMoveIssues(issues, { date, settings, wells, index, appEntries }) {
       const previous = ordered[indexWell - 1];
       const next = ordered[indexWell];
       if ((previous.spudDate || previous.lastReportDate || "") === (next.spudDate || next.lastReportDate || "")) continue;
+      if (!hasMudReport(next) || reportedWithinGrace(previous, date, settings.graceDays)) continue;
       const before = remainingMap(previous, index);
       for (const [key, row] of before.groups) {
         if (row.qty <= QTY_TOLERANCE || isIgnoredStockItem(row, settings.ignoreStockNames)) continue;
