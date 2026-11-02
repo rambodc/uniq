@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigIdentity, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
+import { addIssue, checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigIdentity, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -521,6 +521,41 @@ test("every product left on the old well is flagged unless that product was carr
   const gaps = Object.fromEntries(partial.issues.filter((issue) => issue.rule === "lost_on_rig_move").map((issue) => [issue.products[0].name, issue.products[0].qty]));
   assert.deepEqual(gaps, { "Chrome Free Desco II": 6, Elixir: 8 });
   assert.equal(partial.issues.some((issue) => issue.rule === "should_be_returned"), false);
+});
+
+test("long well ids keep a separate lost_on_rig_move issue per product", () => {
+  const oldId = `mirror_${"a".repeat(40)}`;
+  const newId = `mirror_${"b".repeat(40)}`;
+  const longName = `Specialty Chemical ${"Z".repeat(90)}`;
+  const result = runChecks({
+    date: "2026-11-02", products,
+    wells: [
+      well({ id: oldId, name: "SPL 14-3", contractor: "Ensign", rig: "361", spudDate: "2026-09-01", lastReportDate: "2026-09-20", status: "released", remaining: [{ product: "Chrome Free Desco II", qty: 4, price: 100 }, { product: "Elixir", qty: 28, price: 250 }, { product: longName, qty: 2, price: 15 }, { product: "Pallets", qty: 6, price: 20 }] }),
+      well({ id: newId, name: "SPL 5-22", contractor: "Ensign", rig: "361", spudDate: "2026-10-01", lastReportDate: "2026-11-01", status: "active", remaining: [], received: [] }),
+    ],
+  });
+  const lost = result.issues.filter((issue) => issue.rule === "lost_on_rig_move");
+  assert.equal(lost.length, 3);
+  assert.equal(new Set(lost.map((issue) => issue.id)).size, 3);
+  assert.match(lost.find((issue) => issue.products[0].name === "Elixir").id, /^2026-11-02_lost_on_rig_move_[0-9a-f]{12}_elixir$/);
+  assert.match(lost.find((issue) => issue.products[0].name === "Chrome Free Desco II").id, /^2026-11-02_lost_on_rig_move_[0-9a-f]{12}_chrome-free-desco-ii$/);
+  const longIssue = lost.find((issue) => issue.products[0].name === longName);
+  assert.equal(longIssue.id.endsWith("z".repeat(90)), true);
+  assert.equal(longIssue.id.length > 80, true);
+  assert.equal(lost.some((issue) => /pallet/i.test(issue.products[0].name)), false);
+  assert.equal(result.issues.some((issue) => issue.rule === "should_be_returned"), false);
+  assert.equal(result.summary.dollarsAtRisk, 7430);
+});
+
+test("a repeated issue id with a different payload keeps both", () => {
+  const issues = new Map();
+  const first = { id: "2026-11-02_lost_on_rig_move_abc123abc123_elixir", date: "2026-11-02", rule: "lost_on_rig_move", severity: "high", title: "Elixir", detail: "left behind", wellId: "old", rig: "361", lsd: "", ticketIds: [], products: [{ name: "Elixir", qty: 4, value: 1000 }], dollarValue: 1000, status: "open", note: "", resolvedBy: "", resolvedAt: null };
+  addIssue(issues, first);
+  addIssue(issues, { ...first, detail: "a different chemical", products: [{ name: "Fusion", qty: 2, value: 200 }], dollarValue: 200 });
+  addIssue(issues, first);
+  assert.equal(issues.size, 2);
+  assert.equal(issues.get(first.id).dollarValue, 1000);
+  assert.equal(issues.get(`${first.id}_2`).products[0].name, "Fusion");
 });
 
 test("pallet names are ignored on quantity and price checks", () => {
