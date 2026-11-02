@@ -22,6 +22,7 @@ vi.mock("./public/PublicSite", () => ({ default: () => <span>Public site</span> 
 vi.mock("./auth/SignIn", () => ({ default: () => <span>Sign in</span> }));
 vi.mock("./auth/Dashboard", () => ({ default: () => <span>Dashboard</span> }));
 vi.mock("./contact/ContactInbox", () => ({ default: () => <span>Contact inbox</span> }));
+vi.mock("./contact/ContactDetail", () => ({ default: () => <span>Contact message</span> }));
 vi.mock("./users/UsersApp", () => ({ default: () => <span>User access</span> }));
 vi.mock("./profile/ProfileApp", () => ({ default: () => <span>Profile</span> }));
 import App from "./App";
@@ -45,6 +46,7 @@ describe("workspace routes", () => {
   it("sends signed-out visitors to sign-in", () => {
     expect(render("/dashboard")).toContain("Redirect to /signin");
     expect(render("/contact-inbox")).toContain("Redirect to /signin");
+    expect(render("/contact-inbox/abc")).toContain("Redirect to /signin");
   });
   it("opens the dashboard and profile for an authorized account", () => {
     session.user = { emailVerified: true };
@@ -59,6 +61,7 @@ describe("workspace routes", () => {
     session.type = "super_admin";
     session.can = () => true;
     expect(render("/contact-inbox")).toContain("Contact inbox");
+    expect(render("/contact-inbox/abc")).toContain("Contact message");
     expect(render("/users")).toContain("User access");
   });
   it("keeps the public site on marketing routes", () => {

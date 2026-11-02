@@ -1,30 +1,22 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { archiveContactInquiry, listContactInquiries, messageOf, restoreContactInquiry, type Inquiry } from "../core/api";
+import { Link, useSearchParams } from "react-router-dom";
+import { listContactInquiries, messageOf, type Inquiry } from "../core/api";
 import { previewInquiries } from "../auth/preview";
 import Shell from "../auth/Shell";
+import { formatInquiryDate, inboxRows, inquiryLabel, messagePath, previewText, rememberInboxScroll, restoreInboxScroll } from "./inbox";
 
 export default function ContactInbox() {
-  const [archived, setArchived] = useState(false);
-  const [queryInput, setQueryInput] = useState("");
-  const [query, setQuery] = useState("");
+  const [params, setParams] = useSearchParams();
+  const archived = params.get("archived") === "1";
+  const query = params.get("q") ?? "";
+  const [queryInput, setQueryInput] = useState(query);
   const [items, setItems] = useState<Inquiry[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => previewInquiries() == null);
-  const [wide, setWide] = useState(() => { try { return globalThis.matchMedia?.("(min-width: 801px)")?.matches !== false; } catch { return true; } });
-  const [reload, setReload] = useState(0);
   const [error, setError] = useState("");
   const fixtures = previewInquiries();
-  const needle = query.trim().toLowerCase();
-  const shown = fixtures ? fixtures.filter((item) => item.archived === archived && (!needle || [item.name, item.email, item.company, item.message, item.inquiryType].some((value) => String(value || "").toLowerCase().includes(needle)))) : items;
-  const selected = shown.find((item) => item.id === selectedId) ?? (wide ? shown[0] ?? null : null);
+  const shown = inboxRows(fixtures ?? items, archived, query);
 
-  useEffect(() => {
-    const media = globalThis.matchMedia?.("(min-width: 801px)");
-    if (!media) return;
-    const sync = () => setWide(media.matches);
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
-  }, []);
+  useEffect(() => { restoreInboxScroll(); }, []);
 
   useEffect(() => {
     if (previewInquiries()) return;
@@ -32,7 +24,6 @@ export default function ContactInbox() {
     listContactInquiries({ archived, query }).then((result) => {
       if (!active) return;
       setItems(result.inquiries);
-      setSelectedId((current) => result.inquiries.some((item) => item.id === current) ? current : result.inquiries[0]?.id ?? null);
       setError("");
       setLoading(false);
     }, (cause: unknown) => {
@@ -41,37 +32,27 @@ export default function ContactInbox() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, [archived, query, reload]);
+  }, [archived, query]);
 
-  async function action() {
-    if (!selected) return;
-    try {
-      if (selected.archived) await restoreContactInquiry(selected.id);
-      else await archiveContactInquiry(selected.id);
-      setLoading(true);
-      setReload((value) => value + 1);
-    } catch (cause) {
-      setError(messageOf(cause, "That inquiry could not be updated."));
-    }
-  }
   function search(event: FormEvent) {
     event.preventDefault();
-    setLoading(true);
-    setQuery(queryInput.trim());
-    setReload((value) => value + 1);
+    const next = new URLSearchParams(params);
+    const text = queryInput.trim();
+    if (text) next.set("q", text); else next.delete("q");
+    setParams(next);
   }
-  function show(next: boolean) {
-    setLoading(true);
-    setArchived(next);
-    setReload((value) => value + 1);
+  function show(nextArchived: boolean) {
+    const next = new URLSearchParams(params);
+    if (nextArchived) next.set("archived", "1"); else next.delete("archived");
+    setParams(next);
   }
 
   return <Shell title="Contact Form" eyebrow="Inbox" appId="contact" back>
-    <p className="portal-lead">Messages from the public contact form. Archive a message when it has been handled.</p>
+    <p className="portal-lead">Messages from the public contact form, newest first.</p>
     <div className="portal-toolbar">
-      <div className="portal-segment">
-        <button type="button" className={!archived ? "active" : ""} onClick={() => show(false)}>Active</button>
-        <button type="button" className={archived ? "active" : ""} onClick={() => show(true)}>Archived</button>
+      <div className="portal-segment" role="tablist" aria-label="Message folder">
+        <button type="button" role="tab" aria-selected={!archived} className={!archived ? "active" : ""} onClick={() => show(false)}>Active</button>
+        <button type="button" role="tab" aria-selected={archived} className={archived ? "active" : ""} onClick={() => show(true)}>Archived</button>
       </div>
       <form onSubmit={search}>
         <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="Search messages" aria-label="Search messages" />
@@ -79,25 +60,18 @@ export default function ContactInbox() {
       </form>
     </div>
     {error && <div className="portal-status error" role="alert">{error}</div>}
-    <div className={selected ? "portal-split has-selection" : "portal-split"}>
-      <div className="portal-list">
-        {loading ? <p className="portal-empty">Loading messages…</p> : shown.length === 0 ? <p className="portal-empty">No messages found.</p> : shown.map((item) => <button type="button" key={item.id} className={item.id === (selected?.id ?? selectedId) ? "selected" : ""} onClick={() => setSelectedId(item.id)}>
-          <strong>{item.name}</strong>
-          <small>{[item.inquiryType, item.company || item.email || item.phone].filter(Boolean).join(" · ")}</small>
-          <em>{item.message}</em>
-        </button>)}
-      </div>
-      <article className="portal-detail">
-        {selected ? <>
-          <button type="button" className="portal-detail-back" onClick={() => setSelectedId(null)}>Messages</button>
-          <p className="portal-eyebrow">{selected.inquiryType}{selected.productName ? ` · ${selected.productName}` : ""}</p>
-          <h2>{selected.name}</h2>
-          <p>{[selected.email, selected.phone, selected.company].filter(Boolean).join(" · ")}</p>
-          <p className="portal-message">{selected.message}</p>
-          {selected.legacy && <dl className="portal-legacy">{Object.entries(selected.legacy).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl>}
-          <button type="button" className="button-primary" onClick={() => void action()}>{selected.archived ? "Restore" : "Archive"}</button>
-        </> : <p className="portal-empty">Select a message to read it.</p>}
-      </article>
-    </div>
+    {loading ? <p className="portal-empty">Loading messages…</p> : <>
+      <p className="mail-count">{shown.length === 1 ? "1 message" : `${shown.length} messages`}</p>
+      {shown.length === 0 ? <p className="portal-empty">No messages found.</p> : <ul className="mail-list">
+        {shown.map((item) => <li key={item.id}>
+          <Link className="mail-row" to={messagePath(item.id, archived, query)} onClick={rememberInboxScroll}>
+            <span className="mail-row-top"><strong>{item.name}</strong><time dateTime={item.createdAt ?? undefined}>{formatInquiryDate(item.createdAt)}</time></span>
+            <span className="mail-meta">{[item.email || item.phone, item.company].filter(Boolean).join(" · ")}</span>
+            <span className="mail-badge">{inquiryLabel(item.inquiryType)}{item.productName ? ` · ${item.productName}` : ""}</span>
+            <span className="mail-preview">{previewText(item.message)}</span>
+          </Link>
+        </li>)}
+      </ul>}
+    </>}
   </Shell>;
 }
