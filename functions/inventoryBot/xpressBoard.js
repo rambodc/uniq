@@ -84,22 +84,57 @@ function matchTickets(list, appWellId, appTickets) {
   return { matched, waiting, missing, compared: true, byTicket };
 }
 
+function lsdParts(value) {
+  const match = String(value || "").match(/^(\d+)-(\d+)-(\d+)-(\d+)([WE])(\d+)$/);
+  if (!match) return null;
+  return { lsd: Number(match[1]), sec: Number(match[2]), twp: Number(match[3]), rge: Number(match[4]), mer: match[5], num: Number(match[6]) };
+}
+
+/** Same township and range, with a meridian typo (W4 vs W0) or a neighbouring section. */
+export function lsdNear(left, right) {
+  const a = lsdParts(left);
+  const b = lsdParts(right);
+  if (!a || !b || left === right) return false;
+  if (a.twp !== b.twp || a.rge !== b.rge || a.mer !== b.mer) return false;
+  if (a.sec === b.sec && a.lsd === b.lsd && a.num !== b.num) return true;
+  return a.num === b.num && Math.abs(a.sec - b.sec) <= 1 && Math.abs(a.lsd - b.lsd) <= 1;
+}
+
+function asCandidate(well) {
+  return { id: well.id, name: well.name || "", lsd: well.lsd || well.lsdNorm || "", rig: well.rig || "", operator: well.operator || "" };
+}
+
 function linkFor(saved, card, appWells) {
-  if (saved?.linkLocked && saved.linkState === "linked" && saved.appWellId) return { state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual" };
-  if (saved?.linkLocked && saved.linkState === "none") return { state: "none", appWellId: "", reason: "", source: "manual" };
-  if (saved?.linkState === "linked" && saved.appWellId && saved.linkSource === "manual") return { state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual" };
+  const base = { candidates: [], grokTried: Boolean(saved?.grokTried), grok: saved?.grokAppWellId ? { appWellId: saved.grokAppWellId, name: saved.grokAppWellName || "", reason: saved.grokReason || "" } : null };
+  if (saved?.linkLocked && saved.linkState === "linked" && saved.appWellId) return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
+  if (saved?.linkLocked && saved.linkState === "none") return { ...base, state: "none", appWellId: "", reason: "Link cleared.", source: "manual" };
+  if (saved?.linkState === "linked" && saved.appWellId && saved.linkSource === "manual") return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
+  const wells = appWells || [];
   const rig = rigNorm(card.rig);
-  const exact = (appWells || []).filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm && rig && rigNorm(well.rig) === rig);
-  if (!saved?.linkLocked && exact.length === 1) return { state: "linked", appWellId: exact[0].id, reason: "Same LSD and rig.", source: "auto", name: exact[0].name || "" };
-  if (saved?.linkState === "linked" && saved.appWellId) return { state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "", source: saved.linkSource || "manual", name: saved.appWellName || "" };
-  const sameLsd = (appWells || []).filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm);
-  if (sameLsd.length === 1) return { state: "suggested", appWellId: sameLsd[0].id, reason: "Same LSD. Rig was not an exact match.", source: "auto", name: sameLsd[0].name || "" };
-  if (saved?.suggestionAppWellId) return { state: "suggested", appWellId: saved.suggestionAppWellId, reason: saved.linkReason || "Suggested.", source: saved.linkSource || "grok", name: saved.appWellName || "" };
-  return { state: "none", appWellId: "", reason: "", source: "" };
+  const exact = wells.filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm && rig && rigNorm(well.rig) === rig);
+  if (!saved?.linkLocked && exact.length === 1) return { ...base, state: "linked", appWellId: exact[0].id, reason: "Same LSD and rig.", source: "auto", name: exact[0].name || "" };
+  if (saved?.linkState === "linked" && saved.appWellId) return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "", source: saved.linkSource || "manual", name: saved.appWellName || "" };
+  const sameLsd = wells.filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm);
+  let candidates = [];
+  let reason = "no app well found";
+  if (sameLsd.length > 1) {
+    reason = "multiple app wells share this LSD";
+    candidates = sameLsd.map(asCandidate);
+  } else {
+    const near = wells.filter((well) => well.lsdNorm !== card.lsdNorm && (lsdNear(card.lsdNorm, well.lsdNorm) || (rig && rigNorm(well.rig) === rig)));
+    near.sort((a, b) => {
+      const rank = (well) => (lsdParts(card.lsdNorm) && lsdParts(well.lsdNorm) && lsdParts(card.lsdNorm).num !== lsdParts(well.lsdNorm).num && lsdParts(card.lsdNorm).sec === lsdParts(well.lsdNorm).sec ? 0 : lsdNear(card.lsdNorm, well.lsdNorm) ? 1 : 2);
+      return rank(a) - rank(b);
+    });
+    const pool = sameLsd.length === 1 ? [sameLsd[0], ...near.filter((well) => well.id !== sameLsd[0].id)] : near;
+    candidates = pool.slice(0, 5).map(asCandidate);
+    if (candidates.length) reason = "location differs from app";
+  }
+  return { ...base, state: candidates.length ? "suggested" : "none", appWellId: "", reason, source: "", candidates };
 }
 
 function statusOf(link, match, count) {
-  if (link.state !== "linked") return { tone: "grey", label: link.state === "suggested" ? "Pick the app well" : "No app well found" };
+  if (link.state !== "linked") return { tone: "grey", label: link.reason || "no app well found" };
   if (!match.compared || (!match.matched && match.waiting && !match.missing)) return { tone: "amber", label: "Waiting for app report" };
   if (match.missing && !match.matched) return { tone: "red", label: "Not in app" };
   if (match.missing) return { tone: "red", label: "Mismatch" };
@@ -108,11 +143,38 @@ function statusOf(link, match, count) {
   return { tone: "amber", label: "Waiting on app / partial" };
 }
 
+const WAREHOUSE_TYPES = new Set(["MR", "ST", "STX"]);
+
+export function warehouseOnlyType(ticket) {
+  return WAREHOUSE_TYPES.has(String(ticket?.type || "").toUpperCase());
+}
+
+export function placeholderName(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  if (/unnamed/i.test(text)) return true;
+  if (/di-?corp/i.test(text)) return true;
+  if (/\brig\b/i.test(text) && !/\d+-\d+-\d+/.test(text)) return true;
+  if (/^\d+$/.test(text)) return true;
+  return false;
+}
+
+function usableName(list, stored) {
+  if (stored?.name && !placeholderName(stored.name)) return stored.name;
+  for (const ticket of list) {
+    for (const value of [ticket.wellName, ticket.shipTo, ticket.shipToName, ticket.rig]) {
+      if (!placeholderName(value)) return String(value).trim();
+    }
+  }
+  return "";
+}
+
 export function buildXpressBoard({ tickets = [], placements = [], savedCards = [], appWells = [] , appTickets = [] }) {
   const place = new Map((placements || []).map((row) => [row.ticketId || row.id, row]));
   const saved = new Map((savedCards || []).map((card) => [card.id, card]));
   const groups = new Map();
   const unassigned = [];
+  let warehouseOnly = 0;
   for (const ticket of tickets || []) {
     if (ticket.source && ticket.source !== "xpress") continue;
     const manual = place.get(ticket.id);
@@ -120,6 +182,10 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
       const list = groups.get(manual.cardId) || [];
       list.push(ticket);
       groups.set(manual.cardId, list);
+      continue;
+    }
+    if (warehouseOnlyType(ticket)) {
+      warehouseOnly += 1;
       continue;
     }
     const lsd = ticket.lsdNorm || lsdNorm(ticket.lsd);
@@ -138,12 +204,18 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
     const stored = saved.get(id) || {};
     const sample = [...list].sort((a, b) => ticketWhen(a).localeCompare(ticketWhen(b)))[0];
     const lsd = stored.lsd || sample.lsd || "";
+    const lsdKey = stored.lsdNorm || sample.lsdNorm || lsdNorm(lsd);
+    const name = usableName(list, stored) || (lsdKey ? `LSD ${lsd || lsdKey}` : "");
+    if (!stored.manual && !lsdKey && !name) {
+      unassigned.push(...list);
+      continue;
+    }
     const card = {
       id,
-      name: stored.name || sample.wellName || sample.shipTo || sample.customer || "Unnamed well",
+      name: name || "Unnamed well",
       operator: stored.operator || sample.customer || "",
       lsd,
-      lsdNorm: stored.lsdNorm || sample.lsdNorm || lsdNorm(lsd),
+      lsdNorm: lsdKey,
       rig: stored.rig || sample.rig || "",
       manual: Boolean(stored.manual),
     };
@@ -162,12 +234,17 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
   cards.sort((a, b) => a.name.localeCompare(b.name));
   const loose = unassigned.map((ticket) => publicTicket(ticket, place.get(ticket.id)));
   loose.sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
-  return { cards, unassigned: loose };
+  return { cards, unassigned: loose, warehouseOnly };
 }
 
 /** Unassigned tickets that have never been sent to Grok. Placed tickets and cached suggestions are not asked again. */
 export function ticketsNeedingGrok(unassigned) {
   return (unassigned || []).filter((ticket) => !ticket.suggestion);
+}
+
+/** Unlinked cards are asked once. A saved grokTried flag means that card is not sent again. */
+export function cardsNeedingGrok(cards) {
+  return (cards || []).filter((card) => card.link?.state !== "linked" && !card.link?.grokTried && !card.grokTried);
 }
 
 /** Grok may only file a ticket automatically when it is sure and the LSD is exactly the card's LSD. */

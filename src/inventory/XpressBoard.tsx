@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { inventoryBotGrokSort, inventoryBotLinkAppWell, inventoryBotMoveTicket, inventoryBotOpenXpressWell, inventoryBotXpressBoard, messageOf, type AppWellOption, type OpenXpressWell, type XpressBoard as Board, type XpressCard, type XpressTicket } from "../core/api";
+import { inventoryBotGrokSort, inventoryBotLinkAppWell, inventoryBotMoveTicket, inventoryBotOpenXpressWell, inventoryBotXpressBoard, messageOf, type OpenXpressWell, type WellCandidate, type XpressBoard as Board, type XpressCard, type XpressTicket } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import Shell from "../auth/Shell";
 import { money } from "./format";
 import "./xpress.css";
+
+function dot(tone: string) {
+  if (tone === "green") return "g";
+  if (tone === "amber") return "a";
+  if (tone === "red") return "r";
+  return "n";
+}
 
 function pretty(date: string) {
   if (!date) return "";
@@ -78,7 +85,7 @@ export default function XpressBoard() {
     setOpenId(card.id);
     setPicked(null);
     setLinking(false);
-    if (preview?.openWell) { setOpenWell(preview.openWell); return; }
+    if (preview?.xpress) { setOpenWell(card.link.appWellId ? preview.openWell ?? null : null); return; }
     if (card.link.state !== "linked") { setOpenWell(null); return; }
     setBusy("open");
     try { setOpenWell(await inventoryBotOpenXpressWell(card.id)); }
@@ -117,7 +124,20 @@ export default function XpressBoard() {
     finally { setBusy(""); }
   }
 
-  async function linkWell(cardId: string, well: AppWellOption | null) {
+  async function linkWell(cardId: string, well: { id: string; name: string } | null) {
+    if (preview?.xpress) {
+      setBoard((current) => current && ({
+        ...current,
+        cards: current.cards.map((card) => card.id !== cardId ? card : {
+          ...card,
+          link: { ...card.link, state: well ? "linked" : "none", appWellId: well?.id || "", name: well?.name || "", source: "manual", reason: well ? `Linked to ${well.name}.` : "Link cleared." },
+          status: well ? { tone: "amber" as const, label: "Waiting for app report" } : { tone: "grey" as const, label: card.link.reason || "no app well found" },
+        }),
+      }));
+      setOpenWell(null);
+      setLinking(false);
+      return;
+    }
     setBusy("link");
     try {
       await inventoryBotLinkAppWell({ cardId, appWellId: well?.id || "", appWellName: well?.name || "" });
@@ -133,7 +153,7 @@ export default function XpressBoard() {
       <div className="xb-toolbar">
         <p>{pulledLabel(board?.pulledAt || "")}</p>
         <button className="xb-btn" type="button" onClick={() => void load()} disabled={Boolean(busy)}>Refresh</button>
-        <button className="xb-btn xb-pri" type="button" onClick={() => void sortWithGrok()} disabled={Boolean(busy)}>{busy === "grok" ? "Sorting…" : "Let Grok sort tickets"}</button>
+        <button className="xb-btn xb-pri" type="button" onClick={() => void sortWithGrok()} disabled={Boolean(busy)}>{busy === "grok" ? "Checking…" : "Let Grok check leftovers"}</button>
       </div>
       <div className="xb-tabs" role="tablist">
         <button className="xb-tab on" type="button" role="tab" aria-selected="true">Xpress</button>
@@ -141,6 +161,7 @@ export default function XpressBoard() {
       </div>
       {error && <div className="portal-status error" role="alert">{error}</div>}
       {board?.directory.error && <p className="xb-note">{board.directory.error}</p>}
+      {board?.directory.linkError && <p className="xb-note">{board.directory.linkError}</p>}
       <div className="xb-bar">
         <div>
           <h2>Wells from Xpress tickets</h2>
@@ -172,7 +193,7 @@ export default function XpressBoard() {
             </div>
             <div className="xb-chips">{card.tickets.map((ticket) => <span key={ticket.id} className={ticket.return ? "ret" : ""}>{ticket.number}{ticket.return ? " · return" : ""} · {pretty(ticket.date)}</span>)}</div>
             <div className="xb-foot">
-              <span className="xb-status"><i className={`xb-dot ${card.status.tone[0]}`} />{card.status.label}</span>
+              <span className="xb-status"><i className={`xb-dot ${dot(card.status.tone)}`} />{card.status.label}</span>
               <span className={`xb-link ${card.link.state}`}>{card.link.state === "linked" ? "● linked" : card.link.state === "suggested" ? "◐ suggested" : "○ not linked"}</span>
             </div>
           </button>
@@ -180,6 +201,7 @@ export default function XpressBoard() {
       </div>}
       <h3 className="xb-sec">Unassigned tickets {loose.length > 0 && <span>{loose.length}</span>}</h3>
       <p className="xb-sec-p">Tickets we could not place on a well. Use Move to well to file one. A manual move stays where you put it.</p>
+      {(board?.warehouseOnly || 0) > 0 && <p className="xb-sec-p">{board?.warehouseOnly} warehouse receipts and stock transfers are hidden. They are not field deliveries.</p>}
       <div className="xb-un">
         <div className="xb-row head"><span>Ticket</span><span>Date</span><span>Customer / ship-to on ticket</span><span>Value</span><span>Hint</span><span /></div>
         {loose.length === 0 && <p className="xb-sec-p">Every Xpress ticket with a rig or LSD is on a well card.</p>}
@@ -194,7 +216,7 @@ export default function XpressBoard() {
             {moveId === ticket.id && <div className="xb-pop" role="menu">
               <div className="xb-pop-h">Move {ticket.number} to…</div>
               {(board?.cards || []).map((card) => <button key={card.id} type="button" className="xb-opt" onClick={() => void move(ticket.id, card.id)} disabled={Boolean(busy)}>
-                <i className={`xb-dot ${card.status.tone[0]}`} />
+                <i className={`xb-dot ${dot(card.status.tone)}`} />
                 <span>{card.name}<small>{[card.lsd, card.rig].filter(Boolean).join(" · ")}</small></span>
               </button>)}
               {!creating ? <button className="xb-new" type="button" onClick={() => setCreating(true)}>+ Create a new well card</button> : <form className="xb-create" onSubmit={(event) => { event.preventDefault(); void createAndMove(ticket.id); }}>
@@ -212,7 +234,7 @@ export default function XpressBoard() {
         <div className="xb-panel">
           <header>
             <div>
-              <h2><i className={`xb-dot ${opened.status.tone[0]}`} /> {opened.name}</h2>
+              <h2><i className={`xb-dot ${dot(opened.status.tone)}`} /> {opened.name}</h2>
               <p>{[opened.operator, opened.lsd && `LSD ${opened.lsd}`, opened.rig && `Rig ${opened.rig}`, `${opened.ticketCount} Xpress tickets`, money(opened.totalValue)].filter(Boolean).join(" · ")}</p>
             </div>
             <div className="xb-panel-actions">
@@ -251,8 +273,12 @@ export default function XpressBoard() {
             <section>
               <h3>App well {openWell?.appWell && <span className="xb-live"><i className="xb-dot g" /> read live from app backup</span>}</h3>
               <p>What the mud man logged in the app</p>
-              {!opened.link.appWellId && <p className="xb-sec-p">Link an app well to read its reports. Nothing is copied into Inventory Bot except the link.</p>}
-              {opened.link.reason && <p className="xb-grok-note">{opened.link.source === "grok" && <b>GROK</b>} {opened.link.reason}</p>}
+              {opened.link.appWellId && opened.link.reason && <p className="xb-sec-p">{opened.link.reason}</p>}
+              {!opened.link.appWellId && <p className="xb-sec-p">{opened.link.reason ? `${opened.link.reason}. ` : ""}Pick one of the candidates, or search the directory. Nothing is copied except the link you choose.</p>}
+              {(opened.link.candidates || []).length > 0 && !opened.link.appWellId && <div className="xb-picker">
+                {(opened.link.candidates || []).map((well: WellCandidate) => <button key={well.id} type="button" onClick={() => void linkWell(opened.id, well)}>{well.name || well.id}<small>{[well.lsd, well.rig].filter(Boolean).join(" · ")}</small></button>)}
+              </div>}
+              {opened.link.grok?.reason && <p className="xb-grok-note"><b>GROK</b> {opened.link.grok.reason}{opened.link.grok.name ? ` — ${opened.link.grok.name}` : ""}</p>}
               {openWell?.appWell && <div className="xb-kv">
                 <div><small>Well name</small><span>{openWell.appWell.name}</span></div>
                 <div><small>LSD</small><span>{openWell.appWell.lsd || "—"}</span></div>

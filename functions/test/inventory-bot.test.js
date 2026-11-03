@@ -822,6 +822,7 @@ test("the chatbot calls one targeted tool and cites the tool result", async () =
   assert.equal(seen[1].body.messages.at(-1).content.includes("North Pad"), true);
   assert.match(result.reply, /xpress_WBFS-DT-000529/);
   assert.match(read("../inventory-functions.js"), /defineSecret\("XAI_API_KEY"\)/);
-  assert.match(read("../inventory-functions.js"), /requireSuperAdmin\(request\)/);
   assert.match(read("../inventory-functions.js"), /requireMiniApp\(request, "inventoryBot"\)/);
+  assert.equal(read("../inventory-functions.js").includes("inventoryBotRunChecks"), false);
+  assert.equal(read("../inventory-functions.js").includes("checksRequestedAt"), false);
 });
