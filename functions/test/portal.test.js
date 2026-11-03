@@ -25,7 +25,7 @@ const database = fakeDb({
 });
 
 test("registry is the UniqEnergy mini apps", () => {
-  assert.deepEqual(MINI_APP_IDS, ["profile", "contact", "inventoryBot", "users"]);
+  assert.deepEqual(MINI_APP_IDS, ["profile", "contact", "inventoryBot", "wells", "users"]);
   assert.equal(new Set(MINI_APP_IDS).size, MINI_APPS.length);
   for (const app of MINI_APPS) {
     for (const key of ["id", "name", "description", "route", "icon", "accent"]) assert.equal(typeof app[key], "string");
@@ -33,7 +33,7 @@ test("registry is the UniqEnergy mini apps", () => {
     assert.match(app.accent, /^#[0-9a-f]{6}$/);
     assert.equal(app.superAdminOnly && app.everyone, false);
   }
-  assert.deepEqual(ASSIGNABLE_MINI_APP_IDS, ["contact", "inventoryBot"]);
+  assert.deepEqual(ASSIGNABLE_MINI_APP_IDS, ["contact", "inventoryBot", "wells"]);
   assert.deepEqual(EVERYONE_MINI_APP_IDS, ["profile"]);
   assert.equal(MINI_APPS.find((app) => app.id === "users").superAdminOnly, true);
   assert.equal(MINI_APPS.find((app) => app.id === "users").name, "User Access");

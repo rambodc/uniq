@@ -1,10 +1,10 @@
 # UniqEnergy
 
-Public marketing site and a private workspace for UniqEnergy staff. The public pages stay as they are. The workspace is email-and-password only, with four mini apps: Profile, Contact Form, Inventory Bot, and User Access.
+Public marketing site and a private workspace for UniqEnergy staff. The public pages stay as they are. The workspace is email-and-password only, with five mini apps: Profile, Contact Form, Inventory Bot, Wells, and User Access.
 
 ## Architecture
 
-React, TypeScript, and Vite on Firebase Hosting. Cloud Functions (Node.js 22) are the only way to read or write Firestore and Storage. Browser Firestore and Storage rules deny every request. Callable functions require App Check outside the emulator.
+React, TypeScript, and Vite on Firebase Hosting. Cloud Functions (Node.js 22) are the way to write Firestore and Storage. Browser rules deny every write. The Wells mini app is the one client read: a signed-in person who can open it may read `wellsApp` and nothing else. Callable functions require App Check outside the emulator.
 
 Mini apps are declared once in `functions/miniApps.js`. The browser imports that same file for dashboard tiles, route guards, and the User Access checkboxes.
 
@@ -13,9 +13,10 @@ Mini apps are declared once in `functions/miniApps.js`. The browser imports that
 | Profile | `profile` | `/profile` | Every signed-in user |
 | Contact Form | `contact` | `/contact-inbox` | Staff who are assigned it, and every super admin |
 | Inventory Bot | `inventoryBot` | `/inventory-bot` | Staff who are assigned it, and every super admin |
+| Wells | `wells` | `/wells` | Staff who are assigned it, and every super admin |
 | User Access | `users` | `/users` | Super admins only |
 
-Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/inventory-bot`, `/users`, `/profile`. The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
+Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/inventory-bot`, `/wells`, `/users`, `/profile`. The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
 
 Access is checked on the server with `requireMiniApp(request, "<id>")` or `requireSuperAdmin(request)` in `functions/core.js`. A missing user record, a mismatched email, an unverified email, an unknown type, missing names, or `disabled: true` means no access.
 
@@ -23,7 +24,7 @@ Access is checked on the server with `requireMiniApp(request, "<id>")` or `requi
 
 ## Firestore schema
 
-Three top-level collections. Browsers cannot read or write them. Inventory Bot's document shapes, including what the external collector must write, are in [docs/inventory-bot.md](docs/inventory-bot.md).
+The browser cannot write Firestore. A signed-in person who can open Wells may read `wellsApp` only. `users`, the contact inbox, and `inventoryBot` stay closed to the browser. Inventory Bot's document shapes, including what the external collector must write, are in [docs/inventory-bot.md](docs/inventory-bot.md).
 
 ### `users/{uid}`
 
@@ -32,7 +33,7 @@ Three top-level collections. Browsers cannot read or write them. Inventory Bot's
 | `email` | Lowercase. Must match the verified Firebase Auth email. |
 | `firstName`, `lastName` | Required, 1–60 characters. A super admin sets them. |
 | `type` | `super_admin` or `staff`. |
-| `miniApps` | Staff: assignable mini app ids (`contact` and `inventoryBot`). Always `[]` for a super admin, who receives every mini app automatically. |
+| `miniApps` | Staff: assignable mini app ids (`contact`, `inventoryBot`, and `wells`). Always `[]` for a super admin, who receives every mini app automatically. |
 | `photo` | `null`, or `{ path, thumb }`. `path` is the Storage object under `profile-photos/{uid}/`. `thumb` is a small JPEG data URL. Only that person can change it. |
 | `invite` | `null`, or `{ status, at, by, resendId, error, checkedAt }`. Status is `sent`, `delivered`, `delayed`, `bounced`, `complained`, or `failed`. |
 | `disabled` | When `true`, the Auth account is disabled and the record grants no access. |
