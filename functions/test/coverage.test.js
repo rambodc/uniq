@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyFlag, buildCoverage, compactStockItems, looseTicket, reviewDocuments, sequenceGaps } from "../inventoryBot/coverage.js";
-import { indexProducts, resolveLine, ticketsMatch } from "../inventoryBot/engine.js";
+import { applyFlag, buildCoverage, compactStockItems, looseTicket, movedReviewFlag, reviewDocuments, sequenceGaps } from "../inventoryBot/coverage.js";
+import { DEFAULT_IGNORE_STOCK_NAMES, indexProducts, isIgnoredStockItem, resolveLine, ticketsMatch } from "../inventoryBot/engine.js";
 
 const well = (fields) => ({ id: "w1", name: "North Pad", lsd: "9-26-55-4W4", lsdNorm: "9-26-55-4W4", rig: "245", contractor: "Ensign", status: "active", ...fields });
 const ticket = (fields) => ({ id: "xpress_NK-DT-004806", source: "xpress", company: "uniqenergy", type: "DT", warehouseCode: "NK", rig: "245", lsd: "9-26-55-4W4", postedAt: "2026-11-01", lines: [{ code: "ELX", name: "Elixir", qty: 4 }], ...fields });
@@ -96,11 +96,11 @@ test("app tickets without a warehouse ticket are categorized", () => {
       { id: "other", wellId: "w1", kind: "received", rawTicket: "BA-00002", date: "2026-11-01", lines: [] },
     ],
   });
-  const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.id, item.category]));
-  assert.equal(categories.app_move, "transfer");
-  assert.equal(categories.app_gap, "missing_from_pull");
-  assert.equal(categories.app_mud, "no_ticket_number");
-  assert.equal(categories.app_other, "unknown_prefix");
+  const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.rawTicket, item.category]));
+  assert.equal(categories["173_transferTo"], "transfer");
+  assert.equal(categories["TBAR-DT-001238"], "missing_from_pull");
+  assert.equal(categories.MudMan, "no_ticket_number");
+  assert.equal(categories["BA-00002"], "unknown_prefix");
   assert.equal(result.reviews.find((item) => item.category === "transfer").auto, true);
 });
 
@@ -180,6 +180,42 @@ test("a warehouse sale in the grid location or LSD field is not well-bound", () 
   assert.equal(location.ticketStatus[0].reason, "Warehouse sale");
 });
 
+test("a pack count of 40 per pallet is not an ignored pallet", () => {
+  assert.equal(isIgnoredStockItem({ name: "CAL CHLORIDE HT POWDER (40kg) 40/PALLET" }, DEFAULT_IGNORE_STOCK_NAMES), false);
+  assert.equal(isIgnoredStockItem({ name: "Pallet Recycling" }), true);
+  assert.equal(isIgnoredStockItem({ name: "PALLETS" }), true);
+  assert.equal(isIgnoredStockItem({ name: "STRETCHWRAPS" }), true);
+  assert.equal(DEFAULT_IGNORE_STOCK_NAMES.includes("Stretch Wrap"), true);
+  const result = buildCoverage({
+    date: "2026-11-02",
+    wells: [well({})],
+    tickets: [ticket({ lines: [{ name: "CAL CHLORIDE HT POWDER (40kg) 40/PALLET", unit: "40kg", qty: 10, price: 20 }, { name: "Stretch Wrap", qty: 4 }] })],
+    appTickets: [{ id: "w1_r", wellId: "w1", kind: "received", rawTicket: "NK-DT-004806", date: "2026-11-02", lines: [{ name: "CAL CHLORIDE HT POWDER (40kg) 40/PALLET", unit: "40kg", qty: 4, price: 20 }] }],
+  });
+  assert.equal(result.ticketStatus[0].status, "mismatch");
+  assert.equal(result.ticketStatus[0].dollarValue, 120);
+});
+
+test("same rig keeps a location difference logged with a note", () => {
+  const logged = buildCoverage({
+    date: "2026-11-02",
+    wells: [well({ lsd: "9-26-55-4W0", lsdNorm: "9-26-55-4W0", rig: "245", contractor: "Ensign" })],
+    tickets: [ticket({ lsd: "9-26-55-4W4", lsdNorm: "9-26-55-4W4", rig: "245", customer: "Ensign", lines: [{ name: "Elixir", qty: 4 }] })],
+    appTickets: [{ id: "w1_r", wellId: "w1", kind: "received", rawTicket: "NK-DT-004806", date: "2026-11-02", lines: [{ name: "Elixir", qty: 4 }] }],
+  });
+  assert.equal(logged.ticketStatus[0].status, "logged");
+  assert.equal(logged.ticketStatus[0].locationNote.severity, "low");
+  assert.match(logged.ticketStatus[0].locationNote.text, /W0 vs W4|typo/);
+  const split = buildCoverage({
+    date: "2026-11-02",
+    wells: [well({ lsd: "1-1-1-1W5", lsdNorm: "1-1-1-1W5", rig: "99", contractor: "Other" })],
+    tickets: [ticket({ lsd: "9-26-55-4W4", rig: "245", customer: "Ensign", lines: [{ name: "Elixir", qty: 4 }] })],
+    appTickets: [{ id: "w1_r", wellId: "w1", kind: "received", rawTicket: "NK-DT-004806", date: "2026-11-02", lines: [{ name: "Elixir", qty: 4 }] }],
+  });
+  assert.equal(split.ticketStatus[0].status, "mismatch");
+  assert.equal(split.ticketStatus[0].locationNote, null);
+});
+
 test("ignored stock and service lines are left out of the quantity comparison", () => {
   const result = buildCoverage({
     date: "2026-11-02",
@@ -227,10 +263,12 @@ test("every app line that cites a linked Alchem number stays out of the review q
     appTickets: [
       { id: "anova_r1_received-0", wellId: "anova", kind: "received", rawTicket: "11649", date: "2026-11-01", reportDate: "2026-11-01", lines: [{ name: "Bleach", qty: 2 }] },
       { id: "anova_r1_received-1", wellId: "anova", kind: "received", rawTicket: "11649", date: "2026-11-01", reportDate: "2026-11-01", lines: [{ name: "Elixir", qty: 4 }] },
+      { id: "anova_copy", wellId: "elsewhere", kind: "received", rawTicket: "11649", date: "2026-11-01", lines: [] },
     ],
   });
   assert.equal(result.ticketStatus[0].status, "logged");
   assert.equal(result.ticketStatus[0].match, "alchem");
+  assert.equal(result.ticketStatus[0].appTicketId, "anova_r1_received-0");
   assert.equal(result.reviews.some((item) => item.category === "no_ticket_number"), false);
   assert.equal(result.reviews.some((item) => item.rawTicket === "11649"), false);
 });
@@ -253,6 +291,50 @@ test("the review count is the number of review docs and does not include mismatc
   assert.equal(result.reviewCount, result.reviews.length);
   assert.equal(reviewDocuments(result.reviews).length, result.reviewCount);
   assert.equal(result.reviews.filter((item) => item.category === "unknown_prefix").length, 2);
+  assert.equal(result.reviews.some((item) => /_2$/.test(item.id)), false);
+});
+
+test("review ids stay the same when app lines are reordered", () => {
+  const lines = [
+    { id: "pad_r_received-0", wellId: "pad", reportId: "r", kind: "received", rawTicket: "ZZ-DT-000010", date: "2026-11-02", lines: [{ name: "Elixir", qty: 1 }] },
+    { id: "pad_r_received-1", wellId: "pad", reportId: "r", kind: "received", rawTicket: "ZZ-DT-000011", date: "2026-11-02", lines: [{ name: "Bleach", qty: 2 }] },
+  ];
+  const first = buildCoverage({ date: "2026-11-02", appTickets: lines });
+  const second = buildCoverage({ date: "2026-11-02", appTickets: [...lines].reverse() });
+  assert.deepEqual(first.reviews.map((item) => item.id).sort(), second.reviews.map((item) => item.id).sort());
+  assert.equal(first.reviewCount, reviewDocuments(first.reviews).length);
+  const moved = movedReviewFlag([{ entityType: "review", entityId: first.flagMoves[0].fromId, status: "watching", notes: [{ at: "t", by: "a", text: "keep" }], forGrokBot: false, grokBotReply: "" }], first.flagMoves[0].fromId, first.flagMoves[0].toId);
+  assert.equal(moved.entityId, first.flagMoves[0].toId);
+  assert.equal(moved.status, "watching");
+  assert.equal(moved.notes[0].text, "keep");
+  assert.equal(movedReviewFlag([], "missing", "other"), null);
+});
+
+test("entries before the collection window are auto-explained", () => {
+  const result = buildCoverage({
+    date: "2026-11-02",
+    config: { checksStartDate: "2026-10-30" },
+    wells: [well({})],
+    tickets: [ticket({ postedAt: "2026-11-01", shippedAt: "2026-11-01" })],
+    appTickets: [
+      { id: "ev1", wellId: "w1", kind: "received", rawTicket: "DTEVPR002022", date: "2026-10-26", lines: [] },
+      { id: "ev2", wellId: "w1", kind: "received", rawTicket: "DTEVPR002023", date: "2026-10-27", lines: [] },
+      { id: "ct", wellId: "w1", kind: "returned", rawTicket: "CTEVPR000744", date: "2026-10-26", lines: [] },
+      { id: "kh", wellId: "w1", kind: "received", rawTicket: "KH2680", date: "2026-10-27", lines: [] },
+      { id: "bare", wellId: "w1", kind: "received", rawTicket: "11643", date: "2026-10-26", lines: [] },
+      { id: "mud", wellId: "w1", kind: "received", rawTicket: "MudMan", date: "2026-10-26", lines: [] },
+      { id: "none", wellId: "w1", kind: "received", rawTicket: "NoTicket", date: "2026-10-27", lines: [] },
+      { id: "later", wellId: "w1", kind: "received", rawTicket: "KH9999", date: "2026-11-02", lines: [] },
+    ],
+  });
+  const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.rawTicket, item.category]));
+  for (const raw of ["DTEVPR002022", "DTEVPR002023", "CTEVPR000744", "KH2680", "11643", "MudMan", "NoTicket"]) {
+    assert.equal(categories[raw], "outside_window");
+    assert.equal(result.reviews.find((item) => item.rawTicket === raw).auto, true);
+  }
+  assert.equal(categories.KH9999, "unknown_prefix");
+  assert.equal(result.windowStart, "2026-11-01");
+  assert.equal(result.reviewCount, result.reviews.length);
 });
 
 test("a hole in a ticket series becomes a review item", () => {

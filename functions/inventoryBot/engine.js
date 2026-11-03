@@ -12,7 +12,7 @@ export const OUTBOUND_TYPES = ["DT", "CT", "ST", "STx", "TT"];
 export const ADJUSTMENT_TYPES = ["AT"];
 export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "completed-reviewed", "closed", "suspended"];
 const QTY_TOLERANCE = 0.01;
-export const DEFAULT_IGNORE_STOCK_NAMES = ["Empty Drums", "Empty Totes", "MSDS Book", "Pallets", "Shrink Wrap"];
+export const DEFAULT_IGNORE_STOCK_NAMES = ["Empty Drums", "Empty Totes", "MSDS Book", "Pallets", "Shrink Wrap", "Stretch Wrap"];
 
 export function isTicketType(value, expected) {
   return String(value ?? "").trim().toLowerCase() === String(expected ?? "").trim().toLowerCase();
@@ -99,14 +99,37 @@ export function stockItemKey(item) {
   return chosen.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() || "unknown";
 }
 
+function ignoreWords(value) {
+  const words = nameNorm(value).split(" ").filter(Boolean);
+  if (words.length >= 2 && /^pallets?$/.test(words.at(-1)) && /^\d/.test(words.at(-2))) return words.slice(0, -2);
+  return words;
+}
+
+function sameIgnoreWord(left, right) {
+  if (left === right) return true;
+  const stem = (word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word);
+  const a = stem(left);
+  const b = stem(right);
+  return a.length >= 4 && a === b;
+}
+
+/** Whole-word match on the product name. A pack note such as `40/PALLET` is not the product. */
 export function isIgnoredStockItem(item, names = DEFAULT_IGNORE_STOCK_NAMES) {
-  const text = `${item?.name ?? ""} ${item?.code ?? ""}`.toLowerCase();
+  const resolved = item?.product?.name || item?.resolvedName;
+  const sources = resolved ? [resolved] : [item?.name, item?.code];
   return (names || []).some((needle) => {
-    const phrase = String(needle ?? "").trim().toLowerCase();
-    if (!phrase) return false;
-    if (text.includes(phrase)) return true;
-    const stem = phrase.endsWith("s") ? phrase.slice(0, -1) : phrase;
-    return stem.length >= 4 && text.includes(stem);
+    const phrase = ignoreWords(needle);
+    if (!phrase.length) return false;
+    return sources.some((value) => {
+      if (!value) return false;
+      const words = ignoreWords(value);
+      if (words.length >= phrase.length) {
+        for (let index = 0; index <= words.length - phrase.length; index += 1) {
+          if (phrase.every((part, offset) => sameIgnoreWord(words[index + offset], part))) return true;
+        }
+      }
+      return sameIgnoreWord(words.join(""), phrase.join(""));
+    });
   });
 }
 
