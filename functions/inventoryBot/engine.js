@@ -7,8 +7,8 @@ export const DEFAULT_CONFIG = { graceDays: 3, valuation: "pricelist", receivedWi
 export const DELIVERY_TYPES = ["DT"];
 export const RETURN_TYPES = ["SR"];
 export const TRANSFER_TYPES = ["SR", "ST", "STx", "TT"];
-export const INBOUND_TYPES = ["MR", "PR", "SR", "FT"];
-export const OUTBOUND_TYPES = ["DT", "CT", "ST", "STx", "TT"];
+export const INBOUND_TYPES = ["MR", "PR", "SR", "FT", "CT"];
+export const OUTBOUND_TYPES = ["DT", "ST", "STx"];
 export const ADJUSTMENT_TYPES = ["AT"];
 export const INACTIVE_STATUSES = ["paused", "inactive", "released", "completed", "completed-reviewed", "closed", "suspended"];
 const QTY_TOLERANCE = 0.01;
@@ -252,11 +252,113 @@ function prefixClose(left, right) {
   return PREFIX_PAIRS.some(([a, b]) => (a === left && b === right) || (a === right && b === left));
 }
 
-/** `exact` when the cleaned numbers are the same string, `fuzzy` when only the prefix and digits agree, otherwise `none`. */
+/** `exact` when the cleaned numbers are the same string, `fuzzy` when only the prefix and digits agree, otherwise `none`. A missing type segment (`BRKS-000540` and `BRKS-DT-000540`) is fuzzy. */
 export function ticketsMatch(left, right) {
   if (!left?.number || !right?.number || left.thirdParty || right.thirdParty) return "none";
   if (left.number !== right.number || !prefixClose(left.prefix, right.prefix)) return "none";
   return left.exact === right.exact ? "exact" : "fuzzy";
+}
+
+/** Same number reading coverage uses, including bare Alchem digits and glued prefixes. */
+export function looseTicket(value) {
+  const parsed = ticketNorm(value);
+  if (parsed?.number && !parsed.thirdParty) return { ...parsed, bare: false };
+  const compact = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const glued = compact.match(/^([A-Z][A-Z0-9]*?)(\d+)$/);
+  if (glued && /[A-Z]/.test(glued[1])) return { exact: compact, prefix: glued[1], type: "", number: String(Number(glued[2])), thirdParty: false, bare: false };
+  if (/^\d+$/.test(compact)) return { exact: compact, prefix: "", type: "", number: String(Number(compact)), thirdParty: true, bare: true };
+  return parsed ? { ...parsed, bare: false } : null;
+}
+
+function trailingDigits(value) {
+  const match = String(value ?? "").toUpperCase().match(/(\d+)$/);
+  return match ? String(Number(match[1])) : "";
+}
+
+function lsdParts(value) {
+  const norm = lsdNorm(value);
+  const match = String(norm).match(/^(\d+)-(\d+)-(\d+)-(\d+)([WE])(\d+)$/);
+  if (!match) return null;
+  return { section: Number(match[2]), twp: Number(match[3]), rge: Number(match[4]), mer: `${match[5]}${match[6]}` };
+}
+
+function nearLsd(left, right) {
+  const a = lsdParts(left);
+  const b = lsdParts(right);
+  if (!a || !b || a.twp !== b.twp || a.rge !== b.rge || a.mer !== b.mer) return false;
+  return Math.abs(a.section - b.section) <= 1;
+}
+
+function namesClose(left, right) {
+  const a = nameNorm(left);
+  const b = nameNorm(right);
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const word = a.split(" ")[0];
+  return word.length >= 4 && word === b.split(" ")[0];
+}
+
+function contractorAndRig(ticket, well) {
+  if (!rigNorm(ticket.rig) || rigNorm(ticket.rig) !== rigNorm(well.rig)) return false;
+  const names = [ticket.contractor, ticket.customer];
+  const wells = [well.contractor, well.operator, well.name];
+  if (!names.some(Boolean) || !wells.some(Boolean)) return true;
+  return names.some((name) => wells.some((other) => namesClose(name, other)));
+}
+
+function locationConfirms(ticket, well) {
+  if (!well) return false;
+  const ticketLsd = ticket.lsdNorm || lsdNorm(ticket.lsd);
+  const wellLsd = well.lsdNorm || lsdNorm(well.lsd);
+  if (ticketLsd && wellLsd && (ticketLsd === wellLsd || nearLsd(ticketLsd, wellLsd))) return true;
+  return contractorAndRig(ticket, well);
+}
+
+function matchReportDay(app, well) {
+  const direct = dayKey(app?.reportDate) || dayKey(app?.report?.date);
+  if (direct) return direct;
+  const reportId = app?.reportId || "";
+  const reports = Array.isArray(well?.reports) ? well.reports : [];
+  const found = reports.find((report) => report && (report.id === reportId || report.reportId === reportId));
+  if (dayKey(found?.date)) return dayKey(found.date);
+  if (reportId && well?.newestReportId === reportId) return dayKey(well.newestReportDate || well.lastReportDate);
+  if (reportId && well?.lastReportId === reportId) return dayKey(well.lastReportDate);
+  return "";
+}
+
+/** True when the app line cites this warehouse ticket, including a bare Alchem number and a missing DT segment. */
+export function appCitesTicket(app, ticket) {
+  if (app?.kind !== "received" && app?.kind !== "returned") return false;
+  const parsed = looseTicket(warehouseTicketNumber(ticket));
+  const appParsed = looseTicket(app.rawTicket || app.ticketNorm);
+  if (!parsed?.number || !appParsed?.number) return false;
+  if (!parsed.bare && !appParsed.bare && ticketsMatch(parsed, appParsed) !== "none") return true;
+  return Boolean(appParsed.bare && trailingDigits(warehouseTicketNumber(ticket)) === appParsed.number);
+}
+
+/** The coverage matcher. Bare Alchem numbers count only when the well location confirms. */
+export function matchLoggedApp(ticket, apps, wells) {
+  const parsed = looseTicket(warehouseTicketNumber(ticket));
+  const hits = [];
+  for (const app of apps || []) {
+    if (app.kind !== "received" && app.kind !== "returned") continue;
+    const appParsed = looseTicket(app.rawTicket || app.ticketNorm);
+    if (!appParsed) continue;
+    if (parsed?.number && appParsed.number && !parsed.bare && !appParsed.bare && ticketsMatch(parsed, appParsed) !== "none") {
+      const level = ticketsMatch(parsed, appParsed);
+      hits.push({ app, match: level === "exact" ? "exact" : "typo" });
+    }
+    if (appParsed.bare && trailingDigits(warehouseTicketNumber(ticket)) === appParsed.number) hits.push({ app, match: "alchem" });
+  }
+  const rank = { exact: 0, typo: 1, alchem: 2 };
+  const viable = [];
+  for (const hit of hits) {
+    const well = (wells || []).find((item) => item.id === hit.app.wellId) || null;
+    if (hit.match === "alchem" && !locationConfirms(ticket, well)) continue;
+    viable.push({ ...hit, well });
+  }
+  viable.sort((a, b) => rank[a.match] - rank[b.match] || String(matchReportDay(a.app, a.well) || "").localeCompare(String(matchReportDay(b.app, b.well) || "")));
+  return viable[0] || null;
 }
 
 export function firstUwi(text) {
@@ -314,12 +416,22 @@ export function normalizeAppTicket(entry) {
   };
 }
 
-export function stockEffect(type, qty) {
+/** Warehouse stock change. DT and ST leave the warehouse. CT, SR, and MR come back in. AT keeps its sign. TT and a transfer follow `direction` when it is set; a TT with no direction does not move stock. */
+export function stockEffect(type, qty, ticket) {
   const amount = Number(qty);
   if (!Number.isFinite(amount)) return 0;
-  if (inTicketTypes(type, INBOUND_TYPES)) return amount;
-  if (inTicketTypes(type, OUTBOUND_TYPES)) return -Math.abs(amount);
-  if (inTicketTypes(type, ADJUSTMENT_TYPES)) return amount;
+  const kind = String(type || "").trim().toLowerCase();
+  if (kind === "at") return amount;
+  const direction = String(ticket?.direction || ticket?.stockDirection || "").toLowerCase();
+  const inbound = /^(in|inbound|receive|received|credit)$/.test(direction);
+  if (kind === "tt") {
+    if (inbound) return Math.abs(amount);
+    if (/^(out|outbound|send|sent)$/.test(direction)) return -Math.abs(amount);
+    return 0;
+  }
+  if (kind === "st" || kind === "stx") return inbound ? Math.abs(amount) : -Math.abs(amount);
+  if (kind === "dt") return -Math.abs(amount);
+  if (["ct", "sr", "mr", "pr", "ft"].includes(kind)) return Math.abs(amount);
   return 0;
 }
 
@@ -343,6 +455,12 @@ export function resolveLine(index, line) {
 function lineIdentity(index, line) {
   const item = resolveLine(index, line);
   return { ...item, key: item.pack ? `${item.productKey}|${item.pack}` : item.productKey, name: item.unit ? `${item.name} ${item.unit}` : item.name };
+}
+
+/** Stock and ticket lines share a product and the same 15% pack bucket. */
+export function packStockKey(index, item) {
+  const resolved = resolveLine(index, item);
+  return `${resolved.productKey}|${resolved.pack || "nopack"}`;
 }
 
 function money(value) {
@@ -579,28 +697,14 @@ function appEntryLines(entry, index) {
   return groups;
 }
 
-function numberMatch(ticket, entries) {
-  const parsed = ticketNorm(warehouseTicketNumber(ticket));
-  const hits = [];
-  for (const entry of entries) {
-    if (!entry.parsed || entry.parsed.thirdParty) continue;
-    const level = ticketsMatch(parsed, entry.parsed);
-    if (level !== "none") hits.push({ entry, level });
-  }
-  const exact = hits.filter((hit) => hit.level === "exact");
-  if (exact.length) return { level: "exact", hits: exact };
-  if (hits.length) return { level: "fuzzy", hits };
-  return { level: "none", hits: [] };
-}
-
 function deliveryIssues(issues, { date, settings, tickets, wells, index, appEntries }) {
   const deliveries = tickets.filter((ticket) => inTicketTypes(ticket.type, DELIVERY_TYPES));
   const byWell = new Map();
   for (const ticket of deliveries) {
     const day = ticketDay(ticket);
     if (!day || daysBetween(date, day) <= settings.graceDays) continue;
-    const numbered = numberMatch(ticket, appEntries.filter((entry) => entry.kind === "received" || entry.kind === "transferIn"));
-    if (numbered.level !== "none") continue;
+    const logged = matchLoggedApp(ticket, appEntries, wells);
+    if (logged) continue;
     const well = matchWell(ticket, wells);
     if (!well?.lastReportDate || daysBetween(well.lastReportDate, day) < 0) continue;
     const bucket = byWell.get(well.id) || { well, tickets: [] };
@@ -1023,22 +1127,22 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
     const ordered = [...list].sort((a, b) => String(a.date).localeCompare(String(b.date)));
     const current = ordered.at(-1);
     const previous = ordered.length > 1 ? ordered.at(-2) : null;
-    const items = new Map((current.items || []).filter((item) => !isIgnoredStockItem(item, settings.ignoreStockNames)).map((item) => [stockItemKey(item), item]));
-    for (const item of items.values()) {
+    const items = new Map((current.items || []).filter((item) => !isIgnoredStockItem(item, settings.ignoreStockNames)).map((item) => [packStockKey(index, item), item]));
+    for (const [key, item] of items) {
       const onHand = Number(item.onHand);
       const available = Number(item.available);
       const onHandNegative = Number.isFinite(onHand) && onHand < -QTY_TOLERANCE;
       const availableNegative = Number.isFinite(available) && available < -QTY_TOLERANCE;
       if (onHandNegative || availableNegative) {
-        const row = identityOf(index, item.code, item.name);
-        const price = unitPrice({ ...row, unit: item.unit || item.pack || item.packSize }, settings.valuation);
+        const row = resolveLine(index, item);
+        const price = unitPrice({ ...row, product: row.product, unit: item.unit || item.pack || item.packSize }, settings.valuation);
         const parts = [];
         if (onHandNegative) parts.push(`${roundQty(onHand)} on hand`);
         if (availableNegative) parts.push(`${roundQty(available)} available`);
         const qty = onHandNegative ? onHand : available;
         const value = dollars(qty, price);
         add(issues, {
-          id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, "negative", row.key),
+          id: issueId(date, "warehouse_drift", current.source, current.warehouseCode, "negative", key),
           date, rule: "warehouse_drift", severity: "high",
           title: `${row.name} is negative at ${current.warehouseName || current.warehouseCode}`,
           detail: `${current.source} ${current.warehouseCode} shows ${parts.join(" and ")} on ${current.date}.`,
@@ -1050,7 +1154,6 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
     }
     if (!previous) continue;
     const explained = new Map();
-    const explainAlias = new Map();
     const ticketIds = new Map();
     for (const ticket of tickets) {
       if (ticket.warehouseCode !== current.warehouseCode || ticket.source !== current.source) continue;
@@ -1058,29 +1161,23 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
       if (!day || day <= previous.date || day > current.date) continue;
       for (const line of linesOf(ticket)) {
         if (isIgnoredStockItem(line, settings.ignoreStockNames)) continue;
-        const row = identityOf(index, line.code, line.name || line.productId);
-        const keys = [...new Set([stockItemKey(line), row.key].filter(Boolean))];
-        const primary = keys[0];
-        explained.set(primary, (explained.get(primary) || 0) + stockEffect(ticket.type, line.qty));
-        for (const key of keys.slice(1)) if (!explained.has(key)) explainAlias.set(key, primary);
-        for (const key of keys) {
-          const ids = ticketIds.get(key) || [];
-          if (!ids.includes(ticket.id)) ids.push(ticket.id);
-          ticketIds.set(key, ids);
-        }
+        const key = packStockKey(index, line);
+        explained.set(key, (explained.get(key) || 0) + stockEffect(ticket.type, line.qty, ticket));
+        const ids = ticketIds.get(key) || [];
+        if (!ids.includes(ticket.id)) ids.push(ticket.id);
+        ticketIds.set(key, ids);
       }
     }
-    const previousItems = new Map((previous.items || []).filter((item) => !isIgnoredStockItem(item, settings.ignoreStockNames)).map((item) => [stockItemKey(item), item]));
+    const previousItems = new Map((previous.items || []).filter((item) => !isIgnoredStockItem(item, settings.ignoreStockNames)).map((item) => [packStockKey(index, item), item]));
     for (const item of current.items || []) {
       if (isIgnoredStockItem(item, settings.ignoreStockNames)) continue;
-      const key = stockItemKey(item);
-      const row = identityOf(index, item.code, item.name || item.productId);
+      const key = packStockKey(index, item);
+      const row = resolveLine(index, item);
       const before = Number(previousItems.get(key)?.onHand);
       const after = Number(item.onHand);
       if (!Number.isFinite(before) || !Number.isFinite(after)) continue;
       const delta = after - before;
-      const primary = explained.has(key) ? key : (explainAlias.get(key) || (explained.has(row.key) ? row.key : explainAlias.get(row.key)));
-      const net = primary ? explained.get(primary) || 0 : 0;
+      const net = explained.get(key) || 0;
       if (Math.abs(delta - net) <= QTY_TOLERANCE) continue;
       const price = unitPrice({ ...row, unit: item.unit || item.pack || item.packSize }, settings.valuation);
       const gap = delta - net;
@@ -1090,7 +1187,7 @@ function warehouseIssues(issues, { date, settings, tickets, stock, index }) {
         date, rule: "warehouse_drift", severity: "medium",
         title: `${row.name} at ${current.warehouseName || current.warehouseCode} changed without tickets`,
         detail: `On hand went from ${roundQty(before)} to ${roundQty(after)} between ${previous.date} and ${current.date}. Tickets explain ${roundQty(net)} of that change.`,
-        wellId: "", rig: "", lsd: "", ticketIds: ticketIds.get(key) || ticketIds.get(row.key) || [],
+        wellId: "", rig: "", lsd: "", ticketIds: ticketIds.get(key) || [],
         products: [{ name: row.name, qty: roundQty(gap), value }],
         dollarValue: value, status: "open", note: "", resolvedBy: "", resolvedAt: null,
       });
@@ -1252,7 +1349,8 @@ export function runChecks({ date, config, tickets = [], wells = [], products = [
     remaining: remainingList(well),
   }));
   const normalizedApps = appTickets.map((entry) => normalizeAppTicket(entry));
-  const appEntries = [...normalizedApps, ...liftedEntries(preparedWells, normalizedApps)].filter((entry) => datedOnOrAfter(entry.date, settings.checksStartDate));
+  const appPool = [...normalizedApps, ...liftedEntries(preparedWells, normalizedApps)];
+  const appEntries = appPool.filter((entry) => datedOnOrAfter(entry.date, settings.checksStartDate) || preparedTickets.some((ticket) => appCitesTicket(entry, ticket)));
   const stockInWindow = (stock || []).filter((row) => datedOnOrAfter(row.date, settings.checksStartDate));
   const issues = new Map();
   const input = { date, settings, tickets: preparedTickets, wells: preparedWells, index, stock: stockInWindow, appEntries };

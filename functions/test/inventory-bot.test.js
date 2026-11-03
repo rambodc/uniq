@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { addIssue, checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigIdentity, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
+import { addIssue, appCitesTicket, checksRequestChanged, configFromMain, DEFAULT_IGNORE_STOCK_NAMES, inTicketTypes, isIgnoredStockItem, isInactiveStatus, isTicketPdfPath, isTicketType, kindFromAppTicketId, lsdNorm, matchLoggedApp, matchProduct, matchWell, indexProducts, normalizeAppTicket, parseAppDescription, rigIdentity, rigNorm, runChecks, stockEffect, stockItemKey, ticketLookupId, ticketNorm, ticketsMatch } from "../inventoryBot/engine.js";
 import { TOOLS, completeInventoryChat } from "../inventoryBot/chat.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -298,6 +298,24 @@ test("checks ignore tickets and app entries before checksStartDate", () => {
   assert.equal(early.issues.some((issue) => issue.rule === "delivered_not_logged"), false);
   assert.equal(early.issues.some((issue) => issue.rule === "ticket_typo" || issue.rule === "qty_mismatch" || issue.rule === "logged_no_ticket"), false);
   assert.equal(early.issues.some((issue) => issue.rule === "warehouse_drift"), false);
+  const loggedEarly = runChecks({
+    date: "2026-11-03", config,
+    products,
+    wells: [well({ lastReportDate: "2026-11-02" })],
+    tickets: [ticket({ id: "xpress_TBAR-DT-001232", postedAt: "2026-10-30", shippedAt: "2026-10-30" })],
+    appTickets: [{ id: "w1_old", wellId: "w1", kind: "received", rawTicket: "TBAR-DT-001232", date: "2026-10-29", lines: [{ name: "Elixir", qty: 4 }] }],
+  });
+  assert.equal(loggedEarly.issues.some((issue) => issue.rule === "delivered_not_logged"), false);
+  const wells = [
+    well({ id: "a04", name: "Tundra A04", lsd: "1-1-1-1W4", lsdNorm: "1-1-1-1W4", rig: "10" }),
+    well({ id: "b04", name: "Tundra B04", lsd: "13-26-2-28W1", lsdNorm: "13-26-2-28W1", rig: "12", contractor: "Tundra" }),
+  ];
+  const alchemTicket = ticket({ id: "mim_DTAWEY011648", source: "mim", type: "DT", warehouseCode: "AWEY", postedAt: "2026-10-30", shippedAt: "2026-10-30", lsd: "13-26-2-28W1", lsdNorm: "13-26-2-28W1", rig: "12", customer: "Tundra" });
+  const alchemApps = [{ id: "b04_r", wellId: "b04", kind: "received", rawTicket: "11648", date: "2026-10-30", lines: [{ name: "Elixir", qty: 4 }] }];
+  const alchem = runChecks({ date: "2026-11-03", config, products, wells, tickets: [alchemTicket], appTickets: alchemApps });
+  assert.equal(alchem.issues.some((issue) => issue.rule === "delivered_not_logged"), false);
+  assert.equal(matchLoggedApp(alchemTicket, alchemApps, wells).well.id, "b04");
+  assert.equal(appCitesTicket(alchemApps[0], alchemTicket), true);
   const later = runChecks({
     date: "2026-11-02", config,
     products,
@@ -367,8 +385,38 @@ test("blank stock codes match on product id or name, and drums and pallets are n
   assert.equal(custom.issues.some((issue) => /Empty Drums/.test(issue.title)), true);
 });
 
+test("credit tickets add warehouse stock and pack sizes stay separate", () => {
+  const credit = runChecks({
+    date: "2026-11-02", products,
+    stock: [
+      { date: "2026-11-01", source: "xpress", warehouseCode: "CANNK", items: [{ code: "ELX", name: "Elixir", onHand: 10, available: 10 }] },
+      { date: "2026-11-02", source: "xpress", warehouseCode: "CANNK", items: [{ code: "ELX", name: "Elixir", onHand: 14, available: 14 }] },
+    ],
+    tickets: [ticket({ id: "xpress_NK-000888", type: "CT", postedAt: "2026-11-02", warehouseCode: "CANNK", source: "xpress", lines: [{ code: "ELX", name: "Elixir", qty: 4 }] })],
+  });
+  assert.equal(credit.issues.some((issue) => issue.rule === "warehouse_drift" && issue.severity === "medium"), false);
+  const clay = { id: "clay", name: "Clay-Control", xpressCodes: ["CLAY"], mimCodes: [], appNames: [], unit: "1000L", price: 10, confirmed: true };
+  const packs = runChecks({
+    date: "2026-11-02", products: [clay],
+    stock: [
+      { date: "2026-11-01", source: "xpress", warehouseCode: "TBAR", items: [{ code: "CLAY", name: "Clay-Control", unit: "18 L", onHand: 10 }, { code: "CLAY", name: "Clay-Control", unit: "1000 L", onHand: 2 }] },
+      { date: "2026-11-02", source: "xpress", warehouseCode: "TBAR", items: [{ code: "CLAY", name: "Clay-Control", unit: "18 L", onHand: 8 }, { code: "CLAY", name: "Clay-Control", unit: "1000 L", onHand: 2 }] },
+    ],
+    tickets: [ticket({ id: "xpress_TBAR-DT-9", postedAt: "2026-11-02", warehouseCode: "TBAR", source: "xpress", lines: [{ code: "CLAY", name: "Clay-Control", unit: "18 L", qty: 2 }] })],
+  });
+  assert.equal(packs.issues.some((issue) => issue.rule === "warehouse_drift" && issue.severity === "medium"), false);
+});
+
 test("STx transfers count toward warehouse stock in any case", () => {
   assert.equal(stockEffect("STx", 4), -4);
+  assert.equal(stockEffect("CT", 4), 4);
+  assert.equal(stockEffect("SR", 2), 2);
+  assert.equal(stockEffect("DT", 4), -4);
+  assert.equal(stockEffect("ST", 4), -4);
+  assert.equal(stockEffect("AT", -3), -3);
+  assert.equal(stockEffect("TT", 4), 0);
+  assert.equal(stockEffect("TT", 4, { direction: "in" }), 4);
+  assert.equal(stockEffect("ST", 4, { direction: "in" }), 4);
   assert.equal(stockEffect("stx", 4), -4);
   assert.equal(stockEffect("STX", 4), -4);
   assert.equal(inTicketTypes("STx", ["ST", "STx"]), true);

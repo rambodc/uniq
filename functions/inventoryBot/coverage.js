@@ -1,20 +1,12 @@
 /** Well-based ticket coverage. Warehouse tickets are the source of truth. Pure data in, plain objects out. */
 
 import { createHash } from "node:crypto";
-import { daysBetween, dayKey, docSlug, indexProducts, isIgnoredStockItem, lsdNorm, matchWell, nameNorm, resolveLine, rigNorm, stockEffect, stockItemKey, ticketNorm, ticketsMatch, warehouseTicketNumber } from "./engine.js";
+import { appCitesTicket, daysBetween, dayKey, docSlug, indexProducts, isIgnoredStockItem, looseTicket, lsdNorm, matchLoggedApp, matchWell, packStockKey, resolveLine, rigNorm, stockEffect, stockItemKey, warehouseTicketNumber } from "./engine.js";
+
+export { looseTicket };
 
 const NOT_BOUND = new Set(["mr", "sr", "at", "st", "stx", "tt", "pr"]);
 export const FLAG_STATUSES = ["new", "seen", "watching", "done"];
-
-export function looseTicket(value) {
-  const parsed = ticketNorm(value);
-  if (parsed?.number && !parsed.thirdParty) return { ...parsed, bare: false };
-  const compact = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const glued = compact.match(/^([A-Z][A-Z0-9]*?)(\d+)$/);
-  if (glued && /[A-Z]/.test(glued[1])) return { exact: compact, prefix: glued[1], type: "", number: String(Number(glued[2])), thirdParty: false, bare: false };
-  if (/^\d+$/.test(compact)) return { exact: compact, prefix: "", type: "", number: String(Number(compact)), thirdParty: true, bare: true };
-  return parsed ? { ...parsed, bare: false } : null;
-}
 
 export function ticketSeries(value, type) {
   const text = String(value ?? "").toUpperCase().replace(/^(XPRESS|MIM)_/, "");
@@ -58,31 +50,6 @@ function nearLsd(left, right) {
   return Math.abs(a.section - b.section) <= 1;
 }
 
-function namesClose(left, right) {
-  const a = nameNorm(left);
-  const b = nameNorm(right);
-  if (!a || !b) return false;
-  if (a === b || a.includes(b) || b.includes(a)) return true;
-  const word = a.split(" ")[0];
-  return word.length >= 4 && word === b.split(" ")[0];
-}
-
-function contractorAndRig(ticket, well) {
-  if (!rigNorm(ticket.rig) || rigNorm(ticket.rig) !== rigNorm(well.rig)) return false;
-  const tickets = [ticket.contractor, ticket.customer];
-  const wells = [well.contractor, well.operator, well.name];
-  if (!tickets.some(Boolean) || !wells.some(Boolean)) return true;
-  return tickets.some((name) => wells.some((other) => namesClose(name, other)));
-}
-
-function locationConfirms(ticket, well) {
-  if (!well) return false;
-  const ticketLsd = ticket.lsdNorm || lsdNorm(ticket.lsd);
-  const wellLsd = well.lsdNorm || lsdNorm(well.lsd);
-  if (ticketLsd && wellLsd && (ticketLsd === wellLsd || nearLsd(ticketLsd, wellLsd))) return true;
-  return contractorAndRig(ticket, well);
-}
-
 function locationDiffers(ticket, well) {
   const ticketLsd = ticket.lsdNorm || lsdNorm(ticket.lsd);
   const wellLsd = well?.lsdNorm || lsdNorm(well?.lsd);
@@ -105,11 +72,6 @@ function locationNoteText(ticket, well) {
     return `Possible LSD typo ${left.mer} vs ${right.mer} (${ticketLsd} vs ${wellLsd}). Contractor and rig agree.`;
   }
   return `Location ${ticketLsd} vs ${wellLsd} differs, but the rig agrees. Possible typo, pad versus well, or picked up by the customer.`;
-}
-
-function trailingDigits(value) {
-  const match = String(value ?? "").toUpperCase().match(/(\d+)$/);
-  return match ? String(Number(match[1])) : "";
 }
 
 const SERVICE_LINE = /\bcallouts?\b|after[\s-]*hours|\bhandling\b|delivery[\s-]*charges?|fuel[\s-]*surcharges?|\bsurcharges?\b|\btt\s*charges?\b/i;
@@ -214,27 +176,7 @@ function notBound(ticket) {
 }
 
 function matchApp(ticket, apps, wells) {
-  const parsed = looseTicket(warehouseTicketNumber(ticket));
-  const hits = [];
-  for (const app of apps) {
-    if (app.kind !== "received" && app.kind !== "returned") continue;
-    const appParsed = looseTicket(app.rawTicket || app.ticketNorm);
-    if (!appParsed) continue;
-    if (parsed?.number && appParsed.number && !parsed.bare && !appParsed.bare) {
-      const level = ticketsMatch(parsed, appParsed);
-      if (level !== "none") hits.push({ app, match: level === "exact" ? "exact" : "typo" });
-    }
-    if (appParsed.bare && trailingDigits(warehouseTicketNumber(ticket)) === appParsed.number) hits.push({ app, match: "alchem" });
-  }
-  const rank = { exact: 0, typo: 1, alchem: 2 };
-  const viable = [];
-  for (const hit of hits) {
-    const well = wellOf(wells, hit.app.wellId);
-    if (hit.match === "alchem" && !locationConfirms(ticket, well)) continue;
-    viable.push({ ...hit, well });
-  }
-  viable.sort((a, b) => rank[a.match] - rank[b.match] || String(reportDay(a.app, a.well) || "").localeCompare(String(reportDay(b.app, b.well) || "")));
-  return viable[0] || null;
+  return matchLoggedApp(ticket, apps, wells);
 }
 
 function reportDay(app, well) {
@@ -269,12 +211,7 @@ function noRealNumber(raw) {
 }
 
 function appCites(app, ticket) {
-  if (app.kind !== "received" && app.kind !== "returned") return false;
-  const parsed = looseTicket(warehouseTicketNumber(ticket));
-  const appParsed = looseTicket(app.rawTicket || app.ticketNorm);
-  if (!parsed?.number || !appParsed?.number) return false;
-  if (!parsed.bare && !appParsed.bare && ticketsMatch(parsed, appParsed) !== "none") return true;
-  return Boolean(appParsed.bare && trailingDigits(warehouseTicketNumber(ticket)) === appParsed.number);
+  return appCitesTicket(app, ticket);
 }
 
 function linkedApps(ticket, apps, hit) {
@@ -368,7 +305,9 @@ function appIsMatched(app, matchedIds, matchedKeys) {
   return citationKeys(app?.rawTicket || app?.ticketNorm).some((key) => matchedKeys.has(key));
 }
 
-function classifyApp(app, loadedTypes, matchedIds, matchedKeys, floors, windowStart) {
+const WAREHOUSE_MISSING = "App cites a ticket the warehouse doesn't have (likely typo or not yet posted).";
+
+function classifyApp(app, loadedTypes, loadedNumbers, matchedIds, matchedKeys, floors, windowStart) {
   if (appIsMatched(app, matchedIds, matchedKeys)) return null;
   const raw = String(app.rawTicket || "").trim();
   if (app.kind === "transferIn" || app.kind === "transferOut") return { category: "transfer", reason: "Well-to-well transfer. No warehouse ticket is expected.", auto: true };
@@ -378,7 +317,10 @@ function classifyApp(app, loadedTypes, matchedIds, matchedKeys, floors, windowSt
     return { category: "outside_window", reason: `Outside the collected ticket window. ${found.floor.series} starts at ${found.floor.min}${when}.`, auto: true, priority: "low" };
   }
   if (noRealNumber(raw)) return outsideCollection(app, windowStart) || { category: "no_ticket_number", reason: "The app line has no warehouse ticket number.", auto: false };
-  if (found) return { category: "missing_from_pull", reason: `${raw} is in a loaded series but that ticket was not pulled.`, auto: false };
+  if (found) {
+    if (loadedNumbers.has(`${found.floor.series}:${found.cited.number}`)) return null;
+    return { category: "not_at_warehouse", reason: WAREHOUSE_MISSING, auto: false };
+  }
   const series = ticketSeries(raw);
   if (series) {
     const before = outsideCollection(app, windowStart);
@@ -400,15 +342,14 @@ function keptFlag(flags, entityType, entityId) {
   return (flags || []).some((flag) => flag?.entityType === entityType && flag.entityId === entityId && (flag.status || (Array.isArray(flag.notes) && flag.notes.length)));
 }
 
-/** Drop unflagged rows that this run no longer writes. Keep flagged ones as resolved_auto. Legacy app ids are included even when their date is older. */
-export function reconcileCoverage({ date, reviews = [], ticketStatus = [], existingReviews = [], existingStatuses = [], flags = [], at }) {
+/** Drop unflagged rows this run no longer writes, including rows dated on an earlier run. Keep flagged ones as resolved_auto. */
+export function reconcileCoverage({ reviews = [], ticketStatus = [], existingReviews = [], existingStatuses = [], flags = [], at }) {
   const reviewIds = new Set(reviews.map((row) => row.id));
   const statusIds = new Set(ticketStatus.map((row) => row.id));
   const reviewDeletes = [];
   const reviewStale = [];
   for (const doc of existingReviews) {
     if (!doc?.id || reviewIds.has(doc.id) || doc.state === "resolved_auto") continue;
-    if (doc.date !== date && !isLegacyReviewId(doc.id)) continue;
     if (keptFlag(flags, "review", doc.id)) reviewStale.push({ id: doc.id, state: "resolved_auto", staleSince: doc.staleSince || at });
     else reviewDeletes.push(doc.id);
   }
@@ -553,7 +494,7 @@ export function compactStockSnapshots(snapshots) {
   return writes;
 }
 
-function stockItemsOf(settings, stock, tickets) {
+function stockItemsOf(settings, stock, tickets, index) {
   const groups = new Map();
   for (const snapshot of stock || []) {
     const key = `${snapshot.source}|${snapshot.warehouseCode}`;
@@ -573,25 +514,27 @@ function stockItemsOf(settings, stock, tickets) {
       const inTransit = Number(item.inTransit);
       const name = item.name || item.code || "Item";
       const base = { warehouseCode: current.warehouseCode, source: current.source, product: name, wellId: "" };
-      if (Number.isFinite(onHand) && onHand < -0.01) items.push({ ...base, id: `stock_${docSlug(current.warehouseCode)}_${docSlug(stockItemKey(item))}_negative`, kind: "stock_negative", title: `${name} is negative at ${current.warehouseCode}`, detail: `${current.source} ${current.warehouseCode} shows ${onHand} on hand on ${current.date}.`, dollarValue: 0, auto: false, qty: onHand });
-      if (Number.isFinite(onHand) && Number.isFinite(committed) && committed > onHand + 0.01) items.push({ ...base, id: `stock_${docSlug(current.warehouseCode)}_${docSlug(stockItemKey(item))}_committed`, kind: "stock_committed", title: `${name} is committed for more than is on hand`, detail: `${current.warehouseCode} has ${committed} committed and ${onHand} on hand.`, dollarValue: 0, auto: false, qty: committed - onHand });
-      if (Number.isFinite(inTransit) && inTransit > 0.01) items.push({ ...base, id: `stock_${docSlug(current.warehouseCode)}_${docSlug(stockItemKey(item))}_transit`, kind: "stock_transit", title: `${name} is in transit at ${current.warehouseCode}`, detail: `${inTransit} is still in transit on ${current.date}.`, dollarValue: 0, auto: false, qty: inTransit });
+      const itemKey = index ? packStockKey(index, item) : stockItemKey(item);
+      if (Number.isFinite(onHand) && onHand < -0.01) items.push({ ...base, id: `stock_${docSlug(current.warehouseCode)}_${docSlug(itemKey)}_negative`, kind: "stock_negative", title: `${name} is negative at ${current.warehouseCode}`, detail: `${current.source} ${current.warehouseCode} shows ${onHand} on hand on ${current.date}.`, dollarValue: 0, auto: false, qty: onHand });
+      if (Number.isFinite(onHand) && Number.isFinite(committed) && committed > onHand + 0.01) items.push({ ...base, id: `stock_${docSlug(current.warehouseCode)}_${docSlug(itemKey)}_committed`, kind: "stock_committed", title: `${name} is committed for more than is on hand`, detail: `${current.warehouseCode} has ${committed} committed and ${onHand} on hand.`, dollarValue: 0, auto: false, qty: committed - onHand });
+      if (Number.isFinite(inTransit) && inTransit > 0.01) items.push({ ...base, id: `stock_${docSlug(current.warehouseCode)}_${docSlug(itemKey)}_transit`, kind: "stock_transit", title: `${name} is in transit at ${current.warehouseCode}`, detail: `${inTransit} is still in transit on ${current.date}.`, dollarValue: 0, auto: false, qty: inTransit });
     }
     if (!previous) continue;
-    const before = new Map((previous.items || []).map((item) => [stockItemKey(item), Number(item.onHand)]));
+    const lineKey = (item) => index ? packStockKey(index, item) : stockItemKey(item);
+    const before = new Map((previous.items || []).map((item) => [lineKey(item), Number(item.onHand)]));
     const explained = new Map();
     for (const ticket of tickets || []) {
       if (ticket.warehouseCode !== current.warehouseCode || ticket.source !== current.source) continue;
       const day = ticketDay(ticket);
       if (!day || day <= previous.date || day > current.date) continue;
       for (const line of ticket.lines || []) {
-        const key = stockItemKey(line);
-        explained.set(key, (explained.get(key) || 0) + stockEffect(ticket.type, line.qty));
+        const key = lineKey(line);
+        explained.set(key, (explained.get(key) || 0) + stockEffect(ticket.type, line.qty, ticket));
       }
     }
     for (const item of current.items || []) {
       if (isIgnoredStockItem(item, settings.ignoreStockNames)) continue;
-      const key = stockItemKey(item);
+      const key = lineKey(item);
       const from = before.get(key);
       const to = Number(item.onHand);
       if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
@@ -630,6 +573,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
   const ignoreNames = Array.isArray(config?.ignoreStockNames) ? config.ignoreStockNames : undefined;
   const checksStart = /^\d{4}-\d{2}-\d{2}$/.test(String(config?.checksStartDate || "")) ? String(config.checksStartDate) : "";
   const loadedTypes = new Set();
+  const loadedNumbers = new Set();
   const floors = new Map();
   let earliestTicket = "";
   for (const ticket of preparedTickets) {
@@ -639,6 +583,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
     if (!series) continue;
     const source = sourceForSeries(series, ticket.source);
     if (series.type && source) loadedTypes.add(`${source}|${series.type}`);
+    loadedNumbers.add(`${series.series}:${series.number}`);
     noteFloor(floors, ticket, series);
   }
   const windowStart = [checksStart, earliestTicket].filter(Boolean).sort().at(-1) || "";
@@ -715,7 +660,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
   const appOnly = [];
   const flagMoves = [];
   for (const app of apps) {
-    const classified = classifyApp(app, loadedTypes, matchedIds, matchedKeys, floors, windowStart);
+    const classified = classifyApp(app, loadedTypes, loadedNumbers, matchedIds, matchedKeys, floors, windowStart);
     if (!classified) continue;
     const well = wellOf(preparedWells, app.wellId);
     const id = appReviewId(app);
@@ -726,7 +671,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
       appId: app.id || "",
       kind: "app_only",
       category: classified.category,
-      title: classified.category === "transfer" ? `Transfer ${app.rawTicket || "between wells"}` : `${app.rawTicket || "App line"} has no warehouse ticket`,
+      title: classified.category === "transfer" ? `Transfer ${app.rawTicket || "between wells"}` : classified.category === "not_at_warehouse" ? `${app.rawTicket || "App line"} is not on the warehouse list` : `${app.rawTicket || "App line"} has no warehouse ticket`,
       detail: classified.reason,
       reason: classified.reason,
       wellId: app.wellId || "",
@@ -740,7 +685,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
       date,
     });
   }
-  const reviews = reviewDocuments([...sequenceGaps(preparedTickets, apps).map((item) => ({ ...item, date })), ...stockItemsOf({ ignoreStockNames: ignoreNames }, stock, preparedTickets).map((item) => ({ ...item, date })), ...appOnly]);
+  const reviews = reviewDocuments([...sequenceGaps(preparedTickets, apps).map((item) => ({ ...item, date })), ...stockItemsOf({ ignoreStockNames: ignoreNames }, stock, preparedTickets, index).map((item) => ({ ...item, date })), ...appOnly]);
   const counts = { logged: 0, pending: 0, overdue: 0, mismatch: 0, not_well_bound: 0 };
   for (const row of ticketStatus) if (counts[row.status] != null) counts[row.status] += 1;
   const dollarsAtRisk = Math.round(ticketStatus.filter((row) => row.status === "overdue" || row.status === "mismatch").reduce((sum, row) => sum + (row.dollarValue || 0), 0) * 100) / 100;

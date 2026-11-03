@@ -98,7 +98,8 @@ test("app tickets without a warehouse ticket are categorized", () => {
   });
   const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.rawTicket, item.category]));
   assert.equal(categories["173_transferTo"], "transfer");
-  assert.equal(categories["TBAR-DT-001238"], "missing_from_pull");
+  assert.equal(categories["TBAR-DT-001238"], "not_at_warehouse");
+  assert.equal(result.reviews.find((item) => item.rawTicket === "TBAR-DT-001238").reason, "App cites a ticket the warehouse doesn't have (likely typo or not yet posted).");
   assert.equal(categories.MudMan, "no_ticket_number");
   assert.equal(categories["BA-00002"], "unknown_prefix");
   assert.equal(result.reviews.find((item) => item.category === "transfer").auto, true);
@@ -155,6 +156,17 @@ test("an adjacent section and the same rig still link an Alchem bare number", ()
   assert.equal(result.ticketStatus[0].match, "alchem");
   assert.equal(result.ticketStatus[0].wellName, "Anova Bryant");
   assert.equal(result.ticketStatus[0].lagDays, 1);
+});
+
+test("a warehouse number without the type segment matches the typed app citation", () => {
+  const result = buildCoverage({
+    date: "2026-11-03",
+    wells: [well({})],
+    tickets: [ticket({ id: "xpress_BRKS-000540", type: "DT", postedAt: "2026-11-02", lines: [{ name: "Elixir", qty: 4 }] })],
+    appTickets: [{ id: "w1_r", wellId: "w1", kind: "received", rawTicket: "BRKS-DT-000540", date: "2026-11-02", lines: [{ name: "Elixir", qty: 4 }] }],
+  });
+  assert.equal(result.ticketStatus[0].status, "logged");
+  assert.equal(result.reviews.some((item) => item.rawTicket === "BRKS-DT-000540"), false);
 });
 
 test("a warehouse sale in the ship-to text is not well-bound", () => {
@@ -328,7 +340,7 @@ test("an unloaded series before the window is outside, and a loaded-series hole 
   const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.rawTicket, item.category]));
   assert.equal(categories["TBAR-CT-000338"], "outside_window");
   assert.equal(result.reviews.find((item) => item.rawTicket === "TBAR-CT-000338").auto, true);
-  assert.equal(categories["WBFS-DT-000530"], "missing_from_pull");
+  assert.equal(categories["WBFS-DT-000530"], "not_at_warehouse");
   assert.equal(categories["TBAR-CT-000400"], "unknown_prefix");
   const covered = buildCoverage({
     date: "2026-11-02",
@@ -354,6 +366,7 @@ test("stale review and ticket rows are closed when flagged and deleted otherwise
       { id: "app_old-well_3", date: "2026-10-27" },
       { id: "sequence_nk-dt", date: "2026-11-02" },
       { id: "sequence_other", date: "2026-11-01" },
+      { id: "app_aaaabbbbcccc", date: "2026-11-02" },
       { id: "app_kept", date: "2026-11-02", state: "resolved_auto", staleSince: "2026-11-01T00:00:00.000Z" },
     ],
     existingStatuses: [
@@ -363,12 +376,13 @@ test("stale review and ticket rows are closed when flagged and deleted otherwise
     ],
     flags: [
       { entityType: "review", entityId: "app_old-well_3", status: "watching", notes: [{ text: "look" }] },
+      { entityType: "review", entityId: "app_aaaabbbbcccc", status: "seen", notes: [{ text: "yesterday" }] },
       { entityType: "ticket", entityId: "xpress_noted", status: "seen", notes: [] },
     ],
     at,
   });
-  assert.deepEqual(plan.reviewDeletes.sort(), ["app_old-well_2", "sequence_nk-dt"]);
-  assert.deepEqual(plan.reviewStale, [{ id: "app_old-well_3", state: "resolved_auto", staleSince: at }]);
+  assert.deepEqual(plan.reviewDeletes.sort(), ["app_old-well_2", "sequence_nk-dt", "sequence_other"]);
+  assert.deepEqual(plan.reviewStale.map((row) => row.id).sort(), ["app_aaaabbbbcccc", "app_old-well_3"]);
   assert.deepEqual(plan.statusDeletes, ["xpress_gone"]);
   assert.deepEqual(plan.statusStale, [{ id: "xpress_noted", state: "resolved_auto", staleSince: at }]);
 });
@@ -442,8 +456,8 @@ test("a number below the lowest loaded ticket in that series is outside the wind
   assert.equal(result.reviews.find((item) => item.rawTicket === "NK-DT-004700").auto, true);
   assert.equal(categories.NK4788, "outside_window");
   assert.match(result.reviews.find((item) => item.rawTicket === "NK4788").reason, /NK-DT starts at 4806 on 2026-10-30/);
-  assert.equal(categories["NK-DT-004807"], "missing_from_pull");
-  assert.equal(categories["BRKS-DT-000540"], "missing_from_pull");
+  assert.equal(categories["NK-DT-004807"], "not_at_warehouse");
+  assert.equal(categories["BRKS-DT-000540"], "not_at_warehouse");
   assert.equal(categories["TBAR-DT-00"], "no_ticket_number");
   assert.equal(categories["TBAR-CT00"], "no_ticket_number");
 });
