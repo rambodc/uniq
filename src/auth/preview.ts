@@ -1,14 +1,6 @@
-import type { AppTicketEntry, Inquiry, InventoryChatMessage, InventoryTicket, InventoryToday, InventoryWell, RigInventory, TicketSummary, UserRecord, WarehouseStock, WellSummary } from "../core/api";
+import type { Inquiry, UserRecord, XpressBoard } from "../core/api";
 
-export type InventoryPreviewData = {
-  today: InventoryToday;
-  wells: WellSummary[];
-  wellDetails: Record<string, { well: InventoryWell; rigInventory: RigInventory | null; tickets: TicketSummary[]; appTickets?: AppTicketEntry[] }>;
-  tickets: TicketSummary[];
-  ticketDetails: Record<string, InventoryTicket>;
-  warehouses: WarehouseStock[];
-  messages: InventoryChatMessage[];
-};
+export type InventoryPreviewData = { xpress?: XpressBoard };
 
 /** Dev-only fixtures for local screenshots. Production builds drop this branch. */
 export function previewActive() {
