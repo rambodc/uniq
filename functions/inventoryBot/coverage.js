@@ -1,6 +1,6 @@
 /** Well-based ticket coverage. Warehouse tickets are the source of truth. Pure data in, plain objects out. */
 
-import { daysBetween, dayKey, docSlug, indexProducts, isIgnoredStockItem, lsdNorm, matchProduct, matchWell, nameNorm, packKey, rigNorm, stockEffect, stockItemKey, ticketNorm, ticketsMatch, warehouseTicketNumber } from "./engine.js";
+import { daysBetween, dayKey, docSlug, indexProducts, isIgnoredStockItem, lsdNorm, matchWell, nameNorm, resolveLine, rigNorm, stockEffect, stockItemKey, ticketNorm, ticketsMatch, warehouseTicketNumber } from "./engine.js";
 
 const NOT_BOUND = new Set(["mr", "sr", "at", "st", "stx", "tt", "pr"]);
 export const FLAG_STATUSES = ["new", "seen", "watching", "done"];
@@ -94,53 +94,48 @@ function trailingDigits(value) {
   return match ? String(Number(match[1])) : "";
 }
 
-function lineUnit(line) {
-  return String(line?.unit || line?.pack || line?.packSize || "").trim();
+const SERVICE_LINE = /\bcallouts?\b|after[\s-]*hours|\bhandling\b|delivery[\s-]*charges?|fuel[\s-]*surcharges?|\bsurcharges?\b|\btt\s*charges?\b/i;
+
+function isServiceLine(line) {
+  const text = [line?.name, line?.product, line?.productname, line?.code, line?.service, line?.description, line?.type, line?.kind].filter(Boolean).join(" ");
+  if (SERVICE_LINE.test(text)) return true;
+  return /^(charge|service|fee)$/i.test(String(line?.type || line?.kind || ""));
 }
 
-function lineLabel(line) {
-  return line?.name || line?.product || line?.productname || "";
+function comparableLine(line, ignoreNames) {
+  if (!line || isServiceLine(line) || isIgnoredStockItem(line, ignoreNames)) return false;
+  return true;
 }
 
-function productOf(index, line) {
-  const id = line?.productId ? index.byId?.get(String(line.productId)) : null;
-  if (id) return id;
-  return matchProduct(index, line?.code || "", lineLabel(line), lineUnit(line));
-}
-
-function productKeyOf(index, line) {
-  return productOf(index, line)?.id || nameNorm(lineLabel(line)) || "unknown";
-}
-
-function linePrice(index, line) {
+function linePrice(index, line, resolved) {
   const own = Number(line?.price);
   if (Number.isFinite(own) && own > 0) return own;
-  const listed = productOf(index, line)?.price;
+  const listed = resolved?.product?.price;
   return typeof listed === "number" ? listed : 0;
 }
 
-function mismatchPortion(ticketLines, appLines, index) {
+function mismatchPortion(ticketLines, appLines, index, ignoreNames) {
   const groups = new Map();
   const take = (line, side) => {
-    const key = productKeyOf(index, line);
-    const group = groups.get(key) || { ticket: [], app: [] };
-    group[side].push(line);
-    groups.set(key, group);
+    const resolved = resolveLine(index, line);
+    const group = groups.get(resolved.productKey) || { ticket: [], app: [] };
+    group[side].push({ line, resolved });
+    groups.set(resolved.productKey, group);
   };
-  for (const line of ticketLines || []) take(line, "ticket");
-  for (const line of appLines || []) take(line, "app");
+  for (const line of ticketLines || []) if (comparableLine(line, ignoreNames)) take(line, "ticket");
+  for (const line of appLines || []) if (comparableLine(line, ignoreNames)) take(line, "app");
   let dollars = 0;
   let differs = false;
   for (const group of groups.values()) {
-    const bothUnits = group.ticket.length > 0 && group.app.length > 0 && group.ticket.every((line) => lineUnit(line)) && group.app.every((line) => lineUnit(line));
+    const bothUnits = group.ticket.length > 0 && group.app.length > 0 && group.ticket.every((row) => row.resolved.unit) && group.app.every((row) => row.resolved.unit);
     if (bothUnits) {
-      const tally = (lines) => {
+      const tally = (rows) => {
         const map = new Map();
-        for (const line of lines) {
-          const pack = packKey(lineUnit(line)) || "unit";
+        for (const row of rows) {
+          const pack = row.resolved.pack || "unit";
           const current = map.get(pack) || { qty: 0, price: 0 };
-          current.qty += Number(line.qty) || 0;
-          if (!current.price) current.price = linePrice(index, line);
+          current.qty += Number(row.line.qty) || 0;
+          if (!current.price) current.price = linePrice(index, row.line, row.resolved);
           map.set(pack, current);
         }
         return map;
@@ -154,13 +149,13 @@ function mismatchPortion(ticketLines, appLines, index) {
         dollars += diff * (right.get(key)?.price || left.get(key)?.price || 0);
       }
     } else {
-      const left = group.ticket.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
-      const right = group.app.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+      const left = group.ticket.reduce((sum, row) => sum + (Number(row.line.qty) || 0), 0);
+      const right = group.app.reduce((sum, row) => sum + (Number(row.line.qty) || 0), 0);
       const diff = Math.abs(left - right);
       if (diff <= 0.01) continue;
       differs = true;
       const sample = group.app[0] || group.ticket[0];
-      dollars += diff * linePrice(index, sample);
+      dollars += diff * linePrice(index, sample.line, sample.resolved);
     }
   }
   return { differs, dollars: Math.round(dollars * 100) / 100 };
@@ -171,7 +166,7 @@ function dollarsOf(lines, index) {
   for (const line of lines || []) {
     const qty = Math.abs(Number(line.qty) || 0);
     const own = Number(line.price);
-    const product = matchProduct(index, line.code, line.name || line.product);
+    const product = resolveLine(index, line).product;
     const price = Number.isFinite(own) && own > 0 ? own : (typeof product?.price === "number" ? product.price : 0);
     sum += qty * (price || 0);
   }
@@ -179,7 +174,7 @@ function dollarsOf(lines, index) {
 }
 
 function ticketPlace(ticket) {
-  return [ticket.wellName, ticket.customer, ticket.orderedBy, ticket.shipTo, ticket.shipToName, ticket.destination, ticket.deliverTo, ticket.instructions].filter(Boolean).join(" ");
+  return [ticket.wellName, ticket.customer, ticket.orderedBy, ticket.shipTo, ticket.shipToName, ticket.shipToAddress, ticket.destination, ticket.deliverTo, ticket.deliveryAddress, ticket.instructions, ticket.lsd, ticket.lsdGrid, ticket.grid, ticket.gridLocation, ticket.location].filter(Boolean).join(" ");
 }
 
 function boundReason(ticket) {
@@ -253,27 +248,100 @@ function noRealNumber(raw) {
   return !parsed?.number || parsed.number === "0";
 }
 
-function windowFor(raw, windowBySource) {
-  const series = ticketSeries(raw);
-  const prefix = series?.prefix || "";
-  const source = ["NK", "CANNK", "BRKS", "SBBRK", "TBAR", "WBFS"].includes(prefix) ? "xpress" : /AWEY|PROS|EVPR/.test(prefix) ? "mim" : "";
-  if (source && windowBySource.get(source)) return windowBySource.get(source);
-  const values = [...windowBySource.values()].filter(Boolean).sort();
-  return values[0] || "";
+function appCites(app, ticket) {
+  if (app.kind !== "received" && app.kind !== "returned") return false;
+  const parsed = looseTicket(warehouseTicketNumber(ticket));
+  const appParsed = looseTicket(app.rawTicket || app.ticketNorm);
+  if (!parsed?.number || !appParsed?.number) return false;
+  if (!parsed.bare && !appParsed.bare && ticketsMatch(parsed, appParsed) !== "none") return true;
+  return Boolean(appParsed.bare && trailingDigits(warehouseTicketNumber(ticket)) === appParsed.number);
 }
 
-function classifyApp(app, loadedSeries, loadedPrefixes, matchedIds, windowBySource) {
+function linkedApps(ticket, apps, hit) {
+  const linked = [];
+  for (const app of apps) {
+    if (!appCites(app, ticket)) continue;
+    if (app.id === hit.app.id || (app.wellId && app.wellId === hit.app.wellId)) linked.push(app);
+  }
+  return linked;
+}
+
+function noteFloor(floors, ticket, series) {
+  const key = `${ticket.source || ""}|${series.series}`;
+  const day = ticketDay(ticket) || "";
+  const current = floors.get(key);
+  if (!current) {
+    floors.set(key, { ...series, source: ticket.source || "", min: series.number, max: series.number, date: day });
+    return;
+  }
+  if (series.number < current.min) {
+    current.min = series.number;
+    current.date = day;
+  } else if (series.number === current.min && day && (!current.date || day < current.date)) {
+    current.date = day;
+  }
+  if (series.number > current.max) current.max = series.number;
+}
+
+function floorFor(raw, floors) {
+  const cited = ticketSeries(raw);
+  if (!cited?.number) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const floor of floors.values()) {
+    if (floor.prefix !== cited.prefix) continue;
+    if (cited.type && floor.type !== cited.type) continue;
+    const distance = cited.number < floor.min ? floor.min - cited.number : cited.number > floor.max ? cited.number - floor.max : 0;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = floor;
+    }
+  }
+  return best ? { cited, floor: best } : null;
+}
+
+function seriesWindow(raw, floors) {
+  const found = floorFor(raw, floors);
+  if (!found || found.cited.number >= found.floor.min) return null;
+  const when = found.floor.date ? ` on ${found.floor.date}` : "";
+  return { category: "outside_window", reason: `Outside the collected ticket window. ${found.floor.series} starts at ${found.floor.min}${when}.`, auto: true, priority: "low" };
+}
+
+function classifyApp(app, loadedSeries, loadedPrefixes, matchedIds, floors) {
   if (matchedIds.has(app.id)) return null;
   const raw = String(app.rawTicket || "").trim();
-  const when = dayKey(app.reportDate) || dayKey(app.date);
-  const windowStart = windowFor(raw, windowBySource);
-  if (when && windowStart && when < windowStart) return { category: "outside_window", reason: "Outside the collected ticket window.", auto: true, priority: "low" };
   if (app.kind === "transferIn" || app.kind === "transferOut") return { category: "transfer", reason: "Well-to-well transfer. No warehouse ticket is expected.", auto: true };
+  const outside = seriesWindow(raw, floors);
+  if (outside) return outside;
   if (noRealNumber(raw)) return { category: "no_ticket_number", reason: "The app line has no warehouse ticket number.", auto: false };
   const series = ticketSeries(raw);
   if (series && (loadedSeries.has(series.series) || (series.prefix && loadedPrefixes.has(series.prefix)))) return { category: "missing_from_pull", reason: `${raw} is in a loaded series but that ticket was not pulled.`, auto: false };
   if (looseTicket(raw)?.bare) return { category: "no_ticket_number", reason: "The app cites a bare number that no loaded warehouse ticket confirmed.", auto: false };
   return { category: "unknown_prefix", reason: `${raw} uses a prefix that is not in the loaded warehouse tickets.`, auto: false };
+}
+
+const TICKET_STATUSES = new Set(["logged", "pending", "overdue", "mismatch", "not_well_bound"]);
+
+/** Review rows that will be written. Mismatch tickets stay on ticket status. Duplicate ids collapse. */
+export function reviewDocuments(reviews) {
+  const byId = new Map();
+  for (const row of reviews || []) {
+    if (!row?.id || !row.kind || TICKET_STATUSES.has(row.status)) continue;
+    byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
+function distinctReviews(items) {
+  const counts = new Map();
+  const rows = [];
+  for (const item of items) {
+    if (!item?.id) continue;
+    const seen = counts.get(item.id) || 0;
+    counts.set(item.id, seen + 1);
+    rows.push(seen === 0 ? item : { ...item, id: `${item.id}_${seen + 1}` });
+  }
+  return reviewDocuments(rows);
 }
 
 export function sequenceGaps(tickets, apps) {
@@ -438,20 +506,16 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
   const preparedTickets = tickets.map((ticket) => ({ ...ticket, lsdNorm: lsdNorm(ticket.lsd) || ticket.lsdNorm || "" }));
   const apps = appTickets.map((entry) => ({ ...entry, kind: entry.kind || "received" }));
   const index = indexProducts(products);
+  const ignoreNames = Array.isArray(config?.ignoreStockNames) ? config.ignoreStockNames : undefined;
   const loadedSeries = new Set();
   const loadedPrefixes = new Set();
-  const windowBySource = new Map();
+  const floors = new Map();
   for (const ticket of preparedTickets) {
     const series = ticketSeries(warehouseTicketNumber(ticket), ticket.type);
-    if (series) {
-      loadedSeries.add(series.series);
-      if (series.prefix) loadedPrefixes.add(series.prefix);
-    }
-    const day = ticketDay(ticket);
-    if (!day) continue;
-    const source = ticket.source || "";
-    const prior = windowBySource.get(source);
-    if (!prior || day < prior) windowBySource.set(source, day);
+    if (!series) continue;
+    loadedSeries.add(series.series);
+    if (series.prefix) loadedPrefixes.add(series.prefix);
+    noteFloor(floors, ticket, series);
   }
   const matchedIds = new Set();
   const ticketStatus = [];
@@ -487,9 +551,10 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
     }
     const hit = matchApp(ticket, apps, preparedWells);
     if (hit) {
-      matchedIds.add(hit.app.id);
+      const linked = linkedApps(ticket, apps, hit);
+      for (const app of linked) matchedIds.add(app.id);
       const lag = loggedLag(day, hit.app, hit.well);
-      const portion = mismatchPortion(ticket.lines, hit.app.lines, index);
+      const portion = mismatchPortion(ticket.lines, linked.flatMap((app) => app.lines || []), index, ignoreNames);
       const mismatch = portion.differs || locationDiffers(ticket, hit.well);
       ticketStatus.push({
         ...base,
@@ -520,7 +585,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
   }
   const appOnly = [];
   for (const app of apps) {
-    const classified = classifyApp(app, loadedSeries, loadedPrefixes, matchedIds, windowBySource);
+    const classified = classifyApp(app, loadedSeries, loadedPrefixes, matchedIds, floors);
     if (!classified) continue;
     const well = wellOf(preparedWells, app.wellId);
     appOnly.push({
@@ -539,9 +604,9 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
       date: app.date || "",
     });
   }
-  const reviews = [...sequenceGaps(preparedTickets, apps).map((item) => ({ ...item, date })), ...stockItemsOf({ ignoreStockNames: config?.ignoreStockNames }, stock, preparedTickets).map((item) => ({ ...item, date })), ...appOnly];
+  const reviews = distinctReviews([...sequenceGaps(preparedTickets, apps).map((item) => ({ ...item, date })), ...stockItemsOf({ ignoreStockNames: ignoreNames }, stock, preparedTickets).map((item) => ({ ...item, date })), ...appOnly]);
   const counts = { logged: 0, pending: 0, overdue: 0, mismatch: 0, not_well_bound: 0 };
   for (const row of ticketStatus) if (counts[row.status] != null) counts[row.status] += 1;
   const dollarsAtRisk = Math.round(ticketStatus.filter((row) => row.status === "overdue" || row.status === "mismatch").reduce((sum, row) => sum + (row.dollarValue || 0), 0) * 100) / 100;
-  return { ticketStatus, reviews, counts, dollarsAtRisk };
+  return { ticketStatus, reviews, reviewCount: reviews.length, counts, dollarsAtRisk };
 }
