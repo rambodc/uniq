@@ -2,10 +2,9 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { todayKey } from "./format";
 
 const TABS = [
-  { to: "/inventory-bot", label: "Today", end: true },
-  { to: "/inventory-bot/wells", label: "Wells & Rigs" },
-  { to: "/inventory-bot/tickets", label: "Tickets" },
-  { to: "/inventory-bot/warehouses", label: "Warehouses" },
+  { to: "/inventory-bot", label: "Home", end: true },
+  { to: "/inventory-bot/wells", label: "Wells" },
+  { to: "/inventory-bot/unmatched", label: "Unmatched" },
   { to: "/inventory-bot/ask", label: "Ask" },
 ];
 

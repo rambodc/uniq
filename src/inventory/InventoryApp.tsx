@@ -5,6 +5,7 @@ import { WellDetail, Wells } from "./Wells";
 import { TicketDetail, Tickets } from "./Tickets";
 import Warehouses from "./Warehouses";
 import Ask from "./Ask";
+import Unmatched from "./Unmatched";
 
 export default function InventoryApp() {
   return <Routes>
@@ -15,6 +16,7 @@ export default function InventoryApp() {
     <Route path="tickets" element={<Tickets />} />
     <Route path="tickets/:ticketId" element={<TicketDetail />} />
     <Route path="warehouses" element={<Warehouses />} />
+    <Route path="unmatched" element={<Unmatched />} />
     <Route path="ask" element={<Ask />} />
   </Routes>;
 }
