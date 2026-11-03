@@ -248,6 +248,36 @@ Rules:
 8. `warehouse_drift` (high when on-hand or available is negative, otherwise medium). The text names `on hand` or `available` according to which field is negative. The on-hand change between the two latest snapshots on or before the date is not the signed ticket quantity between those dates.
 9. Money. Every issue carries `dollarValue`. The same product in two pack sizes stays two lines, each at its own price. The price is the app line's own `price` or `unitCost` when the mud report has one, on every rule. Otherwise the pricelist (or cost, when config says so) is used, and only when the product's unit is within about 15% of the logged pack (`19L` vs `20L`, `22.68kg` vs `25kg`). A tote list price is not applied to a pail line. `missing_price` (low) flags a product on a `DT` that has no pricelist price. Lines that are not linked to a product are one `Unpriced items` issue for the day, not one issue per line. `summary.mimTtCharges` sums that day's MIM `TT` charges. `summary.appProductCost`, `summary.appServiceCost`, and `summary.appTotalCost` sum the daily cost fields from reports dated that day.
 
+## Ticket status, review items, and flags
+
+Checks recompute these every run. Warehouse tickets are the source of truth. A mud report should log the same ticket number within `config.graceDays` (default 3).
+
+`ticketStatus/{ticketId}` is one row per warehouse ticket:
+
+| Field | Type |
+| --- | --- |
+| `status` | `logged`, `pending`, `overdue`, `mismatch`, or `not_well_bound` |
+| `match` | `exact`, `typo`, `alchem`, or `none` |
+| `wellId`, `wellName`, `reportId`, `appTicketId` | links when the ticket is logged or has a candidate well |
+| `lagDays` | report date minus ticket date. Negative when the report is dated before the ticket. |
+| `ageDays` | check date minus ticket date |
+| `escalate` | true when an overdue ticket is 7 or more days old |
+| `reason` | short explanation. Not-well-bound reasons are receipt, adjustment or blend, warehouse transfer, handling charge, or warehouse sale. |
+| `dollarValue` | list price times quantity, using the line price when the line has one |
+| `auto` | true when the reason is automatic, such as a receipt or a well-to-well transfer |
+
+Matching order: exact number, then a typo (`NK4806` = `NK-DT-004806`, `BRKS-000537` = `BRKS-DT-000537`), then an Alchem bare number (`11648` = `DTAWEY011648`) only when the well LSD or rig agrees, then a well chosen by LSD or by contractor rig when nothing is logged yet.
+
+`reviewItems/{id}` holds the queue: app tickets with no warehouse ticket (`transfer`, `missing_from_pull`, `no_ticket_number`, `unknown_prefix`), holes in a prefix series such as `TBAR-DT` 1233 and 1236, and stock exceptions (negative on hand, committed above on hand, in transit, and a day-over-day change the tickets do not explain). `auto` is true for expected transfers.
+
+`flags/{entityType}__{entityId}` is one status for a well, ticket, issue, or review item: `new`, `seen`, `watching`, `done`. `notes` is `{ at, by, text }[]` and is only appended. `forGrokBot` marks a note for the next daily check. `grokBotReply` is the assistant's answer. Checks never delete a flag.
+
+### Stock rows the collector should write
+
+`stock/{date}_{source}_{warehouseCode}.items` should omit a line whose on-hand, available, committed, and in-transit quantities are all zero. Keep one zero line only when that item was non-zero on the previous snapshot, so the run-out is visible. The check run rewrites snapshots that still contain extra zero lines. `functions/scripts/compact-zero-stock.mjs` does the same pass once across every stock document.
+
+Optional well fields for the map: `lat` and `lon` (or `latitude` and `longitude`), decimal degrees. When they are missing the home screen skips the map.
+
 ## Chat
 
 `inventoryBot/main/chats/{uid}/messages/{id}`
@@ -260,7 +290,7 @@ Rules:
 
 The assistant is `grok-4.3` through `https://api.x.ai/v1/chat/completions`. The key is Secret Manager secret `XAI_API_KEY`, declared with `defineSecret("XAI_API_KEY")` on `inventoryBotChat` only. Do not put the key in a dotenv file.
 
-Tools, each capped so a whole collection is never sent to the model: `search_tickets`, `get_ticket`, `get_well_inventory`, `list_issues`, `get_warehouse_stock`, `find_product`.
+Tools, each capped so a whole collection is never sent to the model: `searchTickets`, `getWellHistory`, `getStock`, `listFlags`, `getIssues`, `createFlag`, and `addNote`. Only the flag tools write, and they write flags only. If the assistant cannot answer, it saves the question on the selected well, ticket, or review item with `forGrokBot` true.
 
 ## PDFs
 

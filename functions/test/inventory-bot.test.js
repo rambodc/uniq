@@ -747,7 +747,7 @@ test("pallet names are ignored on quantity and price checks", () => {
 });
 
 test("the chatbot calls one targeted tool and cites the tool result", async () => {
-  assert.deepEqual(TOOLS.map((tool) => tool.function.name), ["search_tickets", "get_ticket", "get_well_inventory", "list_issues", "get_warehouse_stock", "find_product"]);
+  assert.deepEqual(TOOLS.map((tool) => tool.function.name), ["searchTickets", "getWellHistory", "getStock", "listFlags", "getIssues", "createFlag", "addNote"]);
   const calls = [];
   const seen = [];
   const fetchImpl = async (url, init) => {

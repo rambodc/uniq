@@ -368,7 +368,7 @@ function canonicalAmount(amount) {
   return Math.round(amount / step) * step;
 }
 
-function packKey(unit) {
+export function packKey(unit) {
   const size = packSize(unit);
   if (size) return `${canonicalAmount(size.amount)}${size.family}`;
   return unitToken(unit);

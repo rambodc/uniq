@@ -65,6 +65,16 @@ export type WarehouseStock = { id: string; date: string; source: string; company
 export type InventoryChatMessage = { id?: string; role: "user" | "assistant"; content: string; createdAt: string | null };
 export type TicketFilters = { query?: string; source?: string; company?: string; type?: string; warehouseCode?: string; rig?: string; lsd?: string; from?: string; to?: string };
 
+export type TicketCoverageStatus = "logged" | "pending" | "overdue" | "mismatch" | "not_well_bound";
+export type TicketCoverage = { id: string; date: string; ticketDate?: string; ticketId: string; number: string; source: string; company: string; type: string; warehouseCode: string; rig: string; lsd: string; ageDays: number; dollarValue: number; wellId: string; wellName: string; reportId: string; appTicketId: string; lagDays: number | null; match: string; escalate: boolean; status: TicketCoverageStatus; reason: string; auto?: boolean };
+export type ReviewItem = { id: string; date?: string; kind: string; title: string; detail?: string; reason?: string; wellId?: string; wellName?: string; dollarValue?: number; auto?: boolean; category?: string; series?: string; numbers?: number[]; rawTicket?: string; warehouseCode?: string };
+export type FlagNote = { at: string; by: string; text: string };
+export type FlagStatus = "new" | "seen" | "watching" | "done";
+export type InventoryFlag = { id: string; entityType: string; entityId: string; status: FlagStatus; notes: FlagNote[]; forGrokBot: boolean; grokBotReply: string; updatedAt: string };
+export type CoverageWell = { id: string; name: string; lsd: string; lsdNorm: string; rig: string; contractor: string; status: string; operator: string; lastReportDate: string | null; lat: number | null; lon: number | null };
+export type InventoryCoverage = { date: string; tickets: TicketCoverage[]; reviews: ReviewItem[]; wells: CoverageWell[]; flags: InventoryFlag[] };
+export const inventoryBotGetCoverage = (date?: string) => invoke<{ date?: string }, InventoryCoverage>("inventoryBotGetCoverage", { date });
+export const inventoryBotSetFlag = (data: { entityType: "well" | "ticket" | "issue" | "review"; entityId: string; status?: FlagStatus; note?: string; forGrokBot?: boolean }) => invoke<typeof data, InventoryFlag & { id: string }>("inventoryBotSetFlag", data);
 export const inventoryBotGetToday = (date?: string) => invoke<{ date?: string }, InventoryToday>("inventoryBotGetToday", { date });
 export const inventoryBotUpdateIssue = (issueId: string, status: InventoryIssueStatus, note: string) => invoke<{ issueId: string; status: InventoryIssueStatus; note: string }, InventoryIssue>("inventoryBotUpdateIssue", { issueId, status, note });
 export const inventoryBotListWells = () => invoke<undefined, { wells: WellSummary[] }>("inventoryBotListWells");
@@ -74,7 +84,7 @@ export const inventoryBotGetTicket = (ticketId: string) => invoke<{ ticketId: st
 export const inventoryBotTicketUrl = (ticketId: string) => invoke<{ ticketId: string }, { url: string; expiresAt: string }>("inventoryBotTicketUrl", { ticketId });
 export const inventoryBotListWarehouses = () => invoke<undefined, { warehouses: WarehouseStock[] }>("inventoryBotListWarehouses");
 export const inventoryBotListChat = () => invoke<undefined, { messages: InventoryChatMessage[] }>("inventoryBotListChat");
-export const inventoryBotChat = (message: string) => invoke<{ message: string }, { reply: string }>("inventoryBotChat", { message });
+export const inventoryBotChat = (message: string, context?: { wellId?: string; ticketId?: string; reviewId?: string }) => invoke<{ message: string; context?: { wellId?: string; ticketId?: string; reviewId?: string } }, { reply: string }>("inventoryBotChat", { message, context });
 
 export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);
 export const removeMyPhoto = () => invoke("removeMyPhoto");
