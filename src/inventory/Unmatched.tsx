@@ -12,7 +12,7 @@ export default function Unmatched() {
   const [data, setData] = useState<InventoryCoverage | null>(null);
   const [flags, setFlags] = useState<InventoryFlag[]>([]);
   const [open, setOpen] = useState<string | null>(null);
-  const [showAuto, setShowAuto] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
   const [loading, setLoading] = useState(() => preview == null);
   const [error, setError] = useState("");
 
@@ -33,8 +33,9 @@ export default function Unmatched() {
   }, [date]);
 
   const reviews = data?.reviews || [];
-  const visible = reviews.filter((item) => showAuto || !item.auto);
-  const hidden = reviews.filter((item) => item.auto).length;
+  const closed = (item: ReviewItem) => Boolean(item.auto) || item.state === "resolved_auto";
+  const visible = reviews.filter((item) => showClosed || !closed(item));
+  const hidden = reviews.filter(closed).length;
   const counts = useMemo(() => flags.reduce((all, flag) => ({ ...all, [flag.status]: (all[flag.status] || 0) + 1 }), {} as Record<string, number>), [flags]);
 
   function flagFor(id: string) {
@@ -53,7 +54,7 @@ export default function Unmatched() {
     </section>
     {error && <div className="portal-status error" role="alert">{error}</div>}
     {loading ? <p className="portal-empty">Loading the queue…</p> : <>
-      <button type="button" className="inv-auto" aria-expanded={showAuto} onClick={() => setShowAuto((value) => !value)}>{showAuto ? "Hide" : "Show"} {hidden} auto-explained</button>
+      <button type="button" className="inv-auto" aria-expanded={showClosed} onClick={() => setShowClosed((value) => !value)}>{showClosed ? "Hide" : "Show"} {hidden} auto-closed</button>
       {visible.length === 0 ? <p className="portal-empty">Nothing needs a review.</p> : <ul className="inv-queue">
         {visible.map((item) => <ReviewRow key={item.id} item={item} flag={flagFor(item.id)} open={open === item.id} onOpen={() => setOpen(open === item.id ? null : item.id)} onFlag={saveFlag} />)}
       </ul>}

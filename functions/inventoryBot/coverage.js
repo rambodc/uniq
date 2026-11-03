@@ -320,11 +320,18 @@ function floorFor(raw, floors) {
   return best ? { cited, floor: best } : null;
 }
 
-function seriesWindow(raw, floors) {
-  const found = floorFor(raw, floors);
-  if (!found || found.cited.number >= found.floor.min) return null;
-  const when = found.floor.date ? ` on ${found.floor.date}` : "";
-  return { category: "outside_window", reason: `Outside the collected ticket window. ${found.floor.series} starts at ${found.floor.min}${when}.`, auto: true, priority: "low" };
+const XPRESS_PREFIXES = new Set(["NK", "CANNK", "BRKS", "SBBRK", "TBAR", "WBFS"]);
+
+function sourceForSeries(series, ticketSource) {
+  if (ticketSource === "xpress" || ticketSource === "mim") return ticketSource;
+  if (XPRESS_PREFIXES.has(series?.prefix)) return "xpress";
+  if (/AWEY|PROS|EVPR/.test(series?.prefix || "")) return "mim";
+  return "";
+}
+
+function pullCoveredType(series, loadedTypes) {
+  const source = sourceForSeries(series, "");
+  return Boolean(series?.type && source && loadedTypes.has(`${source}|${series.type}`));
 }
 
 function entryDay(app) {
@@ -361,17 +368,58 @@ function appIsMatched(app, matchedIds, matchedKeys) {
   return citationKeys(app?.rawTicket || app?.ticketNorm).some((key) => matchedKeys.has(key));
 }
 
-function classifyApp(app, loadedSeries, loadedPrefixes, matchedIds, matchedKeys, floors, windowStart) {
+function classifyApp(app, loadedTypes, matchedIds, matchedKeys, floors, windowStart) {
   if (appIsMatched(app, matchedIds, matchedKeys)) return null;
   const raw = String(app.rawTicket || "").trim();
   if (app.kind === "transferIn" || app.kind === "transferOut") return { category: "transfer", reason: "Well-to-well transfer. No warehouse ticket is expected.", auto: true };
-  const outside = seriesWindow(raw, floors);
-  if (outside) return outside;
+  const found = floorFor(raw, floors);
+  if (found && found.cited.number < found.floor.min) {
+    const when = found.floor.date ? ` on ${found.floor.date}` : "";
+    return { category: "outside_window", reason: `Outside the collected ticket window. ${found.floor.series} starts at ${found.floor.min}${when}.`, auto: true, priority: "low" };
+  }
   if (noRealNumber(raw)) return outsideCollection(app, windowStart) || { category: "no_ticket_number", reason: "The app line has no warehouse ticket number.", auto: false };
+  if (found) return { category: "missing_from_pull", reason: `${raw} is in a loaded series but that ticket was not pulled.`, auto: false };
   const series = ticketSeries(raw);
-  if (series && (loadedSeries.has(series.series) || (series.prefix && loadedPrefixes.has(series.prefix)))) return { category: "missing_from_pull", reason: `${raw} is in a loaded series but that ticket was not pulled.`, auto: false };
+  if (series) {
+    const before = outsideCollection(app, windowStart);
+    if (before) return before;
+    if (pullCoveredType(series, loadedTypes)) return { category: "missing_from_pull", reason: `${raw} was not loaded, and this pull includes ${series.type} tickets.`, auto: false };
+    return { category: "unknown_prefix", reason: `${raw} uses a series that was not in the loaded warehouse tickets.`, auto: false };
+  }
   if (looseTicket(raw)?.bare) return outsideCollection(app, windowStart) || { category: "no_ticket_number", reason: "The app cites a bare number that no loaded warehouse ticket confirmed.", auto: false };
   return outsideCollection(app, windowStart) || { category: "unknown_prefix", reason: `${raw} uses a prefix that is not in the loaded warehouse tickets.`, auto: false };
+}
+
+/** Pre-#31 app review ids are slugs, including `_2` and `_3` suffixes. Current ids are `app_` plus 12 hex characters. */
+export function isLegacyReviewId(id) {
+  const text = String(id || "");
+  return text.startsWith("app_") && !/^app_[0-9a-f]{12}$/.test(text);
+}
+
+function keptFlag(flags, entityType, entityId) {
+  return (flags || []).some((flag) => flag?.entityType === entityType && flag.entityId === entityId && (flag.status || (Array.isArray(flag.notes) && flag.notes.length)));
+}
+
+/** Drop unflagged rows that this run no longer writes. Keep flagged ones as resolved_auto. Legacy app ids are included even when their date is older. */
+export function reconcileCoverage({ date, reviews = [], ticketStatus = [], existingReviews = [], existingStatuses = [], flags = [], at }) {
+  const reviewIds = new Set(reviews.map((row) => row.id));
+  const statusIds = new Set(ticketStatus.map((row) => row.id));
+  const reviewDeletes = [];
+  const reviewStale = [];
+  for (const doc of existingReviews) {
+    if (!doc?.id || reviewIds.has(doc.id) || doc.state === "resolved_auto") continue;
+    if (doc.date !== date && !isLegacyReviewId(doc.id)) continue;
+    if (keptFlag(flags, "review", doc.id)) reviewStale.push({ id: doc.id, state: "resolved_auto", staleSince: doc.staleSince || at });
+    else reviewDeletes.push(doc.id);
+  }
+  const statusDeletes = [];
+  const statusStale = [];
+  for (const doc of existingStatuses) {
+    if (!doc?.id || statusIds.has(doc.id) || doc.state === "resolved_auto") continue;
+    if (keptFlag(flags, "ticket", doc.id)) statusStale.push({ id: doc.id, state: "resolved_auto", staleSince: doc.staleSince || at });
+    else statusDeletes.push(doc.id);
+  }
+  return { reviewDeletes, reviewStale, statusDeletes, statusStale };
 }
 
 const TICKET_STATUSES = new Set(["logged", "pending", "overdue", "mismatch", "not_well_bound"]);
@@ -581,8 +629,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
   const index = indexProducts(products);
   const ignoreNames = Array.isArray(config?.ignoreStockNames) ? config.ignoreStockNames : undefined;
   const checksStart = /^\d{4}-\d{2}-\d{2}$/.test(String(config?.checksStartDate || "")) ? String(config.checksStartDate) : "";
-  const loadedSeries = new Set();
-  const loadedPrefixes = new Set();
+  const loadedTypes = new Set();
   const floors = new Map();
   let earliestTicket = "";
   for (const ticket of preparedTickets) {
@@ -590,8 +637,8 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
     if (day && (!earliestTicket || day < earliestTicket)) earliestTicket = day;
     const series = ticketSeries(warehouseTicketNumber(ticket), ticket.type);
     if (!series) continue;
-    loadedSeries.add(series.series);
-    if (series.prefix) loadedPrefixes.add(series.prefix);
+    const source = sourceForSeries(series, ticket.source);
+    if (series.type && source) loadedTypes.add(`${source}|${series.type}`);
     noteFloor(floors, ticket, series);
   }
   const windowStart = [checksStart, earliestTicket].filter(Boolean).sort().at(-1) || "";
@@ -668,7 +715,7 @@ export function buildCoverage({ date, config, tickets = [], wells = [], products
   const appOnly = [];
   const flagMoves = [];
   for (const app of apps) {
-    const classified = classifyApp(app, loadedSeries, loadedPrefixes, matchedIds, matchedKeys, floors, windowStart);
+    const classified = classifyApp(app, loadedTypes, matchedIds, matchedKeys, floors, windowStart);
     if (!classified) continue;
     const well = wellOf(preparedWells, app.wellId);
     const id = appReviewId(app);
