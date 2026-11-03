@@ -163,7 +163,7 @@ test("every callable except the public inquiry and getAccess is guarded, and rem
       assert.match(body, guard, `${name} in ${file}`);
     }
   }
-  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotChat", "inventoryBotGetCoverage", "inventoryBotGetTicket", "inventoryBotGetToday", "inventoryBotGetWell", "inventoryBotListChat", "inventoryBotListFlags", "inventoryBotListTickets", "inventoryBotListWarehouses", "inventoryBotListWells", "inventoryBotRunChecks", "inventoryBotSetFlag", "inventoryBotTicketUrl", "inventoryBotUpdateIssue", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
+  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotChat", "inventoryBotGetCoverage", "inventoryBotGetTicket", "inventoryBotGetToday", "inventoryBotGetWell", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotListChat", "inventoryBotListFlags", "inventoryBotListTickets", "inventoryBotListWarehouses", "inventoryBotListWells", "inventoryBotMoveTicket", "inventoryBotOpenXpressWell", "inventoryBotRunChecks", "inventoryBotSetFlag", "inventoryBotTicketUrl", "inventoryBotUpdateIssue", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
   const tree = readdirSync(new URL("..", import.meta.url));
   assert.equal(tree.includes("apps"), false);
   const bundle = names.join("\n") + read("../index.js");

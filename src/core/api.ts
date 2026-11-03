@@ -86,6 +86,17 @@ export const inventoryBotListWarehouses = () => invoke<undefined, { warehouses: 
 export const inventoryBotListChat = () => invoke<undefined, { messages: InventoryChatMessage[] }>("inventoryBotListChat");
 export const inventoryBotChat = (message: string, context?: { wellId?: string; ticketId?: string; reviewId?: string }) => invoke<{ message: string; context?: { wellId?: string; ticketId?: string; reviewId?: string } }, { reply: string }>("inventoryBotChat", { message, context });
 
+export type XpressTicket = { id: string; number: string; type: string; date: string; customer: string; shipTo: string; rig: string; lsd: string; value: number; return: boolean; lines: { name: string; qty: number; unit: string; price: number }[]; suggestion: { cardId: string; reason: string; confidence: string } | null };
+export type XpressCard = { id: string; name: string; operator: string; lsd: string; lsdNorm: string; rig: string; ticketCount: number; totalValue: number; tickets: XpressTicket[]; status: { tone: "green" | "amber" | "red" | "grey"; label: string }; link: { state: "linked" | "suggested" | "none"; appWellId: string; reason: string; source: string; name?: string }; match: { matched: number; waiting: number; missing: number; compared: boolean } };
+export type AppWellOption = { id: string; name: string; lsd: string; lsdNorm: string; rig: string; operator: string; status: string };
+export type XpressBoard = { cards: XpressCard[]; unassigned: XpressTicket[]; pulledAt: string; directory: { reads: number; added: number; error: string }; appWells: AppWellOption[] };
+export type OpenXpressWell = { appWell: AppWellOption | null; appTickets: { reportId: string; index: string; date: string; rawTicket: string; kind: string; products: number; warehouse: boolean; description: string }[]; tickets: (XpressTicket & { inApp: string })[]; match: { matched: number; missing: number; waiting: number }; reads: { well: number; reports: number; reportCount: number }; note?: string };
+export const inventoryBotXpressBoard = () => invoke<undefined, XpressBoard>("inventoryBotXpressBoard");
+export const inventoryBotMoveTicket = (data: { ticketId: string; cardId?: string; create?: { name: string; operator?: string; lsd?: string; rig?: string } }) => invoke<typeof data, { ok: boolean; cardId: string }>("inventoryBotMoveTicket", data);
+export const inventoryBotLinkAppWell = (data: { cardId: string; appWellId: string; appWellName?: string }) => invoke<typeof data, { ok: boolean }>("inventoryBotLinkAppWell", data);
+export const inventoryBotOpenXpressWell = (cardId: string) => invoke<{ cardId: string }, OpenXpressWell>("inventoryBotOpenXpressWell", { cardId });
+export const inventoryBotGrokSort = () => invoke<undefined, { suggestions: { ticketId: string; cardId: string; confidence: string; reason: string }[]; accepted: number }>("inventoryBotGrokSort");
+
 export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);
 export const removeMyPhoto = () => invoke("removeMyPhoto");
 export const getMyPhoto = () => invoke<undefined, { dataUrl: string | null }>("getMyPhoto");
