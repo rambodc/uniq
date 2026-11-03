@@ -79,8 +79,10 @@ export const inventoryPreview: { xpress: XpressBoard; openWell?: OpenXpressWell;
   openWells: {
     "auto-bonanza-11": {
       appWell: { id: "bantry", name: "Cardinal 103 HZ Bantry", lsd: "103/08-12-018-13W4", lsdNorm: "8-12-18-13W4", rig: "11", operator: "Cardinal Energy", status: "active" },
-      reads: { well: 6, reports: 9, reportCount: 3 },
+      reads: { well: 1, reports: 1, reportCount: 3 },
       unavailable: false,
+      appDataAsOf: "2026-11-03T16:01:00.000Z",
+      syncStatus: "ok",
       match: { matched: 2, missing: 0, waiting: 0 },
       tickets: bonanzaLines.map((row) => ({ ...row, inApp: "matched" })),
       appTickets: [

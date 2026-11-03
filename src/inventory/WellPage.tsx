@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { inventoryBotLinkAppWell, inventoryBotOpenXpressWell, messageOf, type AppWellOption, type OpenXpressWell, type WellCandidate, type XpressCard, type XpressTicket } from "../core/api";
+import { inventoryBotLinkAppWell, inventoryBotOpenXpressWell, inventoryBotRequestWellRefresh, messageOf, type AppWellOption, type OpenXpressWell, type WellCandidate, type XpressCard, type XpressTicket } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import { useBoard } from "./boardState";
 import { BackToBoard, InventoryFrame, pretty, Rig } from "./parts";
@@ -44,6 +44,8 @@ export default function WellPage() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState("");
   const previewPack = previewInventory() as { openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> } | null;
   const sample = preview && card?.link.appWellId ? previewPack?.openWells?.[id] || (card.link.state === "linked" ? previewPack?.openWell || null : null) : null;
   const open = sample || live;
@@ -65,10 +67,50 @@ export default function WellPage() {
     return () => { active = false; };
   }, [id, card?.link.appWellId, card?.link.state, preview]);
 
+  useEffect(() => {
+    if (!refreshing || preview || !card?.link.appWellId) return;
+    const before = open?.appDataAsOf || "";
+    const timer = window.setInterval(() => {
+      inventoryBotOpenXpressWell(id).then((result) => {
+        if ((result.appDataAsOf || "") === before) return;
+        setLive(result);
+        setRefreshing(false);
+        setRefreshNote("");
+        setNote(result.unavailable ? "App data unavailable right now" : "");
+      }).catch(() => {});
+    }, 15000);
+    const stop = window.setTimeout(() => { window.clearInterval(timer); setRefreshing(false); }, 5 * 60 * 1000);
+    return () => { window.clearInterval(timer); window.clearTimeout(stop); };
+  }, [refreshing, id, preview, card?.link.appWellId, open?.appDataAsOf]);
+
+  async function requestRefresh() {
+    const wellId = card?.link.appWellId;
+    if (!wellId) return;
+    if (preview) {
+      setRefreshNote("Refresh requested, usually updates within a few minutes");
+      return;
+    }
+    setBusy("refresh");
+    try {
+      await inventoryBotRequestWellRefresh(wellId);
+      setRefreshNote("Refresh requested, usually updates within a few minutes");
+      setRefreshing(true);
+    } catch (cause) {
+      setNote(messageOf(cause, "The refresh could not be requested."));
+    } finally { setBusy(""); }
+  }
+
+  function asOf(value?: string) {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString("en-US", { timeZone: "America/Edmonton", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+
   const needle = query.trim().toLowerCase();
   const found = useMemo(() => {
     if (!needle) return [];
-    return (board?.appWells || []).filter((well) => `${well.name} ${well.lsd} ${well.rig} ${well.operator}`.toLowerCase().includes(needle)).slice(0, 12);
+    return (board?.appWells || []).filter((well) => !/test/i.test(well.name) && `${well.name} ${well.lsd} ${well.rig} ${well.operator}`.toLowerCase().includes(needle)).slice(0, 12);
   }, [board, needle]);
   const showPicker = Boolean(card && (card.link.state !== "linked" || changing));
 
@@ -137,6 +179,12 @@ export default function WellPage() {
             <button className="xb-btn warn" type="button" onClick={() => void choose(null)} disabled={Boolean(busy)}>Remove</button>
           </div>
         </div>}
+        {card.link.appWellId && !changing && <div className="xb-asof">
+          <span>{open?.note === "App data not copied yet" || (open && !open.unavailable && !open.appTickets.length && !open.appDataAsOf) ? "App data not copied yet" : `App data as of ${asOf(open?.appDataAsOf) || "—"}`}</span>
+          <button className="xb-btn" type="button" onClick={() => void requestRefresh()} disabled={Boolean(busy) || refreshing}>Refresh this well</button>
+        </div>}
+        {open?.syncStatus === "stale" && <p className="xb-stale">The last app copy is stale.</p>}
+        {refreshNote && <p className="xb-note">{refreshNote}</p>}
         {note && <p className="xb-note" role="status">{note}</p>}
         {showPicker && <>
           <div className="xb-lbl">Suggested wells</div>

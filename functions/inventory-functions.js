@@ -3,13 +3,12 @@
 // Ticket and stock documents are written by the collector outside this repo. This file does not
 // rebuild wells, appTickets, issues, rigInventory, ticketStatus, reviewItems, flags, or chats.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { GoogleAuth } from "google-auth-library";
+import { FieldPath } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, text } from "./core.js";
-import { docSlug, lsdNorm, todayKey } from "./inventoryBot/engine.js";
+import { copiedReportRows, isTestWell } from "./inventoryBot/copiedReports.js";
+import { docSlug, lsdNorm } from "./inventoryBot/engine.js";
 import { acceptGrokLink, askGrokLinks, askGrokSort } from "./inventoryBot/grokSort.js";
-import { MIRROR_URL, directoryQuery, listNewWellIds, mirrorGet, readSlimReports, readSlimWell, reportTickets } from "./inventoryBot/mirrorWells.js";
 import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citesWarehouseTicket, citedWellIds, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
@@ -19,29 +18,13 @@ const col = (name) => root().collection(name);
 const clip = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const asNumber = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 
-const MIRROR_SCOPES = ["https://www.googleapis.com/auth/firebase.database", "https://www.googleapis.com/auth/userinfo.email"];
-
-function mirrorCredential() {
-  const auth = new GoogleAuth({ scopes: MIRROR_SCOPES });
-  return {
-    getAccessToken: async () => {
-      const accessToken = await auth.getAccessToken();
-      if (!accessToken) throw new Error("Mirror auth failed.");
-      return { access_token: accessToken };
-    },
-  };
-}
-
-function mirrorApp() {
-  const existing = getApps().find((app) => app.name === "mirror");
-  if (existing) return existing;
-  return initializeApp({ credential: mirrorCredential(), databaseURL: MIRROR_URL }, "mirror");
-}
-
-function mirrorNote(error) {
-  const message = error instanceof Error ? error.message : "";
-  if (/unauthor|permission|denied|401|403/i.test(message)) return "App data unavailable right now";
-  return message || "App data unavailable right now";
+function asIso(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value.toDate === "function") return value.toDate().toISOString();
+  if (typeof value.seconds === "number") return new Date(value.seconds * 1000).toISOString();
+  return "";
 }
 
 async function pool(items, limit, task) {
@@ -56,20 +39,6 @@ async function pool(items, limit, task) {
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
   return results;
-}
-
-function wellPatch(row) {
-  const out = { id: row.id };
-  for (const key of ["name", "lsd", "lsdNorm", "rig", "contractor", "operator", "status"]) if (row[key]) out[key] = row[key];
-  return out;
-}
-
-async function commitRows(rows) {
-  for (let index = 0; index < rows.length; index += 400) {
-    const batch = db.batch();
-    for (const row of rows.slice(index, index + 400)) batch.set(col("appWells").doc(row.id), wellPatch(row), { merge: true });
-    await batch.commit();
-  }
 }
 
 function xpressTicket(id, data) {
@@ -94,70 +63,26 @@ async function loadXpressPieces() {
     tickets: ticketSnap.docs.map((doc) => xpressTicket(doc.id, doc.data())),
     placements: placeSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     savedCards: cardSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-    appWells: wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    appWells: wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((well) => !isTestWell(well)),
     appTickets: [],
   };
 }
 
+/** The box job copies app wells. This used to read the mirror; it now only reports the copy status. */
 async function syncAppWells() {
-  const metaRef = col("meta").doc("appWellSync");
-  const meta = (await metaRef.get()).data() || {};
-  const today = todayKey();
-  const app = mirrorApp();
-  let reads = 0;
-  const get = async (path, params) => {
-    reads += 1;
-    return mirrorGet(app, path, params);
-  };
-  let fieldMap = meta.fieldMap || null;
-  let added = 0;
-  if (meta.syncedOn !== today) {
-    const query = directoryQuery(today, meta.lastKey || "");
-    const ids = query.reads ? await listNewWellIds(get, query) : [];
-    const rows = [];
-    for (const id of ids) {
-      const slim = await readSlimWell(get, id, fieldMap);
-      fieldMap = slim.fieldMap || fieldMap;
-      rows.push(slim.well);
-    }
-    if (rows.length) await commitRows(rows);
-    added = rows.length;
-    await metaRef.set({
-      lastKey: ids.at(-1) || meta.lastKey || "",
-      syncedOn: today,
-      syncedAt: new Date().toISOString(),
-      windowStart: query.windowStart,
-      fieldMap: fieldMap || null,
-    }, { merge: true });
-  }
-  let operators = 0;
-  if (meta.slimVersion !== 2) {
-    const snap = await col("appWells").select("operator").get();
-    const missing = snap.docs.filter((doc) => !doc.get("operator")).map((doc) => doc.id);
-    const skip = new Set();
-    if (missing.length && !fieldMap?.operator) {
-      const learned = await readSlimWell(get, missing[0], null);
-      fieldMap = learned.fieldMap;
-      skip.add(missing[0]);
-      if (learned.well.operator) {
-        await col("appWells").doc(missing[0]).set({ operator: learned.well.operator }, { merge: true });
-        operators += 1;
-      }
-    }
-    const operatorField = fieldMap?.operator || "";
-    if (operatorField) {
-      const found = await pool(missing.filter((id) => !skip.has(id)), 12, async (id) => {
-        const value = await get(`data/wells/${encodeURIComponent(id)}/${encodeURIComponent(operatorField)}`, {});
-        const operator = typeof value === "string" ? value.trim() : (value && typeof value === "object" ? String(value.name || value.operator_name || "").trim() : "");
-        return operator ? { id, operator } : null;
-      });
-      const updates = found.filter(Boolean);
-      if (updates.length) await commitRows(updates);
-      operators += updates.length;
-    }
-    await metaRef.set({ slimVersion: 2, fieldMap: fieldMap || null, operatorsBackfilled: operators, backfilledAt: new Date().toISOString() }, { merge: true });
-  }
-  return { reads, added, operators };
+  const sync = (await col("meta").doc("appReportSync").get()).data() || {};
+  return { reads: 0, added: 0, operators: 0, status: sync.status || "" };
+}
+
+async function latestCopiedReports(wellId) {
+  const ref = col("appWells").doc(wellId).collection("reports");
+  const byDate = await ref.orderBy("date", "desc").limit(30).get();
+  if (!byDate.empty) return byDate.docs;
+  return (await ref.orderBy(FieldPath.documentId(), "desc").limit(30).get()).docs;
+}
+
+function rowsFromCopiedDocs(docs) {
+  return docs.flatMap((doc) => copiedReportRows(doc.id, doc.data()));
 }
 
 async function rememberCardLinks(board) {
@@ -197,38 +122,28 @@ async function rankByCitedTickets(board) {
   const pending = cardsNeedingCitation(board.cards);
   if (!pending.length) return 0;
   let reads = 0;
-  let failure = "";
-  const app = mirrorApp();
-  const get = async (path, params) => {
-    reads += 1;
-    return mirrorGet(app, path, params);
-  };
   await pool(pending, 2, async (card) => {
-    try {
-      const candidates = (card.link.candidates || []).slice(0, 3);
-      const reportsByWell = {};
-      await Promise.all(candidates.map(async (candidate) => {
-        const slim = await readSlimReports(get, candidate.id, 30);
-        reportsByWell[candidate.id] = slim.reports;
-      }));
-      const cited = citedWellIds(candidates, reportsByWell, card.tickets);
-      const next = applyCitation(card, cited);
-      Object.assign(card, next, { citationChecked: true });
-      const patch = { id: card.id, name: card.name, lsd: card.lsd, lsdNorm: card.lsdNorm, rig: card.rig, citationChecked: true, citedWellIds: cited };
-      if (card.link.state === "linked" && card.link.source === "auto") {
-        patch.appWellId = card.link.appWellId;
-        patch.appWellName = card.link.name || "";
-        patch.linkState = "linked";
-        patch.linkSource = "auto";
-        patch.linkLocked = false;
-        patch.linkReason = card.link.reason;
-      }
-      await col("xpressCards").doc(card.id).set(patch, { merge: true });
-    } catch (error) {
-      failure = mirrorNote(error);
+    const candidates = (card.link.candidates || []).slice(0, 3);
+    const reportsByWell = {};
+    await Promise.all(candidates.map(async (candidate) => {
+      const docs = await latestCopiedReports(candidate.id);
+      reads += 1;
+      reportsByWell[candidate.id] = rowsFromCopiedDocs(docs);
+    }));
+    const cited = citedWellIds(candidates, reportsByWell, card.tickets);
+    const next = applyCitation(card, cited);
+    Object.assign(card, next, { citationChecked: true });
+    const patch = { id: card.id, name: card.name, lsd: card.lsd, lsdNorm: card.lsdNorm, rig: card.rig, citationChecked: true, citedWellIds: cited };
+    if (card.link.state === "linked" && card.link.source === "auto") {
+      patch.appWellId = card.link.appWellId;
+      patch.appWellName = card.link.name || "";
+      patch.linkState = "linked";
+      patch.linkSource = "auto";
+      patch.linkLocked = false;
+      patch.linkReason = card.link.reason;
     }
+    await col("xpressCards").doc(card.id).set(patch, { merge: true });
   });
-  if (failure) throw new Error(failure);
   return reads;
 }
 
@@ -236,7 +151,7 @@ export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey
   await requireMiniApp(request, "inventoryBot");
   let directory = { reads: 0, added: 0, operators: 0, error: "" };
   try { directory = { ...await syncAppWells(), error: "" }; }
-  catch (error) { directory = { reads: 0, added: 0, operators: 0, error: mirrorNote(error) }; }
+  catch (error) { directory = { reads: 0, added: 0, operators: 0, error: error instanceof Error ? error.message : "The app copy status could not be read." }; }
   const pieces = await loadXpressPieces();
   const board = buildXpressBoard(pieces);
   for (const card of board.cards) {
@@ -244,7 +159,7 @@ export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey
     if (saved?.citationChecked && card.link.state !== "linked") Object.assign(card, applyCitation(card, saved.citedWellIds || []), { citationChecked: true });
   }
   try { directory.citationReads = await rankByCitedTickets(board); }
-  catch (error) { directory.citationReads = 0; directory.citationError = mirrorNote(error); }
+  catch (error) { directory.citationReads = 0; directory.citationError = error instanceof Error ? error.message : "Candidate reports could not be read."; }
   try { directory.cardsAsked = (await rememberCardLinks(board)).asked; }
   catch (error) { directory.cardsAsked = 0; directory.linkError = error instanceof Error ? error.message : "Unlinked cards could not be checked."; }
   const pulledAt = pieces.tickets.map((ticket) => ticket.collectedAt).filter(Boolean).sort().at(-1) || "";
@@ -310,35 +225,58 @@ export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 
   const cardSnap = await col("xpressCards").doc(cardId).get();
   const card = cardSnap.exists ? cardSnap.data() : {};
   const appWellId = card.appWellId || found?.link?.appWellId || "";
-  if (!appWellId) return { appWell: null, appTickets: [], tickets: ours, match: emptyMatch, reads: { well: 0, reports: 0, reportCount: 0 }, unavailable: false, note: "No app well is linked." };
-  const meta = (await col("meta").doc("appWellSync").get()).data() || {};
+  if (!appWellId) return { appWell: null, appTickets: [], tickets: ours, match: emptyMatch, reads: { well: 0, reports: 0, reportCount: 0 }, unavailable: false, appDataAsOf: "", syncStatus: "", note: "No app well is linked." };
   try {
-    const app = mirrorApp();
-    let wellReads = 0;
-    let reportReads = 0;
-    const getWell = async (path, params) => {
-      wellReads += 1;
-      return mirrorGet(app, path, params);
-    };
-    const getReport = async (path, params) => {
-      reportReads += 1;
-      return mirrorGet(app, path, params);
-    };
-    const slim = await readSlimWell(getWell, appWellId, meta.fieldMap || null);
-    const slimReports = await readSlimReports(getReport, appWellId, 30);
-    const appWell = slim.well;
-    const appTickets = reportTickets(slimReports.reports);
+    const [wellSnap, syncSnap, reportDocs] = await Promise.all([
+      col("appWells").doc(appWellId).get(),
+      col("meta").doc("appReportSync").get(),
+      latestCopiedReports(appWellId),
+    ]);
+    const data = wellSnap.exists ? wellSnap.data() : {};
+    const sync = syncSnap.data() || {};
+    const appWell = wellSnap.exists ? {
+      id: appWellId,
+      name: data.name || "",
+      lsd: data.lsd || "",
+      lsdNorm: data.lsdNorm || "",
+      rig: data.rig || "",
+      operator: data.operator || "",
+      status: data.status || "",
+    } : null;
+    const appTickets = rowsFromCopiedDocs(reportDocs);
     const compared = ours.map((ticket) => {
       const hit = appTickets.find((row) => row.warehouse && citesWarehouseTicket({ kind: row.kind === "returned" ? "returned" : "received", rawTicket: row.rawTicket }, ticket));
       return { ...ticket, inApp: hit ? "matched" : (appTickets.length ? "missing" : "waiting"), appTicket: hit || null };
     });
     const match = { matched: compared.filter((row) => row.inApp === "matched").length, missing: compared.filter((row) => row.inApp === "missing").length, waiting: compared.filter((row) => row.inApp === "waiting").length, byTicket: Object.fromEntries(compared.map((row) => [row.id, row.inApp])), at: new Date().toISOString() };
-    await col("xpressCards").doc(cardId).set({ match }, { merge: true });
-    if (slim.fieldMap && !meta.fieldMap) await col("meta").doc("appWellSync").set({ fieldMap: slim.fieldMap }, { merge: true });
-    return { appWell, appTickets, tickets: compared, match, reads: { well: wellReads, reports: reportReads, reportCount: appTickets.length }, unavailable: false };
+    if (appTickets.length) await col("xpressCards").doc(cardId).set({ match }, { merge: true });
+    const copied = Boolean(wellSnap.exists && (Number(data.reportCount) > 0 || appTickets.length > 0 || data.reportsSyncedAt));
+    return {
+      appWell,
+      appTickets,
+      tickets: compared,
+      match,
+      reads: { well: 1, reports: 1, reportCount: appTickets.length },
+      unavailable: false,
+      appDataAsOf: asIso(data.reportsSyncedAt),
+      syncStatus: sync.status || "",
+      note: copied ? "" : "App data not copied yet",
+    };
   } catch (error) {
-    return { appWell: null, appTickets: [], tickets: ours, match: emptyMatch, reads: { well: 0, reports: 0, reportCount: 0 }, unavailable: true, note: mirrorNote(error) };
+    return { appWell: null, appTickets: [], tickets: ours, match: emptyMatch, reads: { well: 0, reports: 0, reportCount: 0 }, unavailable: true, appDataAsOf: "", syncStatus: "", note: error instanceof Error ? error.message : "App data unavailable right now" };
   }
+});
+
+export const inventoryBotRequestWellRefresh = onCall(callable, async (request) => {
+  const access = await requireMiniApp(request, "inventoryBot");
+  const wellId = text(request.data?.wellId, "well", 240);
+  await col("refreshRequests").doc(wellId).set({
+    wellId,
+    requestedAt: new Date().toISOString(),
+    requestedBy: access.email || "",
+    status: "pending",
+  }, { merge: true });
+  return { ok: true };
 });
 
 export const inventoryBotGrokSort = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
