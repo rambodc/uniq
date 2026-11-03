@@ -337,6 +337,8 @@ test("blank stock codes match on product id or name, and drums and pallets are n
   assert.deepEqual(configFromMain({}).ignoreStockNames, DEFAULT_IGNORE_STOCK_NAMES);
   assert.equal(isIgnoredStockItem({ name: "Used Empty Drums" }, DEFAULT_IGNORE_STOCK_NAMES), true);
   assert.equal(isIgnoredStockItem({ name: "SHRINK WRAP" }), true);
+  assert.equal(isIgnoredStockItem({ name: "STRETCHWRAPS" }), true);
+  assert.equal(isIgnoredStockItem({ name: "CAL CHLORIDE HT POWDER (40kg) 40/PALLET" }), false);
   const result = runChecks({
     date: "2026-11-02", products,
     stock: [

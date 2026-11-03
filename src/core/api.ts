@@ -66,7 +66,7 @@ export type InventoryChatMessage = { id?: string; role: "user" | "assistant"; co
 export type TicketFilters = { query?: string; source?: string; company?: string; type?: string; warehouseCode?: string; rig?: string; lsd?: string; from?: string; to?: string };
 
 export type TicketCoverageStatus = "logged" | "pending" | "overdue" | "mismatch" | "not_well_bound";
-export type TicketCoverage = { id: string; date: string; ticketDate?: string; ticketId: string; number: string; source: string; company: string; type: string; warehouseCode: string; rig: string; lsd: string; ageDays: number; dollarValue: number; wellId: string; wellName: string; reportId: string; appTicketId: string; lagDays: number | null; match: string; escalate: boolean; status: TicketCoverageStatus; reason: string; auto?: boolean };
+export type TicketCoverage = { id: string; date: string; ticketDate?: string; ticketId: string; number: string; source: string; company: string; type: string; warehouseCode: string; rig: string; lsd: string; ageDays: number; dollarValue: number; wellId: string; wellName: string; reportId: string; appTicketId: string; lagDays: number | null; match: string; escalate: boolean; status: TicketCoverageStatus; reason: string; auto?: boolean; locationNote?: { severity: "low"; text: string } | null };
 export type ReviewItem = { id: string; date?: string; kind: string; title: string; detail?: string; reason?: string; wellId?: string; wellName?: string; dollarValue?: number; auto?: boolean; category?: string; series?: string; numbers?: number[]; rawTicket?: string; warehouseCode?: string };
 export type FlagNote = { at: string; by: string; text: string };
 export type FlagStatus = "new" | "seen" | "watching" | "done";

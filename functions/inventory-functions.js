@@ -9,7 +9,7 @@ import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
 import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, stockItemKey, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
-import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES, reviewDocuments } from "./inventoryBot/coverage.js";
+import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES, movedReviewFlag, reviewDocuments } from "./inventoryBot/coverage.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. The warehouse ticket is the source of truth. Answer only from the tool results about the selected well, ticket, or review item. Never invent ticket numbers, quantities, or dollar amounts. Say what is off and what data is missing. If the tools do not contain the answer, say you could not find it and call addNote with forGrokBot true so the question is saved for the next daily check. Keep the answer short.";
@@ -133,7 +133,7 @@ async function queryTickets(filters) {
 const checkOptions = { region: "us-central1", timeoutSeconds: 300, memory: "512MiB" };
 
 async function executeInventoryChecks(date) {
-  const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap, appSnap, statusSnap, reviewSnap] = await Promise.all([
+  const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap, appSnap, statusSnap, reviewSnap, flagSnap] = await Promise.all([
     root().get(),
     col("tickets").get(),
     col("wells").get(),
@@ -145,6 +145,7 @@ async function executeInventoryChecks(date) {
     col("appTickets").get(),
     col("ticketStatus").get(),
     col("reviewItems").where("date", "==", date).get(),
+    col("flags").get(),
   ]);
   const tickets = ticketSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const wells = wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -191,6 +192,11 @@ async function executeInventoryChecks(date) {
   const reviewIds = new Set(reviews.map((row) => row.id));
   for (const row of reviews) ops.push((batch) => batch.set(col("reviewItems").doc(row.id), row));
   for (const doc of reviewSnap.docs) if (!reviewIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
+  const existingFlags = flagSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  for (const move of coverage.flagMoves || []) {
+    const moved = movedReviewFlag(existingFlags, move.fromId, move.toId);
+    if (moved) ops.push((batch) => batch.set(col("flags").doc(flagDocId(moved.entityType, moved.entityId)), moved));
+  }
   for (const write of compactStockSnapshots(stock)) ops.push((batch) => batch.update(col("stock").doc(write.id), { items: write.items }));
   const summary = { ...result.summary, coverage: { counts: coverage.counts, dollarsAtRisk: coverage.dollarsAtRisk, reviewCount: reviews.length } };
   ops.push((batch) => batch.set(col("runs").doc(date), { summary, checkedAt: new Date().toISOString() }, { merge: true }));
