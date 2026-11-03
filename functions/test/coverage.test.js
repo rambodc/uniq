@@ -104,11 +104,110 @@ test("app tickets without a warehouse ticket are categorized", () => {
   assert.equal(result.reviews.find((item) => item.category === "transfer").auto, true);
 });
 
+test("matched lines use the product link and only the quantity that differs", () => {
+  const bleach = { id: "bleach-tote", name: "Bleach (Tote)", xpressCodes: ["BLT"], xpressNames: ["Bleach (Tote)"], aliases: ["Bleach tote"], mimCodes: [], appNames: [], unit: "1000L", price: 500, confirmed: true };
+  const elixir = { id: "elixir", name: "Elixir", xpressCodes: ["ELX"], mimNames: ["Elixir MIM"], mimCodes: [], appNames: [], unit: "pail", price: 100, confirmed: true };
+  const result = buildCoverage({
+    date: "2026-11-02",
+    products: [bleach, elixir],
+    wells: [well({})],
+    tickets: [ticket({
+      id: "xpress_NK-DT-1",
+      lines: [{ code: "BLT", name: "Bleach (Tote)", unit: "1000L", qty: 2 }, { code: "ELX", name: "Elixir", unit: "20 L", qty: 10, price: 100 }],
+    })],
+    appTickets: [{
+      id: "w1_r", wellId: "w1", kind: "received", rawTicket: "NK-DT-1", date: "2026-11-02", reportDate: "2026-11-02",
+      lines: [{ name: "Bleach", unit: "1000 L", qty: 2, price: 400 }, { name: "Elixir", unit: "19L", qty: 8, price: 100 }],
+    }],
+  });
+  assert.equal(result.ticketStatus[0].status, "mismatch");
+  assert.equal(result.ticketStatus[0].dollarValue, 200);
+  const mim = buildCoverage({
+    date: "2026-11-02",
+    products: [elixir],
+    wells: [well({})],
+    tickets: [ticket({ id: "mim_DTAWEY1", source: "mim", lines: [{ code: "ELX", name: "Elixir MIM", qty: 4 }] })],
+    appTickets: [{ id: "w1_m", wellId: "w1", kind: "received", rawTicket: "DTAWEY1", date: "2026-11-02", lines: [{ name: "Elixir", unit: "pail", qty: 4, price: 100 }] }],
+  });
+  assert.equal(mim.ticketStatus[0].status, "logged");
+});
+
+test("lag uses the report date and the shipped date, and ignores a typed year error", () => {
+  const result = buildCoverage({
+    date: "2026-11-02",
+    wells: [well({ id: "meota", name: "Meota", lsd: "9-7-46-17W3", lsdNorm: "9-7-46-17W3", rig: "55", lastReportId: "report-1", lastReportDate: "2026-10-29" })],
+    tickets: [ticket({ id: "xpress_TBAR-DT-001234", shippedAt: "2026-10-29", postedAt: "2026-10-30T00:00:00-06:00", lsd: "9-7-46-17W3", lsdNorm: "9-7-46-17W3", rig: "55" })],
+    appTickets: [{ id: "meota_r", wellId: "meota", kind: "received", rawTicket: "TBAR-DT-001234", date: "2025-10-29", reportId: "report-1", reportDate: "2026-10-29", lines: [{ name: "Elixir", qty: 4 }] }],
+  });
+  assert.equal(result.ticketStatus[0].ticketDate, "2026-10-29");
+  assert.equal(result.ticketStatus[0].lagDays, 0);
+  assert.equal(result.ticketStatus[0].status, "logged");
+});
+
+test("an adjacent section and the same rig still link an Alchem bare number", () => {
+  const result = buildCoverage({
+    date: "2026-11-02",
+    wells: [well({ id: "anova", name: "Anova Bryant", lsd: "13-4-5-7W2", lsdNorm: "13-4-5-7W2", rig: "Betts 3", contractor: "Anova" })],
+    tickets: [ticket({ id: "mim_DTAWEY011649", source: "mim", company: "alchem", type: "DT", postedAt: "2026-11-01", shippedAt: "2026-10-31", lsd: "13-03-005-07 W2M", rig: "BETTS 3", customer: "ANOVA RESOURCES", lines: [{ name: "Bleach", qty: 4 }] })],
+    appTickets: [{ id: "anova_r", wellId: "anova", kind: "received", rawTicket: "11649", date: "2026-11-01", reportDate: "2026-11-01", lines: [{ name: "Bleach", qty: 4 }] }],
+  });
+  assert.equal(result.ticketStatus[0].status, "logged");
+  assert.equal(result.ticketStatus[0].match, "alchem");
+  assert.equal(result.ticketStatus[0].wellName, "Anova Bryant");
+  assert.equal(result.ticketStatus[0].lagDays, 1);
+});
+
+test("a warehouse sale in the ship-to text is not well-bound", () => {
+  const result = buildCoverage({
+    date: "2026-11-02",
+    tickets: [ticket({ id: "xpress_NK-DT-004804", type: "DT", shipTo: "Warehouse Sale", wellName: "Wozniak" })],
+  });
+  assert.equal(result.ticketStatus[0].status, "not_well_bound");
+  assert.equal(result.ticketStatus[0].reason, "Warehouse sale");
+});
+
 test("a hole in a ticket series becomes a review item", () => {
   const tickets = [1232, 1234, 1235, 1237].map((number) => ticket({ id: `xpress_TBAR-DT-${String(number).padStart(6, "0")}` }));
   const gaps = sequenceGaps(tickets, [{ kind: "received", rawTicket: "TBAR-DT-001233" }]);
   assert.deepEqual(gaps[0].numbers, [1233, 1236]);
   assert.match(gaps[0].title, /TBAR-DT/);
+  const mixed = sequenceGaps([
+    ticket({ id: "xpress_BRKS-000537", type: "DT" }),
+    ticket({ id: "xpress_BRKS-000539", type: "DT" }),
+    ticket({ id: "xpress_BRKS-000716", type: "MR" }),
+    ticket({ id: "xpress_NK-DT-004804", type: "DT" }),
+    ticket({ id: "xpress_NK-DT-004806", type: "DT" }),
+    ticket({ id: "xpress_NK-DT-004807", type: "DT" }),
+    ticket({ id: "xpress_NK-DT-004808", type: "DT" }),
+  ], [{ kind: "received", rawTicket: "BRKS-DT-000540" }]);
+  assert.deepEqual(mixed.find((item) => item.series === "BRKS-DT").numbers, [538]);
+  assert.equal(mixed.some((item) => (item.numbers || []).includes(579)), false);
+  assert.deepEqual(mixed.find((item) => item.series === "NK-DT").numbers, [4805]);
+});
+
+test("app lines older than the pull, missing numbers, and blank numbers are categorized", () => {
+  const result = buildCoverage({
+    date: "2026-11-02",
+    wells: [well({})],
+    tickets: [
+      ticket({ id: "xpress_NK-DT-004806", type: "DT", postedAt: "2026-10-30", shippedAt: "2026-10-30" }),
+      ticket({ id: "xpress_BRKS-000537", type: "DT", postedAt: "2026-10-30", shippedAt: "2026-10-30" }),
+    ],
+    appTickets: [
+      { id: "old", wellId: "w1", kind: "received", rawTicket: "NK-DT-004700", date: "2026-09-01", lines: [] },
+      { id: "nk", wellId: "w1", kind: "received", rawTicket: "NK4788", date: "2026-10-31", lines: [] },
+      { id: "brks", wellId: "w1", kind: "received", rawTicket: "BRKS-DT-000540", date: "2026-11-02", lines: [] },
+      { id: "blank", wellId: "w1", kind: "received", rawTicket: "TBAR-DT-00", date: "2026-11-02", lines: [] },
+      { id: "glued", wellId: "w1", kind: "received", rawTicket: "TBAR-CT00", date: "2026-11-02", lines: [] },
+    ],
+  });
+  const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.rawTicket, item.category]));
+  assert.equal(categories["NK-DT-004700"], "outside_window");
+  assert.equal(result.reviews.find((item) => item.rawTicket === "NK-DT-004700").auto, true);
+  assert.equal(categories.NK4788, "missing_from_pull");
+  assert.equal(categories["BRKS-DT-000540"], "missing_from_pull");
+  assert.equal(categories["TBAR-DT-00"], "no_ticket_number");
+  assert.equal(categories["TBAR-CT00"], "no_ticket_number");
 });
 
 test("zero stock lines are dropped except the row that records a run-out", () => {
