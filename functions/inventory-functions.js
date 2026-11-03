@@ -9,7 +9,7 @@ import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
 import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, stockItemKey, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
-import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES } from "./inventoryBot/coverage.js";
+import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES, reviewDocuments } from "./inventoryBot/coverage.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. The warehouse ticket is the source of truth. Answer only from the tool results about the selected well, ticket, or review item. Never invent ticket numbers, quantities, or dollar amounts. Say what is off and what data is missing. If the tools do not contain the answer, say you could not find it and call addNote with forGrokBot true so the question is saved for the next daily check. Keep the answer short.";
@@ -187,11 +187,12 @@ async function executeInventoryChecks(date) {
   const statusIds = new Set(coverage.ticketStatus.map((row) => row.id));
   for (const row of coverage.ticketStatus) ops.push((batch) => batch.set(col("ticketStatus").doc(row.id), row));
   for (const doc of statusSnap.docs) if (!statusIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
-  const reviewIds = new Set(coverage.reviews.map((row) => row.id));
-  for (const row of coverage.reviews) ops.push((batch) => batch.set(col("reviewItems").doc(row.id), row));
+  const reviews = reviewDocuments(coverage.reviews);
+  const reviewIds = new Set(reviews.map((row) => row.id));
+  for (const row of reviews) ops.push((batch) => batch.set(col("reviewItems").doc(row.id), row));
   for (const doc of reviewSnap.docs) if (!reviewIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
   for (const write of compactStockSnapshots(stock)) ops.push((batch) => batch.update(col("stock").doc(write.id), { items: write.items }));
-  const summary = { ...result.summary, coverage: { counts: coverage.counts, dollarsAtRisk: coverage.dollarsAtRisk, reviewCount: coverage.reviews.length } };
+  const summary = { ...result.summary, coverage: { counts: coverage.counts, dollarsAtRisk: coverage.dollarsAtRisk, reviewCount: reviews.length } };
   ops.push((batch) => batch.set(col("runs").doc(date), { summary, checkedAt: new Date().toISOString() }, { merge: true }));
   await commitAll(ops);
   return { date, summary, issueCount: result.issues.length, ticketCount: coverage.ticketStatus.length };

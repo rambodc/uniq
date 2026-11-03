@@ -306,11 +306,20 @@ function identityOf(index, code, name, unit) {
   return { product, key, name: product?.name || name || code || "Unknown product" };
 }
 
-function lineIdentity(index, line) {
+/** One product and pack resolution for issue checks and ticket-status comparison. */
+export function resolveLine(index, line) {
   const unit = loggedUnit(line);
-  const item = identityOf(index, line?.code, line?.name || line?.product || line?.productname, unit);
-  const pack = packKey(unit);
-  return { ...item, unit, key: pack ? `${item.key}|${pack}` : item.key, name: unit ? `${item.name} ${unit}` : item.name };
+  const name = line?.name || line?.product || line?.productname || "";
+  const code = line?.code || "";
+  const linked = line?.productId ? index.byId?.get(String(line.productId)) : null;
+  const product = linked || matchProduct(index, code, name, unit);
+  const productKey = product?.id || nameNorm(name) || codeNorm(code) || "unknown";
+  return { product, productKey, unit, pack: packKey(unit), name: product?.name || name || code || "Unknown product" };
+}
+
+function lineIdentity(index, line) {
+  const item = resolveLine(index, line);
+  return { ...item, key: item.pack ? `${item.productKey}|${item.pack}` : item.productKey, name: item.unit ? `${item.name} ${item.unit}` : item.name };
 }
 
 function money(value) {
