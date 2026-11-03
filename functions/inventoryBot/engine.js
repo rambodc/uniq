@@ -162,20 +162,23 @@ export function remainingList(well) {
 export function indexProducts(products) {
   const byCode = new Map();
   const byName = new Map();
+  const byId = new Map();
   for (const product of products || []) {
+    if (product?.id) byId.set(String(product.id), product);
     for (const code of [...(product.xpressCodes || []), ...(product.mimCodes || [])]) {
       const key = codeNorm(code);
       if (key && !byCode.has(key)) byCode.set(key, product);
     }
-    for (const label of [product.name, ...(product.appNames || [])]) {
+    for (const label of [product.name, ...(product.appNames || []), ...(product.xpressNames || []), ...(product.mimNames || []), ...(product.aliases || [])]) {
       const key = nameNorm(label);
       if (key && !byName.has(key)) byName.set(key, product);
     }
   }
-  return { byCode, byName };
+  return { byCode, byName, byId };
 }
 
 export function matchProduct(index, code, name, unit) {
+  if (code && index.byId?.get(String(code))) return index.byId.get(String(code));
   const coded = code ? index.byCode.get(codeNorm(code)) : undefined;
   if (coded) return coded;
   if (name && isToteSize(unit)) {

@@ -180,7 +180,7 @@ How to read `description`:
 | Field | Type |
 | --- | --- |
 | `name` | string, canonical. Mirror products use ids `app_<name>`, for example `app_elixir`. The id is only a key; matching still uses codes and names. |
-| `xpressCodes`, `mimCodes`, `appNames` | string[] |
+| `xpressCodes`, `mimCodes`, `appNames`, `xpressNames`, `mimNames`, `aliases` | string[] |
 | `unit` | string |
 | `price` | number, pricelist dollars per unit |
 | `cost` | number |
@@ -259,16 +259,16 @@ Checks recompute these every run. Warehouse tickets are the source of truth. A m
 | `status` | `logged`, `pending`, `overdue`, `mismatch`, or `not_well_bound` |
 | `match` | `exact`, `typo`, `alchem`, or `none` |
 | `wellId`, `wellName`, `reportId`, `appTicketId` | links when the ticket is logged or has a candidate well |
-| `lagDays` | report date minus ticket date. Negative when the report is dated before the ticket. |
+| `lagDays` | Report date of the first report that logs the ticket, minus the ticket date. The ticket date is the shipped or delivery date when that is present, otherwise `postedAt`. A typed received date is not the lag, and a typed year that is about a year off is ignored. |
 | `ageDays` | check date minus ticket date |
 | `escalate` | true when an overdue ticket is 7 or more days old |
 | `reason` | short explanation. Not-well-bound reasons are receipt, adjustment or blend, warehouse transfer, handling charge, or warehouse sale. |
 | `dollarValue` | list price times quantity, using the line price when the line has one |
 | `auto` | true when the reason is automatic, such as a receipt or a well-to-well transfer |
 
-Matching order: exact number, then a typo (`NK4806` = `NK-DT-004806`, `BRKS-000537` = `BRKS-DT-000537`), then an Alchem bare number (`11648` = `DTAWEY011648`) only when the well LSD or rig agrees, then a well chosen by LSD or by contractor rig when nothing is logged yet.
+Matching order: exact number, then a typo (`NK4806` = `NK-DT-004806`, `BRKS-000537` = `BRKS-DT-000537`), then an Alchem bare number (`11649` = `DTAWEY011649`) when the LSD matches, the sections are adjacent in the same township, range, and meridian, or the contractor and rig agree. Ship-to and destination text are read as well as the well name, so `Warehouse Sale` is not well-bound. Quantity is compared through the product link, including `xpressNames`, `mimNames`, `aliases`, and the Bleach tote alias. Pack size is compared only when both sides have a unit, using the same 15% bucket as the other checks. A line with no unit, which is normal for MIM, is compared by product only. Mismatch dollars are the differing quantity, not the whole ticket.
 
-`reviewItems/{id}` holds the queue: app tickets with no warehouse ticket (`transfer`, `missing_from_pull`, `no_ticket_number`, `unknown_prefix`), holes in a prefix series such as `TBAR-DT` 1233 and 1236, and stock exceptions (negative on hand, committed above on hand, in transit, and a day-over-day change the tickets do not explain). `auto` is true for expected transfers.
+`reviewItems/{id}` holds the queue: app tickets with no warehouse ticket (`transfer`, `missing_from_pull`, `no_ticket_number`, `unknown_prefix`, `outside_window`), holes in a prefix-and-type series such as `NK-DT` 4805, and stock exceptions (negative on hand, committed above on hand, in transit, and a day-over-day change the tickets do not explain). `BRKS-DT` is not the same series as `BRKS-MR`. An app line dated before the oldest collected ticket for that source is `outside_window` and auto-explained. `NK4788` and `BRKS-DT-000540` are missing from the pull when that prefix is loaded. `TBAR-DT-00` and `TBAR-CT00` are not ticket numbers. `auto` is true for expected transfers and for lines outside the collection window.
 
 `flags/{entityType}__{entityId}` is one status for a well, ticket, issue, or review item: `new`, `seen`, `watching`, `done`. `notes` is `{ at, by, text }[]` and is only appended. `forGrokBot` marks a note for the next daily check. `grokBotReply` is the assistant's answer. Checks never delete a flag.
 
