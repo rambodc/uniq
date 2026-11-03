@@ -1,9 +1,32 @@
 import { useState } from "react";
-import { inventoryBotSetFlag, messageOf, type FlagStatus, type InventoryFlag } from "../core/api";
+import { inventoryBotChat, inventoryBotSetFlag, messageOf, type FlagStatus, type InventoryFlag } from "../core/api";
 import { previewInventory } from "../auth/preview";
 
 const ORDER: FlagStatus[] = ["new", "seen", "watching", "done"];
 const LABEL: Record<FlagStatus, string> = { new: "New", seen: "Seen", watching: "Watching", done: "Done" };
+
+export function ChatPanel({ context, prompt }: { context: { wellId?: string; ticketId?: string; reviewId?: string }; prompt: string }) {
+  const [reply, setReply] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  async function explain() {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await inventoryBotChat(prompt, context);
+      setReply(result.reply);
+    } catch (cause) {
+      setError(messageOf(cause, "Grok Bot could not answer."));
+    } finally {
+      setLoading(false);
+    }
+  }
+  return <aside className="inv-grok">
+    <button type="button" onClick={explain} disabled={loading}>{loading ? "Looking…" : "Explain"}</button>
+    {error && <p className="portal-status error" role="alert">{error}</p>}
+    {reply && <div className="portal-panel"><p>{reply}</p></div>}
+  </aside>;
+}
 
 export function FlagChip({ entityType, entityId, flag, onChange }: { entityType: "well" | "ticket" | "issue" | "review"; entityId: string; flag?: InventoryFlag; onChange: (flag: InventoryFlag) => void }) {
   async function choose(status: FlagStatus) {

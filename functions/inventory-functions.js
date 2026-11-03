@@ -12,7 +12,7 @@ import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath,
 import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES } from "./inventoryBot/coverage.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
-const SYSTEM = "You are the UniqEnergy inventory assistant. Answer only from the tool results. Never invent ticket numbers, quantities, or dollar amounts. Cite ticket ids and well names in the answer. If the tools do not contain the answer, say so. Keep the answer short.";
+const SYSTEM = "You are the UniqEnergy inventory assistant. The warehouse ticket is the source of truth. Answer only from the tool results about the selected well, ticket, or review item. Never invent ticket numbers, quantities, or dollar amounts. Say what is off and what data is missing. If the tools do not contain the answer, say you could not find it and call addNote with forGrokBot true so the question is saved for the next daily check. Keep the answer short.";
 
 const root = () => db.collection("inventoryBot").doc("main");
 const col = (name) => root().collection(name);
@@ -373,13 +373,38 @@ export const inventoryBotListWarehouses = onCall(callable, async (request) => {
   return { warehouses };
 });
 
-async function runTool(name, args) {
-  if (name === "search_tickets") return { tickets: (await queryTickets({ ...args, limit: 15 })).slice(0, 15).map((ticket) => ticketSummary(ticket.id, ticket)) };
+async function rememberQuestion(access, context, question) {
+  const entityType = context?.ticketId ? "ticket" : context?.reviewId ? "review" : context?.wellId ? "well" : "issue";
+  const entityId = context?.ticketId || context?.reviewId || context?.wellId || "general";
+  const ref = col("flags").doc(flagDocId(entityType, entityId));
+  const snap = await ref.get();
+  const next = applyFlag(snap.exists ? snap.data() : null, { entityType, entityId, status: snap.exists ? undefined : "new", note: question, by: access.email, at: new Date().toISOString(), forGrokBot: true });
+  await ref.set(next, { merge: true });
+}
+
+async function runTool(name, args, access) {
+  if (name === "searchTickets" || name === "search_tickets") return { tickets: (await queryTickets({ ...args, limit: 15 })).slice(0, 15).map((ticket) => ticketSummary(ticket.id, ticket)) };
   if (name === "get_ticket") {
     const id = clip(args.id, 200);
     if (!id) return { error: "A ticket id is required." };
     const snap = await col("tickets").doc(id).get();
     return snap.exists ? ticketDetail(snap.id, snap.data()) : { error: "Ticket not found." };
+  }
+  if (name === "getWellHistory") {
+    const wellId = clip(args.wellId, 200);
+    if (!wellId) return { error: "A well id is required." };
+    const snap = await col("wells").doc(wellId).get();
+    if (!snap.exists) return { error: "Well not found." };
+    const data = snap.data();
+    const [apps, statuses] = await Promise.all([
+      col("appTickets").where("wellId", "==", wellId).limit(25).get(),
+      col("ticketStatus").where("wellId", "==", wellId).limit(25).get(),
+    ]);
+    return {
+      well: { id: snap.id, name: data.name || "", lsd: data.lsd || "", rig: data.rig || "", status: data.status || "", lastReportDate: data.lastReportDate || null },
+      appTickets: apps.docs.map((doc) => ({ id: doc.id, kind: doc.data().kind || "", rawTicket: doc.data().rawTicket || "", date: doc.data().date || null, lines: (doc.data().lines || []).slice(0, 12) })),
+      tickets: statuses.docs.map((doc) => ({ id: doc.id, status: doc.data().status, number: doc.data().number || "", reason: doc.data().reason || "", lagDays: doc.data().lagDays ?? null, dollarValue: doc.data().dollarValue || 0 })),
+    };
   }
   if (name === "get_well_inventory") {
     const snap = await col("wells").get();
@@ -401,7 +426,7 @@ async function runTool(name, args) {
     const well = publicWell(found.id, found.data());
     return { well, rigInventory: rig.exists ? { expected: rig.data().expected || [], appRemaining: rig.data().appRemaining || [], diff: rig.data().diff || [] } : null };
   }
-  if (name === "list_issues") {
+  if (name === "getIssues" || name === "list_issues") {
     const date = dayKey(args.date);
     const status = clip(args.status, 20);
     let query = col("issues");
@@ -410,7 +435,7 @@ async function runTool(name, args) {
     const snap = await query.limit(40).get();
     return { issues: snap.docs.map((doc) => publicIssue(doc.id, doc.data())).filter((issue) => (!status || issue.status === status) && (!args.severity || issue.severity === args.severity) && (!args.rule || issue.rule === args.rule)).slice(0, 20) };
   }
-  if (name === "get_warehouse_stock") {
+  if (name === "getStock" || name === "get_warehouse_stock") {
     const warehouseCode = clip(args.warehouseCode, 40);
     if (!warehouseCode) return { error: "A warehouse code is required." };
     const snap = await col("stock").where("warehouseCode", "==", warehouseCode).orderBy("date", "desc").limit(8).get();
@@ -423,6 +448,29 @@ async function runTool(name, args) {
       date: current.date, source: current.source, warehouseCode: current.warehouseCode, warehouseName: current.warehouseName || "",
       items: (current.items || []).slice(0, 80).map((item) => ({ key: stockItemKey(item), code: item.code || "", productId: item.productId || "", name: item.name || "", unit: item.unit || "", onHand: asNumber(item.onHand), available: asNumber(item.available), previousOnHand: asNumber(priorItems.get(stockItemKey(item))?.onHand), variants: Array.isArray(item.variants) ? item.variants : [] })),
     };
+  }
+  if (name === "listFlags") {
+    const entityType = clip(args.entityType, 20);
+    const status = clip(args.status, 20);
+    const snap = await col("flags").limit(40).get();
+    return { flags: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((flag) => (!entityType || flag.entityType === entityType) && (!status || flag.status === status)).slice(0, 30) };
+  }
+  if (name === "createFlag" || name === "addNote") {
+    const entityType = clip(args.entityType, 20);
+    const entityId = clip(args.entityId, 200);
+    if (!["well", "ticket", "issue", "review"].includes(entityType) || !entityId) return { error: "A well, ticket, issue, or review id is required." };
+    const ref = col("flags").doc(flagDocId(entityType, entityId));
+    const snap = await ref.get();
+    const next = applyFlag(snap.exists ? snap.data() : null, {
+      entityType, entityId,
+      status: args.status,
+      note: clip(args.note, 2000),
+      by: access?.email || "grok",
+      at: new Date().toISOString(),
+      forGrokBot: args.forGrokBot === true,
+    });
+    await ref.set(next, { merge: true });
+    return { id: ref.id, status: next.status, forGrokBot: next.forGrokBot };
   }
   if (name === "find_product") {
     const code = clip(args.code, 80).toLowerCase();
@@ -447,17 +495,20 @@ export const inventoryBotListChat = onCall(callable, async (request) => {
 export const inventoryBotChat = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
   const access = await requireMiniApp(request, "inventoryBot");
   const content = text(request.data?.message, "message", 4000);
+  const context = request.data?.context && typeof request.data.context === "object" ? request.data.context : {};
+  const contextText = [context.wellId && `Selected well ${context.wellId}`, context.ticketId && `Selected ticket ${context.ticketId}`, context.reviewId && `Selected review item ${context.reviewId}`].filter(Boolean).join(". ");
   const messages = col("chats").doc(access.uid).collection("messages");
   const historySnap = await messages.orderBy("createdAt", "desc").limit(20).get();
   const history = historySnap.docs.map((doc) => doc.data()).reverse().filter((item) => item.role === "user" || item.role === "assistant").map((item) => ({ role: item.role, content: String(item.content || "").slice(0, 4000) }));
   await messages.add({ role: "user", content, createdAt: new Date().toISOString() });
   let reply = "I could not reach the inventory assistant. Try again in a moment.";
   try {
-    const result = await completeInventoryChat({ apiKey: xaiApiKey.value(), messages: [{ role: "system", content: SYSTEM }, ...history, { role: "user", content }], runTool, fetchImpl: globalThis.fetch });
+    const result = await completeInventoryChat({ apiKey: xaiApiKey.value(), messages: [{ role: "system", content: SYSTEM }, ...history, { role: "user", content: contextText ? `${contextText}\n${content}` : content }], runTool: (toolName, toolArgs) => runTool(toolName, toolArgs, access), fetchImpl: globalThis.fetch });
     reply = result.reply;
   } catch (error) {
     globalThis.console.error("Inventory chat failed", error instanceof Error ? error.message : error);
   }
+  if (/could not find|could not finish|do not contain|could not reach/i.test(reply)) await rememberQuestion(access, context, content);
   await messages.add({ role: "assistant", content: reply, createdAt: new Date().toISOString() });
   return { reply };
 });

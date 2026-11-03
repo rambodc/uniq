@@ -290,7 +290,7 @@ Optional well fields for the map: `lat` and `lon` (or `latitude` and `longitude`
 
 The assistant is `grok-4.3` through `https://api.x.ai/v1/chat/completions`. The key is Secret Manager secret `XAI_API_KEY`, declared with `defineSecret("XAI_API_KEY")` on `inventoryBotChat` only. Do not put the key in a dotenv file.
 
-Tools, each capped so a whole collection is never sent to the model: `search_tickets`, `get_ticket`, `get_well_inventory`, `list_issues`, `get_warehouse_stock`, `find_product`.
+Tools, each capped so a whole collection is never sent to the model: `searchTickets`, `getWellHistory`, `getStock`, `listFlags`, `getIssues`, `createFlag`, and `addNote`. Only the flag tools write, and they write flags only. If the assistant cannot answer, it saves the question on the selected well, ticket, or review item with `forGrokBot` true.
 
 ## PDFs
 

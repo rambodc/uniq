@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { inventoryBotGetCoverage, inventoryBotGetWell, messageOf, type AppTicketEntry, type InventoryCoverage, type InventoryFlag, type InventoryWell, type TicketCoverage, type TicketSummary } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import Shell from "../auth/Shell";
-import { FlagChip, FlagNotes } from "./FlagChip";
+import { ChatPanel, FlagChip, FlagNotes } from "./FlagChip";
 import Tabs, { tabTo, useInventoryDate } from "./Tabs";
 import { money } from "./format";
 
@@ -139,6 +139,7 @@ export function WellDetail() {
         </li>)}
       </ol>
     </section>
+    {well && <ChatPanel context={{ wellId: well.id }} prompt="Explain what is off on this well and what data is missing." />}
     {well && <FlagNotes entityType="well" entityId={well.id} flag={flagFor("well", well.id)} onChange={saveFlag} />}
   </Shell>;
 }

@@ -84,7 +84,7 @@ export const inventoryBotGetTicket = (ticketId: string) => invoke<{ ticketId: st
 export const inventoryBotTicketUrl = (ticketId: string) => invoke<{ ticketId: string }, { url: string; expiresAt: string }>("inventoryBotTicketUrl", { ticketId });
 export const inventoryBotListWarehouses = () => invoke<undefined, { warehouses: WarehouseStock[] }>("inventoryBotListWarehouses");
 export const inventoryBotListChat = () => invoke<undefined, { messages: InventoryChatMessage[] }>("inventoryBotListChat");
-export const inventoryBotChat = (message: string) => invoke<{ message: string }, { reply: string }>("inventoryBotChat", { message });
+export const inventoryBotChat = (message: string, context?: { wellId?: string; ticketId?: string; reviewId?: string }) => invoke<{ message: string; context?: { wellId?: string; ticketId?: string; reviewId?: string } }, { reply: string }>("inventoryBotChat", { message, context });
 
 export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);
 export const removeMyPhoto = () => invoke("removeMyPhoto");

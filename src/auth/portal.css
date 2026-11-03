@@ -183,6 +183,8 @@
 .inv-queue-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;text-align:left;background:none;border:0;color:inherit;font:inherit;padding:0}
 .inv-queue-main span{grid-column:1;color:var(--portal-muted)}
 .inv-auto{margin:0 0 12px;min-height:40px}
+.inv-grok{display:grid;gap:8px;margin:12px 0}
+.inv-grok button{justify-self:start;min-height:40px}
 .inv-well-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 12px}
 @media(max-width:800px){
   .inv-stats,.inv-sources,.inv-lines-ticket li,.inv-charts,.inv-split{grid-template-columns:1fr}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { inventoryBotGetCoverage, messageOf, type InventoryCoverage, type InventoryFlag, type ReviewItem } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import Shell from "../auth/Shell";
-import { FlagChip, FlagNotes } from "./FlagChip";
+import { ChatPanel, FlagChip, FlagNotes } from "./FlagChip";
 import Tabs, { useInventoryDate } from "./Tabs";
 import { money } from "./format";
 
@@ -69,6 +69,7 @@ function ReviewRow({ item, flag, open, onOpen, onFlag }: { item: ReviewItem; fla
       <em>{money(item.dollarValue || 0)}</em>
     </button>
     <FlagChip entityType="review" entityId={item.id} flag={flag} onChange={onFlag} />
+    {open && <ChatPanel context={{ reviewId: item.id }} prompt="Explain what is off with this review item and what data is missing." />}
     {open && <FlagNotes entityType="review" entityId={item.id} flag={flag} onChange={onFlag} />}
   </li>;
 }
