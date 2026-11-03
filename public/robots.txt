@@ -4,6 +4,7 @@ Disallow: /signin
 Disallow: /dashboard
 Disallow: /contact-inbox
 Disallow: /inventory-bot
+Disallow: /wells
 Disallow: /users
 Disallow: /profile
 Disallow: /portal

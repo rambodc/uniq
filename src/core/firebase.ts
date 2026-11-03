@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
 import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
 const app = initializeApp({
@@ -27,3 +28,4 @@ if (appCheckKey && typeof window !== "undefined") {
 }
 
 export const functions = getFunctions(app, "us-central1");
+export const db = getFirestore(app);

@@ -11,6 +11,7 @@ import UsersApp from "./users/UsersApp";
 import ProfileApp from "./profile/ProfileApp";
 import type { Inquiry, UserRecord } from "./core/api";
 import InventoryApp from "./inventory/InventoryApp";
+import WellsApp from "./wells/WellsApp";
 import { inventoryPreview } from "./inventory/previewData";
 import "./styles.css";
 import "./auth/portal.css";
@@ -20,7 +21,7 @@ const authState = {
   user: { emailVerified: true },
   loading: false,
   type: "super_admin",
-  miniApps: ["profile", "contact", "inventoryBot", "users"],
+  miniApps: ["profile", "contact", "inventoryBot", "wells", "users"],
   profile,
   refreshAccess: async () => {},
   accessError: null,
@@ -50,4 +51,5 @@ createRoot(document.getElementById("root")!).render(<StrictMode><HashRouter><Aut
   <Route path="/users" element={<UsersApp />} />
   <Route path="/profile" element={<ProfileApp />} />
   <Route path="/inventory-bot/*" element={<InventoryApp />} />
+  <Route path="/wells/*" element={<WellsApp />} />
 </Routes></ThemeProvider></AuthProvider></HashRouter></StrictMode>);

@@ -1,7 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Browsers never read or write Firestore. Callables enforce requireMiniApp / requireSuperAdmin.
+    // Wells is the one client read. Signed-in staff with the wells mini app, and super admins, can read wellsApp. Nobody can write it from a browser.
+    function wellsUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function canReadWells() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && wellsUser().disabled != true
+        && wellsUser().email == request.auth.token.email.lower()
+        && wellsUser().firstName is string
+        && wellsUser().lastName is string
+        && (wellsUser().type == "super_admin" || (wellsUser().miniApps is list && wellsUser().miniApps.hasAny(["wells"])));
+    }
+    match /wellsApp/{document=**} {
+      allow read: if canReadWells();
+      allow write: if false;
+    }
+    // Everything else stays closed. Callables enforce requireMiniApp / requireSuperAdmin.
     match /{document=**} {
       allow read, write: if false;
     }
