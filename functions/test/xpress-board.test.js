@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { acceptGrokLink, parseGrokLinks, parseGrokSort } from "../inventoryBot/grokSort.js";
-import { chooseFields, directoryQuery, filterWellIds, listNewWellIds, readSlimReports, readSlimWell, reportTickets, slimWell, wellWindowStart } from "../inventoryBot/mirrorWells.js";
+import { copiedReportRows, isTestWell } from "../inventoryBot/copiedReports.js";
+import { reportTickets } from "../inventoryBot/mirrorWells.js";
 import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citedWellIds, fieldRig, lsdNear, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
 
 const ticket = (fields) => ({ id: "xpress_NK-DT-1", source: "xpress", type: "DT", rig: "14", lsd: "1-21-63-24W4", lsdNorm: "1-21-63-24W4", customer: "Ish Energy", wellName: "ISH 8HZ", postedAt: "2026-10-15", lines: [{ name: "Elixir", qty: 2, price: 100 }], ...fields });
@@ -51,47 +52,35 @@ test("Grok can file a ticket only when the LSD is exactly the card", () => {
   assert.equal(parsed[0].confidence, "high");
 });
 
-test("the app well directory lists only new ids, and operator_name is the operator", async () => {
-  assert.equal(wellWindowStart("2026-11-03"), "2026-08-03");
-  const first = directoryQuery("2026-11-03", "");
-  assert.equal(first.reads, 1);
-  assert.equal(first.startAfter, "2026-08-03");
-  const next = directoryQuery("2026-11-03", "2026-11-02_aa");
-  assert.equal(next.startAfter, "2026-11-02_aa");
-  const ids = filterWellIds(["2026-08-01_old", "2026-11-02_aa", "2026-11-03_bb", "2026-12-01_future"], { after: next.startAfter, windowStart: next.windowStart, end: next.end });
-  assert.deepEqual(ids, ["2026-11-03_bb"]);
-  const fields = chooseFields(["name", "uwi", "rig_name", "operator_name", "reports", "inventory"]);
-  assert.equal(fields.operator, "operator_name");
-  assert.equal(fields.rig, "rig_name");
-  assert.equal(fields.lsd, "uwi");
-  const slim = slimWell("2026-10-11_15-20-54_jchristensen", { name: "ISH", uwi: "1-21-63-24W4", rig_name: "Horizon 14", operator_name: "Ish Energy", contractor: "Horizon", status: "Completed" });
-  assert.equal(slim.lsdNorm, "1-21-63-24W4");
-  assert.equal(slim.rig, "Horizon 14");
-  assert.equal(slim.operator, "Ish Energy");
-  const calls = [];
-  const listed = await listNewWellIds(async (path, params) => {
-    calls.push({ path, params });
-    return { "2026-11-02_aa": true, "2026-11-03_bb": true };
-  }, next);
-  assert.deepEqual(listed, ["2026-11-03_bb"]);
-  assert.equal(calls[0].params.shallow, "true");
-  assert.equal(calls[0].params.limitToFirst, "80");
-  const paths = [];
-  const read = await readSlimWell(async (path) => {
-    paths.push(path);
-    if (path.endsWith("operator_name")) return "Ish Energy";
-    if (path.endsWith("/name")) return "ISH";
-    return "";
-  }, "2026-11-03_bb", { name: "name", lsd: "uwi", rig: "", contractor: "", operator: "operator_name", status: "" });
-  assert.equal(read.well.operator, "Ish Energy");
-  assert.equal(paths.includes("data/wells/2026-11-03_bb"), false);
-  assert.equal(paths.includes("data/wells/2026-11-03_bb/operator_name"), true);
-  const rows = reportTickets({
+test("copied reports keep the ticket and products, and test wells stay out of suggestions", () => {
+  assert.equal(isTestWell({ name: "Test well", isTest: false }), true);
+  assert.equal(isTestWell({ name: "Bantry", isTest: true }), true);
+  assert.equal(isTestWell({ name: "Cardinal 103 HZ Bantry" }), false);
+  const rows = copiedReportRows("r7", {
+    reportNo: 7,
+    reportDate: "2026-11-02",
+    receivedLines: [{ ticketNumber: "BRKS-000540", kind: "received", date: "2026-11-02", products: [{ product: "Caustic Soda", quantity: 20, pack: "22.68 kg" }] }],
+    returned: [{ ticket: "TBAR-CT-000338", products: [{ name: "Elixir", qty: 2, unit: "200 L" }] }],
+  });
+  assert.equal(rows.find((row) => row.rawTicket === "BRKS-000540").lines[0].name, "Caustic Soda");
+  assert.equal(rows.find((row) => row.rawTicket === "BRKS-000540").lines[0].unit, "22.68 kg");
+  assert.equal(rows.find((row) => row.rawTicket === "TBAR-CT-000338").kind, "returned");
+  assert.equal(rows[0].reportNumber, "7");
+  const board = buildXpressBoard({
+    tickets: [ticket({ id: "xpress_shared", lsd: "1-2-3-4W4", lsdNorm: "1-2-3-4W4", rig: "9", wellName: "Pad A" })],
+    appWells: [
+      { id: "real", name: "Pad A north", lsdNorm: "1-2-3-4W4", rig: "1" },
+      { id: "fake", name: "Pad A test", lsdNorm: "1-2-3-4W4", rig: "9", isTest: false },
+      { id: "flagged", name: "Pad A south", lsdNorm: "1-2-3-4W4", rig: "9", isTest: true },
+    ],
+  });
+  assert.deepEqual(board.cards[0].link.candidates.map((well) => well.id), ["real"]);
+  const legacy = reportTickets({
     report1: { date: "2026-10-15", inventory: { received: { 0: { description: "Ticket:NK-004774,Delivery", receiveddate: "2026-10-15", receiveddetail: { a: { product: "Elixir" }, b: { product: "Salt" } } } }, returned: { 0: { description: "Transfer-From Ticket: TR-2210,Transferred", returneddate: "2026-10-12" } } } },
   });
-  assert.equal(rows.find((row) => row.rawTicket === "NK-004774").warehouse, true);
-  assert.equal(rows.find((row) => row.rawTicket === "NK-004774").products, 2);
-  assert.equal(rows.find((row) => /TR-2210/.test(row.rawTicket)).warehouse, false);
+  assert.equal(legacy.find((row) => row.rawTicket === "NK-004774").warehouse, true);
+  assert.equal(legacy.find((row) => row.rawTicket === "NK-004774").products, 2);
+  assert.equal(legacy.find((row) => /TR-2210/.test(row.rawTicket)).warehouse, false);
 });
 
 test("unlinked cards explain the gap, and warehouse receipts stay off the board", () => {
@@ -162,25 +151,6 @@ test("candidates stay near the LSD and a CC-Rig label is not a rig", () => {
   assert.equal(pad.rig, "");
   assert.deepEqual(pad.link.candidates.map((well) => well.id), ["cc-near"]);
   assert.equal(pad.link.candidates.some((well) => well.id === "rig4"), false);
-});
-
-test("opening a well reads report keys and the inventory buckets, not the whole report", async () => {
-  const calls = [];
-  const result = await readSlimReports(async (path) => {
-    calls.push(path);
-    if (path === "data/wellReports/well-1") return { r1: true, r2: true, r3: true };
-    if (path.endsWith("/date")) return "2026-11-01";
-    if (path.endsWith("/reportNumber")) return "12";
-    if (path.endsWith("/inventory/received")) return { 0: { description: "Ticket:NK-1,Delivery", receiveddate: "2026-11-01", receiveddetail: { a: { product: "Elixir" } } } };
-    if (path.endsWith("/inventory/returned")) return {};
-    throw new Error(`unexpected ${path}`);
-  }, "well-1", 2);
-  assert.deepEqual(calls[0], "data/wellReports/well-1");
-  assert.equal(calls.some((path) => path === "data/wellReports/well-1/r1"), false);
-  assert.equal(calls.filter((path) => path.endsWith("/inventory/received")).length, 2);
-  assert.equal(result.reads, 1 + 2 * 4);
-  const rows = reportTickets(result.reports);
-  assert.equal(rows.find((row) => row.rawTicket === "NK-1").products, 1);
 });
 
 test("the well whose reports cite the warehouse ticket is linked, and a tie stays alphabetical", () => {

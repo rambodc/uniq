@@ -2,6 +2,7 @@
 
 import { looseTicket } from "./coverage.js";
 import { dayKey, lsdNorm, rigNorm, ticketsMatch, warehouseTicketNumber } from "./engine.js";
+import { isTestWell } from "./copiedReports.js";
 import { reportTickets } from "./mirrorWells.js";
 
 function trailingDigits(value) {
@@ -152,7 +153,7 @@ function linkFor(saved, card, appWells) {
   if (saved?.linkLocked && saved.linkState === "linked" && saved.appWellId) return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
   if (saved?.linkLocked && saved.linkState === "none") return { ...base, state: "none", appWellId: "", reason: "Link cleared.", source: "manual" };
   if (saved?.linkState === "linked" && saved.appWellId && saved.linkSource === "manual") return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
-  const wells = appWells || [];
+  const wells = (appWells || []).filter((well) => !isTestWell(well));
   const rig = rigNorm(fieldRig(card.rig));
   const exact = wells.filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm && rig && rigNorm(well.rig) === rig);
   if (!saved?.linkLocked && exact.length === 1) return { ...base, state: "linked", appWellId: exact[0].id, reason: "Same LSD and rig.", source: "auto", name: exact[0].name || "" };
@@ -278,7 +279,8 @@ export function ticketsNeedingGrok(unassigned) {
 export function citedWellIds(candidates, reportsByWell, tickets) {
   const hits = [];
   for (const candidate of candidates || []) {
-    const rows = reportTickets(reportsByWell?.[candidate.id]);
+    const source = reportsByWell?.[candidate.id];
+    const rows = Array.isArray(source) ? source : reportTickets(source);
     const cited = rows.some((row) => row.warehouse && (tickets || []).some((ticket) => citesWarehouseTicket({ kind: row.kind === "returned" ? "returned" : "received", rawTicket: row.rawTicket }, ticket)));
     if (cited) hits.push(candidate.id);
   }
