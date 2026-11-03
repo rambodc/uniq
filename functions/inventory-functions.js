@@ -9,7 +9,7 @@ import { db, callable, requireMiniApp, text } from "./core.js";
 import { docSlug, lsdNorm, todayKey } from "./inventoryBot/engine.js";
 import { acceptGrokLink, askGrokLinks, askGrokSort } from "./inventoryBot/grokSort.js";
 import { MIRROR_URL, directoryQuery, listNewWellIds, mirrorGet, readSlimReports, readSlimWell, reportTickets } from "./inventoryBot/mirrorWells.js";
-import { acceptGrokMove, buildXpressBoard, cardsNeedingGrok, citesWarehouseTicket, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
+import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citesWarehouseTicket, citedWellIds, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 
@@ -174,6 +174,39 @@ async function rememberCardLinks(board) {
   return { asked: pending.length };
 }
 
+async function rankByCitedTickets(board) {
+  const pending = cardsNeedingCitation(board.cards);
+  if (!pending.length) return 0;
+  let reads = 0;
+  const app = mirrorApp();
+  const get = async (path, params) => {
+    reads += 1;
+    return mirrorGet(app, path, params);
+  };
+  await pool(pending, 2, async (card) => {
+    const candidates = (card.link.candidates || []).slice(0, 3);
+    const reportsByWell = {};
+    await Promise.all(candidates.map(async (candidate) => {
+      const slim = await readSlimReports(get, candidate.id, 30);
+      reportsByWell[candidate.id] = slim.reports;
+    }));
+    const cited = citedWellIds(candidates, reportsByWell, card.tickets);
+    const next = applyCitation(card, cited);
+    Object.assign(card, next, { citationChecked: true });
+    const patch = { id: card.id, name: card.name, lsd: card.lsd, lsdNorm: card.lsdNorm, rig: card.rig, citationChecked: true, citedWellIds: cited };
+    if (card.link.state === "linked" && card.link.source === "auto") {
+      patch.appWellId = card.link.appWellId;
+      patch.appWellName = card.link.name || "";
+      patch.linkState = "linked";
+      patch.linkSource = "auto";
+      patch.linkLocked = false;
+      patch.linkReason = card.link.reason;
+    }
+    await col("xpressCards").doc(card.id).set(patch, { merge: true });
+  });
+  return reads;
+}
+
 export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
   await requireMiniApp(request, "inventoryBot");
   let directory = { reads: 0, added: 0, operators: 0, error: "" };
@@ -181,6 +214,12 @@ export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey
   catch (error) { directory = { reads: 0, added: 0, operators: 0, error: error instanceof Error ? error.message : "The app well directory could not be refreshed." }; }
   const pieces = await loadXpressPieces();
   const board = buildXpressBoard(pieces);
+  for (const card of board.cards) {
+    const saved = pieces.savedCards.find((row) => row.id === card.id);
+    if (saved?.citationChecked && card.link.state !== "linked") Object.assign(card, applyCitation(card, saved.citedWellIds || []), { citationChecked: true });
+  }
+  try { directory.citationReads = await rankByCitedTickets(board); }
+  catch (error) { directory.citationReads = 0; directory.citationError = error instanceof Error ? error.message : "Candidate reports could not be read."; }
   try { directory.cardsAsked = (await rememberCardLinks(board)).asked; }
   catch (error) { directory.cardsAsked = 0; directory.linkError = error instanceof Error ? error.message : "Unlinked cards could not be checked."; }
   const pulledAt = pieces.tickets.map((ticket) => ticket.collectedAt).filter(Boolean).sort().at(-1) || "";
