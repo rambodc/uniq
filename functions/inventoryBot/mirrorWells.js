@@ -152,6 +152,31 @@ export async function readSlimWell(get, id, fieldMap) {
   return { well: slimWell(id, values), fieldMap: map };
 }
 
+/** Latest reports, without the rest of each report node. One shallow key list, then date, reportNumber, and the received and returned buckets. */
+export async function readSlimReports(get, wellId, limit = 30) {
+  const listed = await get(`data/wellReports/${segment(wellId)}`, { shallow: "true" });
+  const ids = Object.keys(listed && typeof listed === "object" ? listed : {}).sort().slice(-limit);
+  const reports = {};
+  await Promise.all(ids.map(async (reportId) => {
+    const base = `data/wellReports/${segment(wellId)}/${segment(reportId)}`;
+    const [date, reportNumber, received, returned] = await Promise.all([
+      get(`${base}/date`),
+      get(`${base}/reportNumber`),
+      get(`${base}/inventory/received`),
+      get(`${base}/inventory/returned`),
+    ]);
+    reports[reportId] = {
+      date: typeof date === "string" ? date : "",
+      reportNumber: typeof reportNumber === "string" || typeof reportNumber === "number" ? reportNumber : "",
+      inventory: {
+        received: received && typeof received === "object" ? received : {},
+        returned: returned && typeof returned === "object" ? returned : {},
+      },
+    };
+  }));
+  return { reports, reads: 1 + ids.length * 4 };
+}
+
 export function reportTickets(reports) {
   const rows = [];
   for (const [reportId, report] of Object.entries(reports || {})) {

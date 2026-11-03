@@ -34,7 +34,7 @@ export function grokLinkBody(cards) {
     model: MODEL,
     temperature: 0,
     messages: [
-      { role: "system", content: "You match an Xpress well card to one candidate app well. Reply with JSON only: {\"links\":[{\"cardId\":\"\",\"appWellId\":\"\",\"confidence\":\"high\" or \"low\",\"reason\":\"\"}]}. appWellId must be one of that card's candidate ids, or an empty string when none fits. confidence high only when the section, township, and range match and the meridian is an obvious typo such as W4 versus W0, or the rig matches and the LSD is one section away. Do not invent wells or ticket numbers." },
+      { role: "system", content: "You match an Xpress well card to one candidate app well. Reply with JSON only: {\"links\":[{\"cardId\":\"\",\"appWellId\":\"\",\"confidence\":\"high\" or \"low\",\"reason\":\"\"}]}. appWellId must be one of that card's candidate ids, or an empty string when none fits. confidence high only when the section, township, and range match and the meridian is an obvious typo such as W4 versus W0, or the rig matches and the LSD is one section away. A shared operator is not a match. Do not invent wells or ticket numbers." },
       { role: "user", content: JSON.stringify({ cards }) },
     ],
   };
