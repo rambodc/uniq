@@ -1,6 +1,6 @@
 /** Slim app-well directory and one-well live reads. The mirror is read-only and never scanned in full. */
 
-import { lsdNorm, parseAppDescription, dayKey } from "./engine.js";
+import { lsdNorm, parseAppDescription, dayKey, linesFromDetail } from "./engine.js";
 
 export const MIRROR_URL = "https://uniqenergymirror.firebaseio.com";
 
@@ -191,14 +191,17 @@ export function reportTickets(reports) {
         const parsed = description ? parseAppDescription(description, side) : { kind: side === "returned" ? "returned" : "received", rawTicket: line.rawTicket || "" };
         const detail = line.receiveddetail || line.returneddetail || line.detail;
         const products = detail && typeof detail === "object" ? Object.keys(detail).length : (line.product || line.productname ? 1 : 0);
+        const lines = linesFromDetail(detail, parsed.kind).map((entry) => ({ name: entry.name, qty: entry.qty, unit: entry.unit || "" }));
         rows.push({
           reportId,
+          reportNumber: report.reportNumber != null && report.reportNumber !== "" ? String(report.reportNumber) : "",
           index,
           date: dayKey(line.receiveddate || line.returneddate || line.date || report.date),
           description,
           rawTicket: parsed.rawTicket || "",
           kind: parsed.kind,
-          products,
+          products: lines.length || products,
+          lines,
           warehouse: parsed.kind === "received" || parsed.kind === "returned",
         });
       }
