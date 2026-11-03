@@ -102,7 +102,7 @@ export function lsdNear(left, right) {
 }
 
 function asCandidate(well) {
-  return { id: well.id, name: well.name || "", lsd: well.lsd || well.lsdNorm || "", rig: well.rig || "", operator: well.operator || "" };
+  return { id: well.id, name: well.name || "", lsd: well.lsd || well.lsdNorm || "", rig: well.rig || "", operator: well.operator || "", status: well.status || "" };
 }
 
 /** Di-Corp's CC-Rig label is their internal rig, not the drilling rig on the well. */
@@ -148,7 +148,7 @@ export function rankCandidates(card, wells) {
 }
 
 function linkFor(saved, card, appWells) {
-  const base = { candidates: [], grokTried: Boolean(saved?.grokTried), grok: saved?.grokAppWellId ? { appWellId: saved.grokAppWellId, name: saved.grokAppWellName || "", reason: saved.grokReason || "" } : null };
+  const base = { candidates: [], citedWellIds: Array.isArray(saved?.citedWellIds) ? saved.citedWellIds : [], grokTried: Boolean(saved?.grokTried), grok: saved?.grokAppWellId ? { appWellId: saved.grokAppWellId, name: saved.grokAppWellName || "", reason: saved.grokReason || "" } : null };
   if (saved?.linkLocked && saved.linkState === "linked" && saved.appWellId) return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
   if (saved?.linkLocked && saved.linkState === "none") return { ...base, state: "none", appWellId: "", reason: "Link cleared.", source: "manual" };
   if (saved?.linkState === "linked" && saved.appWellId && saved.linkSource === "manual") return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
