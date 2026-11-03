@@ -2,11 +2,11 @@
 
 Inventory Bot is a private mini app (`inventoryBot`, route `/inventory-bot`). Super admins always have it. Staff have it only when `users/{uid}.miniApps` includes `inventoryBot`.
 
-The screen is the Xpress tab: well cards grouped from stored Xpress tickets by normalized LSD and rig. Tickets with neither go to Unassigned. A manual move is stored on `placements/{ticketId}` and wins over that grouping. `xpressCards/{id}` stores a created card and the app-well link. `appWells/{wellId}` is a slim directory (name, LSD, rig, contractor, operator, status) for mirror wells whose ids start in the last three months. The first sync is one range read of `data/wells`. Later syncs start after the last stored id. Opening a linked card reads `data/wells/{wellId}` and the latest 30 `data/wellReports/{wellId}` entries, two reads, and does not copy the reports into Firestore. MIM is shown as coming next. The old home charts, flag chips, and in-app chat screen are gone. Collectors and the stored Xpress and MIM tickets and warehouse stock stay. `functions/scripts/remove-old-inventory-data.mjs` deletes the copied wells, copied app tickets, check issues, rig inventory, ticket status, review items, flags, chat history, and the `inventoryBotTest` collection, and clears run summaries. The well directory sync runs at most once per day: one `$key` range on `data/wells`, and after the first run only ids newer than the last stored id. Grok is not part of that sync. Grok is asked only for unassigned tickets that do not already have a saved suggestion.
+The screen is the Xpress tab: well cards grouped from stored Xpress tickets by normalized LSD and rig. Tickets with neither, and placeholder rig labels with no LSD, go to Unassigned. Warehouse receipts (`MR`) and stock transfers (`ST`) are not field deliveries and are left off the board. A manual move is stored on `placements/{ticketId}` and wins over that grouping. `xpressCards/{id}` stores a created card and the app-well link. `appWells/{wellId}` is a slim directory (name, LSD, rig, contractor, operator, status) for mirror wells whose ids start in the last three months. The mirror is `https://uniqenergymirror.firebaseio.com`. The daily top-up is a shallow key listing of `data/wells` starting after the last stored id, then one read of each small field (`name`, LSD, rig, contractor, `operator_name`, status) for each new id. A day with no new well is that key listing only, a few hundred bytes. A day with a couple of new wells stays under about 5 KB. Opening a linked card reads those same scalar fields and the latest 30 `data/wellReports/{wellId}` entries. It does not download the well's child trees and does not copy the reports into Firestore. An unlinked card says why: more than one app well shares the LSD, the location is close but not the same (including a W4 versus W0 meridian typo, or the same rig), or no app well was found. Candidates are listed on the card before Grok is asked. Opening the board asks Grok once per still-unlinked card that has not been asked before. Let Grok check leftovers does that same once-only pass, and it also places unassigned tickets that have no saved suggestion. MIM is shown as coming next. The check trigger, the old list and chat callables, and the copied wells, app tickets, issues, rig inventory, ticket status, review items, flags, and chats are retired. Collectors still write Xpress and MIM tickets and warehouse stock. `functions/scripts/remove-old-inventory-data.mjs` deletes the retired collections.
 
-Browsers cannot read Firestore or Storage. Every screen goes through a callable, and every callable except `inventoryBotRunChecks` enforces App Check. Rules stay deny-all.
+Browsers cannot read Firestore or Storage. Every screen goes through a callable, and every callable enforces App Check. Rules stay deny-all.
 
-The morning collector runs outside this repo, with the Admin SDK and owner credentials. It writes the documents below, uploads ticket PDFs, then calls `inventoryBotRunChecks`.
+The morning collector runs outside this repo, with the Admin SDK and owner credentials. It writes tickets and stock. It does not start a check run.
 
 ## Paths
 
@@ -277,7 +277,7 @@ Matching order: exact number, then a typo (`NK4806` = `NK-DT-004806`, `BRKS-0005
 
 ### Stock rows the collector should write
 
-`stock/{date}_{source}_{warehouseCode}.items` should omit a line whose on-hand, available, committed, and in-transit quantities are all zero. Keep one zero line only when that item was non-zero on the previous snapshot, so the run-out is visible. The check run rewrites snapshots that still contain extra zero lines. `functions/scripts/compact-zero-stock.mjs` does the same pass once across every stock document.
+`stock/{date}_{source}_{warehouseCode}.items` should omit a line whose on-hand, available, committed, and in-transit quantities are all zero. Keep one zero line only when that item was non-zero on the previous snapshot, so the run-out is visible. `functions/scripts/compact-zero-stock.mjs` does that pass once across every stock document.
 
 Optional well fields for the map: `lat` and `lon` (or `latitude` and `longitude`), decimal degrees. When they are missing the home screen skips the map.
 
@@ -291,34 +291,15 @@ Optional well fields for the map: `lat` and `lon` (or `latitude` and `longitude`
 | `content` | string |
 | `createdAt` | ISO string |
 
-The assistant is `grok-4.3` through `https://api.x.ai/v1/chat/completions`. The key is Secret Manager secret `XAI_API_KEY`, declared with `defineSecret("XAI_API_KEY")` on `inventoryBotChat` only. Do not put the key in a dotenv file.
-
-Tools, each capped so a whole collection is never sent to the model: `searchTickets`, `getWellHistory`, `getStock`, `listFlags`, `getIssues`, `createFlag`, and `addNote`. Only the flag tools write, and they write flags only. If the assistant cannot answer, it saves the question on the selected well, ticket, or review item with `forGrokBot` true.
+Grok is `grok-4.3` through `https://api.x.ai/v1/chat/completions`. The key is Secret Manager secret `XAI_API_KEY`, declared with `defineSecret("XAI_API_KEY")` on `inventoryBotXpressBoard` and `inventoryBotGrokSort`. Do not put the key in a dotenv file. The in-app chat and its tools are retired. Grok only places leftover tickets onto a card whose LSD matches exactly, and it suggests one of the candidate app wells for an unlinked card. Each card is sent once.
 
 ## PDFs
 
-Upload the file to `inventoryBot/tickets/{source}/{file}.pdf` and store that path on the ticket as `pdfPath`. `inventoryBotTicketUrl` returns a ten-minute signed read URL. The functions service account needs permission to sign blob URLs (Token Creator on itself) or the button fails at runtime.
+Upload the file to `inventoryBot/tickets/{source}/{file}.pdf` and store that path on the ticket as `pdfPath`. The board does not mint a signed URL.
 
 ## After ingest
 
-Set `checksRequestedAt` on `inventoryBot/main/runs/{YYYY-MM-DD}` to a new ISO timestamp after the day's documents are written. `inventoryBotRunWritten` watches that document and runs the checks when `checksRequestedAt` is created or changed. The checks write `summary` and `checkedAt` only, so that write does not request another run. No Auth token and no App Check token are required for this path.
+1. Write Xpress and MIM tickets, warehouse stock, and products with the Admin SDK.
+2. Upload ticket PDFs under `inventoryBot/tickets/{source}/{file}.pdf`.
 
-`inventoryBotRunChecks` is still available. It does not use App Check, because a script is not the web app. It still requires a signed-in super admin.
-
-1. Write tickets, stock, wells, products, `appTickets`, and `runs/{date}.sources` with the Admin SDK.
-2. Upload PDFs.
-3. Set `runs/{date}.checksRequestedAt` to a new ISO timestamp. `inventoryBotRunWritten` runs the checks.
-
-The callable remains for a super admin or a script that already has an ID token:
-
-```bash
-curl -s -X POST \
-  "https://us-central1-uniqenergy-de71c.cloudfunctions.net/inventoryBotRunChecks" \
-  -H "Authorization: Bearer $ID_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"data":{"date":"2026-11-02"}}'
-```
-
-Omit `date` to check today in America/Edmonton. The response is `{ date, summary, issueCount }`. Run it again after a correction; resolved and ignored issues are kept.
-
-A super admin can also run the same callable from a signed-in session. The Today screen reads the result. It does not start the collector.
+Do not write `wells`, `appTickets`, `issues`, `rigInventory`, `ticketStatus`, `reviewItems`, `flags`, or `chats`, and do not set `checksRequestedAt`. Those checks are retired. The Xpress board reads tickets from Firestore and reads the app well live from the mirror when a card is opened. The app-well directory refreshes itself, at most once a day, the next time someone opens the board.

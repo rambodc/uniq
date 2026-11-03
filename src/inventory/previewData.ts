@@ -16,8 +16,16 @@ export const inventoryPreview: { xpress: XpressBoard; openWell?: OpenXpressWell 
         { id: "xpress_NK-004783", number: "NK-004783", type: "DT", date: "2026-10-21", customer: "Ish Energy", shipTo: "ISH 8HZ", rig: "Horizon 14", lsd: "1-21-63-24", value: 12540, return: false, suggestion: null, lines: [{ name: "Elixir", qty: 6, unit: "20 L", price: 2090 }] },
         { id: "xpress_NK-004796", number: "NK-004796", type: "SR", date: "2026-10-26", customer: "Ish Energy", shipTo: "ISH 8HZ", rig: "Horizon 14", lsd: "1-21-63-24", value: 7920, return: true, suggestion: null, lines: [{ name: "Elixir", qty: 4, unit: "20 L", price: 1980 }] },
       ],
+    }, {
+      id: "auto-pad", name: "Pad A", operator: "Northline", lsd: "1-2-3-4W4", lsdNorm: "1-2-3-4W4", rig: "9",
+      ticketCount: 1, totalValue: 2100,
+      status: { tone: "grey", label: "multiple app wells share this LSD" },
+      link: { state: "suggested", appWellId: "", reason: "multiple app wells share this LSD", source: "", candidates: [{ id: "well-a", name: "Pad A north", lsd: "1-2-3-4W4", rig: "1" }, { id: "well-b", name: "Pad A south", lsd: "1-2-3-4W4", rig: "2" }] },
+      match: { matched: 0, waiting: 0, missing: 0, compared: false },
+      tickets: [{ id: "xpress_NK-000221", number: "NK-000221", type: "DT", date: "2026-10-18", customer: "Northline", shipTo: "Pad A", rig: "9", lsd: "1-2-3-4W4", value: 2100, return: false, suggestion: null, lines: [{ name: "Salt", qty: 2, unit: "bag", price: 1050 }] }],
     }],
     unassigned: [{ id: "xpress_NK-004804", number: "NK-004804", type: "DT", date: "2026-10-31", customer: "Wozniak Bulk Fuel", shipTo: "", rig: "", lsd: "", value: 3210, return: false, suggestion: null, lines: [{ name: "Diesel", qty: 1, unit: "", price: 3210 }] }],
+    warehouseOnly: 4,
   },
   openWell: {
     appWell: { id: "2026-10-11_15-20-54_jchristensen", name: "ISH 8HZ 102 ROCHSTR 1-21-63-24", lsd: "1-21-63-24 W4", lsdNorm: "1-21-63-24W4", rig: "Horizon 14", operator: "Ish Energy", status: "Completed" },

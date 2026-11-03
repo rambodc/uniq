@@ -159,11 +159,11 @@ test("every callable except the public inquiry and getAccess is guarded, and rem
     for (const { name, body } of callables(source)) {
       names.push(name);
       if (open.has(name)) continue;
-      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? (name === "inventoryBotRunChecks" ? /requireSuperAdmin\(request\)/ : /requireMiniApp\(request, "inventoryBot"\)/) : /requireMiniApp\(request, "contact"\)/;
+      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? /requireMiniApp\(request, "inventoryBot"\)/ : /requireMiniApp\(request, "contact"\)/;
       assert.match(body, guard, `${name} in ${file}`);
     }
   }
-  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotChat", "inventoryBotGetCoverage", "inventoryBotGetTicket", "inventoryBotGetToday", "inventoryBotGetWell", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotListChat", "inventoryBotListFlags", "inventoryBotListTickets", "inventoryBotListWarehouses", "inventoryBotListWells", "inventoryBotMoveTicket", "inventoryBotOpenXpressWell", "inventoryBotRunChecks", "inventoryBotSetFlag", "inventoryBotTicketUrl", "inventoryBotUpdateIssue", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
+  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMoveTicket", "inventoryBotOpenXpressWell", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
   const tree = readdirSync(new URL("..", import.meta.url));
   assert.equal(tree.includes("apps"), false);
   const bundle = names.join("\n") + read("../index.js");
