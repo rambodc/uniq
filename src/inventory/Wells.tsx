@@ -36,7 +36,7 @@ export function Wells() {
   }, [date]);
 
   const wells = coverage?.wells || (preview?.wells || []).map((well) => ({ ...well, lsdNorm: well.lsd, contractor: "", lat: null, lon: null }));
-  const tickets = coverage?.tickets || [];
+  const tickets = (coverage?.tickets || []).filter((row) => row.state !== "resolved_auto");
 
   return <Shell title="Wells" eyebrow="Inventory Bot" appId="inventoryBot" back>
     <Tabs date={date} />
@@ -74,7 +74,7 @@ export function WellDetail() {
       setWell(detail.well);
       setShipped(detail.tickets);
       setLogged(detail.appTickets);
-      setStatuses((coverage.tickets || []).filter((row) => row.wellId === wellId));
+      setStatuses((coverage.tickets || []).filter((row) => row.wellId === wellId && row.state !== "resolved_auto"));
       setFlags(coverage.flags || []);
     }, (cause: unknown) => {
       if (!active) return;

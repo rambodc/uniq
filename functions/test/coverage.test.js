@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyFlag, buildCoverage, compactStockItems, looseTicket, movedReviewFlag, reviewDocuments, sequenceGaps } from "../inventoryBot/coverage.js";
+import { applyFlag, buildCoverage, compactStockItems, isLegacyReviewId, looseTicket, movedReviewFlag, reconcileCoverage, reviewDocuments, sequenceGaps } from "../inventoryBot/coverage.js";
 import { DEFAULT_IGNORE_STOCK_NAMES, indexProducts, isIgnoredStockItem, resolveLine, ticketsMatch } from "../inventoryBot/engine.js";
 
 const well = (fields) => ({ id: "w1", name: "North Pad", lsd: "9-26-55-4W4", lsdNorm: "9-26-55-4W4", rig: "245", contractor: "Ensign", status: "active", ...fields });
@@ -308,6 +308,69 @@ test("review ids stay the same when app lines are reordered", () => {
   assert.equal(moved.status, "watching");
   assert.equal(moved.notes[0].text, "keep");
   assert.equal(movedReviewFlag([], "missing", "other"), null);
+});
+
+test("an unloaded series before the window is outside, and a loaded-series hole stays missing", () => {
+  const result = buildCoverage({
+    date: "2026-11-02",
+    config: { checksStartDate: "2026-10-30" },
+    wells: [well({})],
+    tickets: [
+      ticket({ id: "xpress_WBFS-DT-000520", type: "DT", postedAt: "2026-10-30", shippedAt: "2026-10-30" }),
+      ticket({ id: "xpress_WBFS-DT-000540", type: "DT", postedAt: "2026-10-31", shippedAt: "2026-10-31" }),
+    ],
+    appTickets: [
+      { id: "ct", wellId: "w1", kind: "returned", rawTicket: "TBAR-CT-000338", date: "2026-10-29", lines: [] },
+      { id: "hole", wellId: "w1", kind: "received", rawTicket: "WBFS-DT-000530", date: "2026-10-29", lines: [] },
+      { id: "later", wellId: "w1", kind: "returned", rawTicket: "TBAR-CT-000400", date: "2026-11-02", lines: [] },
+    ],
+  });
+  const categories = Object.fromEntries(result.reviews.filter((item) => item.kind === "app_only").map((item) => [item.rawTicket, item.category]));
+  assert.equal(categories["TBAR-CT-000338"], "outside_window");
+  assert.equal(result.reviews.find((item) => item.rawTicket === "TBAR-CT-000338").auto, true);
+  assert.equal(categories["WBFS-DT-000530"], "missing_from_pull");
+  assert.equal(categories["TBAR-CT-000400"], "unknown_prefix");
+  const covered = buildCoverage({
+    date: "2026-11-02",
+    config: { checksStartDate: "2026-10-30" },
+    wells: [well({})],
+    tickets: [ticket({ id: "xpress_NK-CT-000891", type: "CT", postedAt: "2026-11-01", shippedAt: "2026-11-01" })],
+    appTickets: [{ id: "later", wellId: "w1", kind: "returned", rawTicket: "TBAR-CT-000400", date: "2026-11-02", lines: [] }],
+  });
+  assert.equal(covered.reviews.find((item) => item.rawTicket === "TBAR-CT-000400").category, "missing_from_pull");
+});
+
+test("stale review and ticket rows are closed when flagged and deleted otherwise", () => {
+  assert.equal(isLegacyReviewId("app_pad-r-received-0_2"), true);
+  assert.equal(isLegacyReviewId("app_0123456789ab"), false);
+  const at = "2026-11-02T12:00:00.000Z";
+  const plan = reconcileCoverage({
+    date: "2026-11-02",
+    reviews: [{ id: "app_0123456789ab", kind: "app_only" }],
+    ticketStatus: [{ id: "xpress_NK-DT-1" }],
+    existingReviews: [
+      { id: "app_0123456789ab", date: "2026-11-02" },
+      { id: "app_old-well_2", date: "2026-10-26" },
+      { id: "app_old-well_3", date: "2026-10-27" },
+      { id: "sequence_nk-dt", date: "2026-11-02" },
+      { id: "sequence_other", date: "2026-11-01" },
+      { id: "app_kept", date: "2026-11-02", state: "resolved_auto", staleSince: "2026-11-01T00:00:00.000Z" },
+    ],
+    existingStatuses: [
+      { id: "xpress_NK-DT-1" },
+      { id: "xpress_gone" },
+      { id: "xpress_noted" },
+    ],
+    flags: [
+      { entityType: "review", entityId: "app_old-well_3", status: "watching", notes: [{ text: "look" }] },
+      { entityType: "ticket", entityId: "xpress_noted", status: "seen", notes: [] },
+    ],
+    at,
+  });
+  assert.deepEqual(plan.reviewDeletes.sort(), ["app_old-well_2", "sequence_nk-dt"]);
+  assert.deepEqual(plan.reviewStale, [{ id: "app_old-well_3", state: "resolved_auto", staleSince: at }]);
+  assert.deepEqual(plan.statusDeletes, ["xpress_gone"]);
+  assert.deepEqual(plan.statusStale, [{ id: "xpress_noted", state: "resolved_auto", staleSince: at }]);
 });
 
 test("entries before the collection window are auto-explained", () => {

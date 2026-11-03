@@ -9,7 +9,7 @@ import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
 import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, stockItemKey, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
-import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES, movedReviewFlag, reviewDocuments } from "./inventoryBot/coverage.js";
+import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES, movedReviewFlag, reconcileCoverage, reviewDocuments } from "./inventoryBot/coverage.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. The warehouse ticket is the source of truth. Answer only from the tool results about the selected well, ticket, or review item. Never invent ticket numbers, quantities, or dollar amounts. Say what is off and what data is missing. If the tools do not contain the answer, say you could not find it and call addNote with forGrokBot true so the question is saved for the next daily check. Keep the answer short.";
@@ -144,7 +144,7 @@ async function executeInventoryChecks(date) {
     col("rigInventory").where("date", "==", date).get(),
     col("appTickets").get(),
     col("ticketStatus").get(),
-    col("reviewItems").where("date", "==", date).get(),
+    col("reviewItems").get(),
     col("flags").get(),
   ]);
   const tickets = ticketSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -185,14 +185,24 @@ async function executeInventoryChecks(date) {
     if (next && doc.data().lsdNorm !== next) ops.push((batch) => batch.update(doc.ref, { lsdNorm: next }));
   }
   const coverage = buildCoverage({ date, config: configFromMain(main.data()), tickets, wells, products, stock, appTickets });
-  const statusIds = new Set(coverage.ticketStatus.map((row) => row.id));
-  for (const row of coverage.ticketStatus) ops.push((batch) => batch.set(col("ticketStatus").doc(row.id), row));
-  for (const doc of statusSnap.docs) if (!statusIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
-  const reviews = reviewDocuments(coverage.reviews);
-  const reviewIds = new Set(reviews.map((row) => row.id));
-  for (const row of reviews) ops.push((batch) => batch.set(col("reviewItems").doc(row.id), row));
-  for (const doc of reviewSnap.docs) if (!reviewIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
+  const at = new Date().toISOString();
   const existingFlags = flagSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const reviews = reviewDocuments(coverage.reviews);
+  for (const row of reviews) ops.push((batch) => batch.set(col("reviewItems").doc(row.id), row));
+  for (const row of coverage.ticketStatus) ops.push((batch) => batch.set(col("ticketStatus").doc(row.id), row));
+  const plan = reconcileCoverage({
+    date,
+    reviews,
+    ticketStatus: coverage.ticketStatus,
+    existingReviews: reviewSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    existingStatuses: statusSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    flags: existingFlags,
+    at,
+  });
+  for (const id of plan.reviewDeletes) ops.push((batch) => batch.delete(col("reviewItems").doc(id)));
+  for (const row of plan.reviewStale) ops.push((batch) => batch.update(col("reviewItems").doc(row.id), { state: row.state, staleSince: row.staleSince }));
+  for (const id of plan.statusDeletes) ops.push((batch) => batch.delete(col("ticketStatus").doc(id)));
+  for (const row of plan.statusStale) ops.push((batch) => batch.update(col("ticketStatus").doc(row.id), { state: row.state, staleSince: row.staleSince }));
   for (const move of coverage.flagMoves || []) {
     const moved = movedReviewFlag(existingFlags, move.fromId, move.toId);
     if (moved) ops.push((batch) => batch.set(col("flags").doc(flagDocId(moved.entityType, moved.entityId)), moved));

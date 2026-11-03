@@ -37,7 +37,7 @@ export default function Today() {
     return () => { active = false; };
   }, [date]);
 
-  const tickets = useMemo(() => data?.tickets || [], [data]);
+  const tickets = useMemo(() => (data?.tickets || []).filter((row) => row.state !== "resolved_auto"), [data]);
   const wells = data?.wells?.length ? data.wells : (preview?.wells || []).map((well) => ({ ...well, lsdNorm: well.lsd, contractor: "", lat: null, lon: null }));
   const counts = useMemo(() => tickets.reduce((all, row) => ({ ...all, [row.status]: (all[row.status] || 0) + 1 }), {} as Record<string, number>), [tickets]);
   const flagCounts = useMemo(() => flags.reduce((all, flag) => ({ ...all, [flag.status]: (all[flag.status] || 0) + 1 }), {} as Record<string, number>), [flags]);
