@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { acceptGrokLink, parseGrokLinks, parseGrokSort } from "../inventoryBot/grokSort.js";
 import { chooseFields, directoryQuery, filterWellIds, listNewWellIds, readSlimReports, readSlimWell, reportTickets, slimWell, wellWindowStart } from "../inventoryBot/mirrorWells.js";
-import { acceptGrokMove, buildXpressBoard, cardsNeedingGrok, fieldRig, lsdNear, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
+import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citedWellIds, fieldRig, lsdNear, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
 
 const ticket = (fields) => ({ id: "xpress_NK-DT-1", source: "xpress", type: "DT", rig: "14", lsd: "1-21-63-24W4", lsdNorm: "1-21-63-24W4", customer: "Ish Energy", wellName: "ISH 8HZ", postedAt: "2026-10-15", lines: [{ name: "Elixir", qty: 2, price: 100 }], ...fields });
 
@@ -181,4 +181,42 @@ test("opening a well reads report keys and the inventory buckets, not the whole 
   assert.equal(result.reads, 1 + 2 * 4);
   const rows = reportTickets(result.reports);
   assert.equal(rows.find((row) => row.rawTicket === "NK-1").products, 1);
+});
+
+test("the well whose reports cite the warehouse ticket is linked, and a tie stays alphabetical", () => {
+  const reportsFor = (raw) => ({ r1: { inventory: { received: { 0: { description: `Ticket:${raw},Delivery`, receiveddate: "2026-11-01", receiveddetail: { a: { product: "Elixir" } } } }, returned: {} } } });
+  const card = {
+    ticketCount: 1,
+    citationChecked: false,
+    match: { compared: false },
+    link: {
+      state: "suggested",
+      reason: "multiple app wells share this LSD",
+      source: "",
+      candidates: [
+        { id: "other", name: "Other Pad", lsd: "1-1-1-1W4", rig: "11" },
+        { id: "bantry", name: "Cardinal Bantry", lsd: "1-1-1-1W4", rig: "11" },
+        { id: "zeta", name: "Zeta", lsd: "1-1-1-1W4", rig: "11" },
+      ],
+    },
+  };
+  const cases = [
+    ["bantry", "BRKS-000540", "Cardinal Bantry"],
+    ["beaver", "TBAR-DT-001232", "S515 Beaverdam"],
+    ["plover", "TBAR-CT-000338", "SRL Plover Lake 3D8-36"],
+  ];
+  for (const [id, number, name] of cases) {
+    const candidates = [{ id: "aaa", name: "Aaa Pad" }, { id, name }, { id: "zzz", name: "Zzz Pad" }];
+    const cited = citedWellIds(candidates, { [id]: reportsFor(number), aaa: reportsFor("NK-000001") }, [{ number }]);
+    const linked = applyCitation({ ...card, link: { ...card.link, candidates } }, cited);
+    assert.equal(linked.link.appWellId, id);
+    assert.equal(linked.link.state, "linked");
+    assert.equal(linked.link.candidates[0].name, name);
+  }
+  const tied = applyCitation(card, ["zeta", "other"]);
+  assert.equal(tied.link.state, "suggested");
+  assert.deepEqual(tied.link.candidates.map((well) => well.name), ["Other Pad", "Zeta", "Cardinal Bantry"]);
+  const none = applyCitation(card, []);
+  assert.deepEqual(none.link.candidates.map((well) => well.name), ["Cardinal Bantry", "Other Pad", "Zeta"]);
+  assert.equal(cardsNeedingCitation([card, { ...card, citationChecked: true }, { ...card, link: { ...card.link, state: "linked", candidates: card.link.candidates } }]).length, 1);
 });

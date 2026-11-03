@@ -2,6 +2,7 @@
 
 import { looseTicket } from "./coverage.js";
 import { dayKey, lsdNorm, rigNorm, ticketsMatch, warehouseTicketNumber } from "./engine.js";
+import { reportTickets } from "./mirrorWells.js";
 
 function trailingDigits(value) {
   const match = String(value ?? "").toUpperCase().match(/(\d+)$/);
@@ -255,12 +256,12 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
     const match = savedMatch || matchTickets(list, link.state === "linked" ? link.appWellId : "", appTickets);
     const status = statusOf(link, match, list.length);
     const chips = [...list].sort((a, b) => ticketWhen(a).localeCompare(ticketWhen(b))).map((ticket) => publicTicket(ticket, place.get(ticket.id)));
-    cards.push({ ...card, link, match, status, ticketCount: list.length, totalValue: roundMoney(chips.reduce((sum, ticket) => sum + ticket.value, 0)), tickets: chips });
+    cards.push({ ...card, citationChecked: Boolean(stored.citationChecked), link, match, status, ticketCount: list.length, totalValue: roundMoney(chips.reduce((sum, ticket) => sum + ticket.value, 0)), tickets: chips });
   }
   for (const stored of savedCards || []) {
     if (!stored.manual || groups.has(stored.id)) continue;
     const link = linkFor(stored, stored, appWells);
-    cards.push({ ...stored, lsdNorm: stored.lsdNorm || lsdNorm(stored.lsd), link, match: matchTickets([], "", []), status: statusOf(link, { compared: false }, 0), ticketCount: 0, totalValue: 0, tickets: [] });
+    cards.push({ ...stored, citationChecked: Boolean(stored.citationChecked), lsdNorm: stored.lsdNorm || lsdNorm(stored.lsd), link, match: matchTickets([], "", []), status: statusOf(link, { compared: false }, 0), ticketCount: 0, totalValue: 0, tickets: [] });
   }
   cards.sort((a, b) => a.name.localeCompare(b.name));
   const loose = unassigned.map((ticket) => publicTicket(ticket, place.get(ticket.id)));
@@ -271,6 +272,36 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
 /** Unassigned tickets that have never been sent to Grok. Placed tickets and cached suggestions are not asked again. */
 export function ticketsNeedingGrok(unassigned) {
   return (unassigned || []).filter((ticket) => !ticket.suggestion);
+}
+
+/** Wells whose slim reports cite one of the card's warehouse tickets. */
+export function citedWellIds(candidates, reportsByWell, tickets) {
+  const hits = [];
+  for (const candidate of candidates || []) {
+    const rows = reportTickets(reportsByWell?.[candidate.id]);
+    const cited = rows.some((row) => row.warehouse && (tickets || []).some((ticket) => citesWarehouseTicket({ kind: row.kind === "returned" ? "returned" : "received", rawTicket: row.rawTicket }, ticket)));
+    if (cited) hits.push(candidate.id);
+  }
+  return hits;
+}
+
+/** Citing wells first. A tie, including wells that cite nothing, stays alphabetical. Exactly one citing well is linked. */
+export function applyCitation(card, citedIds) {
+  const cited = new Set(citedIds || []);
+  const candidates = [...(card.link?.candidates || [])].sort((a, b) => {
+    const byCite = (cited.has(a.id) ? 0 : 1) - (cited.has(b.id) ? 0 : 1);
+    if (byCite) return byCite;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+  const hits = candidates.filter((well) => cited.has(well.id));
+  if (hits.length !== 1) return { ...card, link: { ...card.link, candidates } };
+  const link = { ...card.link, candidates, state: "linked", appWellId: hits[0].id, name: hits[0].name || "", source: "auto", reason: "App reports cite a warehouse ticket on this card." };
+  return { ...card, link, status: statusOf(link, card.match?.compared ? card.match : { compared: false }, card.ticketCount) };
+}
+
+/** Multi-candidate cards that have not had their slim reports checked yet. */
+export function cardsNeedingCitation(cards) {
+  return (cards || []).filter((card) => card.link?.state !== "linked" && !card.citationChecked && (card.link?.candidates || []).length >= 2);
 }
 
 /** Unlinked cards are asked once. A saved grokTried flag means that card is not sent again. */
