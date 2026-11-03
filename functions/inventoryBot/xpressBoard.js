@@ -104,32 +104,63 @@ function asCandidate(well) {
   return { id: well.id, name: well.name || "", lsd: well.lsd || well.lsdNorm || "", rig: well.rig || "", operator: well.operator || "" };
 }
 
+/** Di-Corp's CC-Rig label is their internal rig, not the drilling rig on the well. */
+export function fieldRig(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/cc[-\s]*rig/i.test(text) || /di-?corp/i.test(text)) return "";
+  return text;
+}
+
+function proximity(cardNorm, wellNorm) {
+  if (!cardNorm || !wellNorm) return null;
+  if (cardNorm === wellNorm) return { kind: "exact", distance: 0 };
+  const left = lsdParts(cardNorm);
+  const right = lsdParts(wellNorm);
+  if (!left || !right || left.twp !== right.twp || left.rge !== right.rge || left.mer !== right.mer) return null;
+  const sectionDelta = Math.abs(left.sec - right.sec);
+  const lsdDelta = Math.abs(left.lsd - right.lsd);
+  if (left.sec === right.sec && left.lsd === right.lsd && left.num !== right.num) return { kind: "meridian", distance: Math.abs(left.num - right.num) };
+  if (left.num === right.num && sectionDelta <= 1 && lsdDelta <= 1) return { kind: "near", distance: sectionDelta * 10 + lsdDelta };
+  return null;
+}
+
+/** Location first, rig as a tie-break. Same-rig-only and operator-only stay out unless nothing closer exists. */
+export function rankCandidates(card, wells) {
+  const rig = rigNorm(fieldRig(card.rig));
+  const operator = String(card.operator || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const located = [];
+  const rigOnly = [];
+  const operatorOnly = [];
+  for (const well of wells || []) {
+    if (!well?.id) continue;
+    const near = proximity(card.lsdNorm, well.lsdNorm);
+    const rigHit = Boolean(rig && rigNorm(well.rig) === rig);
+    const operatorHit = Boolean(operator && operator === String(well.operator || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim());
+    if (near) located.push({ well, tier: near.kind === "exact" ? (rigHit ? 0 : 1) : near.kind === "meridian" ? (rigHit ? 2 : 3) : (rigHit ? 4 : 5), distance: near.distance });
+    else if (rigHit) rigOnly.push({ well, tier: 6, distance: 0 });
+    else if (operatorHit) operatorOnly.push({ well, tier: 7, distance: 0 });
+  }
+  const pool = located.length ? located : (rigOnly.length ? rigOnly : operatorOnly);
+  pool.sort((a, b) => a.tier - b.tier || a.distance - b.distance || String(a.well.name || "").localeCompare(String(b.well.name || "")));
+  return pool.slice(0, 3).map((row) => asCandidate(row.well));
+}
+
 function linkFor(saved, card, appWells) {
   const base = { candidates: [], grokTried: Boolean(saved?.grokTried), grok: saved?.grokAppWellId ? { appWellId: saved.grokAppWellId, name: saved.grokAppWellName || "", reason: saved.grokReason || "" } : null };
   if (saved?.linkLocked && saved.linkState === "linked" && saved.appWellId) return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
   if (saved?.linkLocked && saved.linkState === "none") return { ...base, state: "none", appWellId: "", reason: "Link cleared.", source: "manual" };
   if (saved?.linkState === "linked" && saved.appWellId && saved.linkSource === "manual") return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "Chosen manually.", source: "manual", name: saved.appWellName || "" };
   const wells = appWells || [];
-  const rig = rigNorm(card.rig);
+  const rig = rigNorm(fieldRig(card.rig));
   const exact = wells.filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm && rig && rigNorm(well.rig) === rig);
   if (!saved?.linkLocked && exact.length === 1) return { ...base, state: "linked", appWellId: exact[0].id, reason: "Same LSD and rig.", source: "auto", name: exact[0].name || "" };
   if (saved?.linkState === "linked" && saved.appWellId) return { ...base, state: "linked", appWellId: saved.appWellId, reason: saved.linkReason || "", source: saved.linkSource || "manual", name: saved.appWellName || "" };
-  const sameLsd = wells.filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm);
-  let candidates = [];
+  const exactLsd = wells.filter((well) => well.lsdNorm && card.lsdNorm && well.lsdNorm === card.lsdNorm);
+  const candidates = exactLsd.length > 1 ? rankCandidates(card, exactLsd) : rankCandidates(card, wells);
   let reason = "no app well found";
-  if (sameLsd.length > 1) {
-    reason = "multiple app wells share this LSD";
-    candidates = sameLsd.map(asCandidate);
-  } else {
-    const near = wells.filter((well) => well.lsdNorm !== card.lsdNorm && (lsdNear(card.lsdNorm, well.lsdNorm) || (rig && rigNorm(well.rig) === rig)));
-    near.sort((a, b) => {
-      const rank = (well) => (lsdParts(card.lsdNorm) && lsdParts(well.lsdNorm) && lsdParts(card.lsdNorm).num !== lsdParts(well.lsdNorm).num && lsdParts(card.lsdNorm).sec === lsdParts(well.lsdNorm).sec ? 0 : lsdNear(card.lsdNorm, well.lsdNorm) ? 1 : 2);
-      return rank(a) - rank(b);
-    });
-    const pool = sameLsd.length === 1 ? [sameLsd[0], ...near.filter((well) => well.id !== sameLsd[0].id)] : near;
-    candidates = pool.slice(0, 5).map(asCandidate);
-    if (candidates.length) reason = "location differs from app";
-  }
+  if (exactLsd.length > 1) reason = "multiple app wells share this LSD";
+  else if (candidates.length) reason = "location differs from app";
   return { ...base, state: candidates.length ? "suggested" : "none", appWellId: "", reason, source: "", candidates };
 }
 
@@ -189,7 +220,7 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
       continue;
     }
     const lsd = ticket.lsdNorm || lsdNorm(ticket.lsd);
-    const rig = rigNorm(ticket.rig);
+    const rig = rigNorm(fieldRig(ticket.rig));
     if (!lsd && !rig) {
       unassigned.push(ticket);
       continue;
@@ -216,7 +247,7 @@ export function buildXpressBoard({ tickets = [], placements = [], savedCards = [
       operator: stored.operator || sample.customer || "",
       lsd,
       lsdNorm: lsdKey,
-      rig: stored.rig || sample.rig || "",
+      rig: fieldRig(stored.rig) || fieldRig(sample.rig) || "",
       manual: Boolean(stored.manual),
     };
     const link = linkFor(stored, card, appWells);

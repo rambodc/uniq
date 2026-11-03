@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { acceptGrokLink, parseGrokLinks, parseGrokSort } from "../inventoryBot/grokSort.js";
-import { chooseFields, directoryQuery, filterWellIds, listNewWellIds, readSlimWell, reportTickets, slimWell, wellWindowStart } from "../inventoryBot/mirrorWells.js";
-import { acceptGrokMove, buildXpressBoard, cardsNeedingGrok, lsdNear, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
+import { chooseFields, directoryQuery, filterWellIds, listNewWellIds, readSlimReports, readSlimWell, reportTickets, slimWell, wellWindowStart } from "../inventoryBot/mirrorWells.js";
+import { acceptGrokMove, buildXpressBoard, cardsNeedingGrok, fieldRig, lsdNear, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
 
 const ticket = (fields) => ({ id: "xpress_NK-DT-1", source: "xpress", type: "DT", rig: "14", lsd: "1-21-63-24W4", lsdNorm: "1-21-63-24W4", customer: "Ish Energy", wellName: "ISH 8HZ", postedAt: "2026-10-15", lines: [{ name: "Elixir", qty: 2, price: 100 }], ...fields });
 
@@ -131,4 +131,54 @@ test("unlinked cards explain the gap, and warehouse receipts stay off the board"
   assert.equal(acceptGrokLink({ appWellId: "not-a-candidate", cardId: "auto" }, typo.link.candidates), false);
   const asked = buildXpressBoard({ tickets: [], savedCards: [{ id: "auto-1", name: "Kept", lsdNorm: "1-1-1-1W4", grokTried: true, manual: true }] });
   assert.equal(cardsNeedingGrok(asked.cards).length, 0);
+});
+
+test("candidates stay near the LSD and a CC-Rig label is not a rig", () => {
+  assert.equal(fieldRig("CC-Rig 4"), "");
+  assert.equal(fieldRig("Di-Corp CC-Rig 4"), "");
+  assert.equal(fieldRig("Horizon 55"), "Horizon 55");
+  const board = buildXpressBoard({
+    tickets: [
+      ticket({ id: "xpress_h55", lsd: "1-2-40-10W4", lsdNorm: "1-2-40-10W4", rig: "Horizon 55", wellName: "Meota", customer: "Cardinal" }),
+      ticket({ id: "xpress_cc", lsd: "5-5-5-5W4", lsdNorm: "5-5-5-5W4", rig: "CC-Rig 4", wellName: "Pad C", customer: "Di-Corp" }),
+    ],
+    appWells: [
+      { id: "near-rig", name: "Meota A", lsdNorm: "1-3-40-10W4", rig: "Horizon 55", operator: "Cardinal" },
+      { id: "near", name: "Meota B", lsdNorm: "2-2-40-10W4", rig: "Other 1", operator: "Cardinal" },
+      { id: "meridian", name: "Meota typo", lsdNorm: "1-2-40-10W0", rig: "Horizon 55", operator: "Other" },
+      { id: "farther", name: "Meota D", lsdNorm: "1-1-39-10W4", rig: "Other 2", operator: "Cardinal" },
+      { id: "pad-c", name: "Pad C far", lsdNorm: "6-6-40-10W4", rig: "Horizon 55", operator: "Cardinal" },
+      { id: "old", name: "Old Horizon well", lsdNorm: "8-8-1-1W4", rig: "Horizon 55", operator: "Cardinal" },
+      { id: "cardinal", name: "Unrelated Cardinal", lsdNorm: "9-9-2-2W4", rig: "Savanna 1", operator: "Cardinal" },
+      { id: "rig4", name: "Horizon 4", lsdNorm: "1-1-1-1W4", rig: "Horizon 4", operator: "Di-Corp" },
+      { id: "cc-near", name: "Pad C meridian", lsdNorm: "5-5-5-5W0", rig: "Savanna 12", operator: "Someone" },
+    ],
+  });
+  const meota = board.cards.find((card) => card.name === "Meota");
+  assert.equal(meota.link.state, "suggested");
+  assert.deepEqual(meota.link.candidates.map((well) => well.id), ["meridian", "near-rig", "near"]);
+  assert.equal(meota.link.candidates.some((well) => well.id === "cardinal" || well.id === "old"), false);
+  const pad = board.cards.find((card) => card.name === "Pad C");
+  assert.equal(pad.rig, "");
+  assert.deepEqual(pad.link.candidates.map((well) => well.id), ["cc-near"]);
+  assert.equal(pad.link.candidates.some((well) => well.id === "rig4"), false);
+});
+
+test("opening a well reads report keys and the inventory buckets, not the whole report", async () => {
+  const calls = [];
+  const result = await readSlimReports(async (path) => {
+    calls.push(path);
+    if (path === "data/wellReports/well-1") return { r1: true, r2: true, r3: true };
+    if (path.endsWith("/date")) return "2026-11-01";
+    if (path.endsWith("/reportNumber")) return "12";
+    if (path.endsWith("/inventory/received")) return { 0: { description: "Ticket:NK-1,Delivery", receiveddate: "2026-11-01", receiveddetail: { a: { product: "Elixir" } } } };
+    if (path.endsWith("/inventory/returned")) return {};
+    throw new Error(`unexpected ${path}`);
+  }, "well-1", 2);
+  assert.deepEqual(calls[0], "data/wellReports/well-1");
+  assert.equal(calls.some((path) => path === "data/wellReports/well-1/r1"), false);
+  assert.equal(calls.filter((path) => path.endsWith("/inventory/received")).length, 2);
+  assert.equal(result.reads, 1 + 2 * 4);
+  const rows = reportTickets(result.reports);
+  assert.equal(rows.find((row) => row.rawTicket === "NK-1").products, 1);
 });

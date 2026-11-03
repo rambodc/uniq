@@ -4,13 +4,12 @@
 // rebuild wells, appTickets, issues, rigInventory, ticketStatus, reviewItems, flags, or chats.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { applicationDefault, getApp, getApps, initializeApp } from "firebase-admin/app";
-import { getDatabase } from "firebase-admin/database";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, text } from "./core.js";
 import { docSlug, lsdNorm, todayKey } from "./inventoryBot/engine.js";
-import { askGrokLinks, askGrokSort } from "./inventoryBot/grokSort.js";
-import { MIRROR_URL, directoryQuery, listNewWellIds, mirrorGet, readSlimWell, reportTickets } from "./inventoryBot/mirrorWells.js";
-import { acceptGrokLink, acceptGrokMove, buildXpressBoard, cardsNeedingGrok, citesWarehouseTicket, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
+import { acceptGrokLink, askGrokLinks, askGrokSort } from "./inventoryBot/grokSort.js";
+import { MIRROR_URL, directoryQuery, listNewWellIds, mirrorGet, readSlimReports, readSlimWell, reportTickets } from "./inventoryBot/mirrorWells.js";
+import { acceptGrokMove, buildXpressBoard, cardsNeedingGrok, citesWarehouseTicket, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 
@@ -24,10 +23,6 @@ function mirrorApp() {
   if (existing) return existing;
   const credential = getApp().options.credential || applicationDefault();
   return initializeApp({ credential, databaseURL: MIRROR_URL }, "mirror");
-}
-
-function mirrorDb() {
-  return getDatabase(mirrorApp());
 }
 
 async function pool(items, limit, task) {
@@ -250,14 +245,19 @@ export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 
   const meta = (await col("meta").doc("appWellSync").get()).data() || {};
   const app = mirrorApp();
   let wellReads = 0;
-  const get = async (path, params) => {
+  let reportReads = 0;
+  const getWell = async (path, params) => {
     wellReads += 1;
     return mirrorGet(app, path, params);
   };
-  const slim = await readSlimWell(get, appWellId, meta.fieldMap || null);
-  const reportSnap = await mirrorDb().ref(`data/wellReports/${appWellId}`).orderByKey().limitToLast(30).get();
+  const getReport = async (path, params) => {
+    reportReads += 1;
+    return mirrorGet(app, path, params);
+  };
+  const slim = await readSlimWell(getWell, appWellId, meta.fieldMap || null);
+  const slimReports = await readSlimReports(getReport, appWellId, 30);
   const appWell = slim.well;
-  const appTickets = reportTickets(reportSnap.val());
+  const appTickets = reportTickets(slimReports.reports);
   const pieces = await loadXpressPieces();
   const board = buildXpressBoard(pieces);
   const found = board.cards.find((row) => row.id === cardId);
@@ -269,7 +269,7 @@ export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 
   const match = { matched: compared.filter((row) => row.inApp === "matched").length, missing: compared.filter((row) => row.inApp === "missing").length, waiting: compared.filter((row) => row.inApp === "waiting").length, byTicket: Object.fromEntries(compared.map((row) => [row.id, row.inApp])), at: new Date().toISOString() };
   await col("xpressCards").doc(cardId).set({ match }, { merge: true });
   if (slim.fieldMap && !meta.fieldMap) await col("meta").doc("appWellSync").set({ fieldMap: slim.fieldMap }, { merge: true });
-  return { appWell, appTickets, tickets: compared, match, reads: { well: wellReads, reports: 1, reportCount: appTickets.length } };
+  return { appWell, appTickets, tickets: compared, match, reads: { well: wellReads, reports: reportReads, reportCount: appTickets.length } };
 });
 
 export const inventoryBotGrokSort = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
