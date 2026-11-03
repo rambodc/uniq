@@ -9,6 +9,7 @@ import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, requireSuperAdmin, text } from "./core.js";
 import { completeInventoryChat } from "./inventoryBot/chat.js";
 import { checksRequestChanged, configFromMain, dayKey, docSlug, isTicketPdfPath, isTicketType, lsdNorm, nameNorm, rigNorm, runChecks, stockItemKey, ticketLookupId, todayKey } from "./inventoryBot/engine.js";
+import { applyFlag, buildCoverage, compactStockSnapshots, FLAG_STATUSES } from "./inventoryBot/coverage.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
 const SYSTEM = "You are the UniqEnergy inventory assistant. Answer only from the tool results. Never invent ticket numbers, quantities, or dollar amounts. Cite ticket ids and well names in the answer. If the tools do not contain the answer, say so. Keep the answer short.";
@@ -132,7 +133,7 @@ async function queryTickets(filters) {
 const checkOptions = { region: "us-central1", timeoutSeconds: 300, memory: "512MiB" };
 
 async function executeInventoryChecks(date) {
-  const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap, appSnap] = await Promise.all([
+  const [main, ticketSnap, wellSnap, productSnap, stockSnap, runSnap, issueSnap, rigSnap, appSnap, statusSnap, reviewSnap] = await Promise.all([
     root().get(),
     col("tickets").get(),
     col("wells").get(),
@@ -142,6 +143,8 @@ async function executeInventoryChecks(date) {
     col("issues").where("date", "==", date).get(),
     col("rigInventory").where("date", "==", date).get(),
     col("appTickets").get(),
+    col("ticketStatus").get(),
+    col("reviewItems").where("date", "==", date).get(),
   ]);
   const tickets = ticketSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   const wells = wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -180,10 +183,18 @@ async function executeInventoryChecks(date) {
     const next = lsdNorm(doc.data().lsd);
     if (next && doc.data().lsdNorm !== next) ops.push((batch) => batch.update(doc.ref, { lsdNorm: next }));
   }
-  const summary = result.summary;
+  const coverage = buildCoverage({ date, config: configFromMain(main.data()), tickets, wells, products, stock, appTickets });
+  const statusIds = new Set(coverage.ticketStatus.map((row) => row.id));
+  for (const row of coverage.ticketStatus) ops.push((batch) => batch.set(col("ticketStatus").doc(row.id), row));
+  for (const doc of statusSnap.docs) if (!statusIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
+  const reviewIds = new Set(coverage.reviews.map((row) => row.id));
+  for (const row of coverage.reviews) ops.push((batch) => batch.set(col("reviewItems").doc(row.id), row));
+  for (const doc of reviewSnap.docs) if (!reviewIds.has(doc.id)) ops.push((batch) => batch.delete(doc.ref));
+  for (const write of compactStockSnapshots(stock)) ops.push((batch) => batch.update(col("stock").doc(write.id), { items: write.items }));
+  const summary = { ...result.summary, coverage: { counts: coverage.counts, dollarsAtRisk: coverage.dollarsAtRisk, reviewCount: coverage.reviews.length } };
   ops.push((batch) => batch.set(col("runs").doc(date), { summary, checkedAt: new Date().toISOString() }, { merge: true }));
   await commitAll(ops);
-  return { date, summary, issueCount: result.issues.length };
+  return { date, summary, issueCount: result.issues.length, ticketCount: coverage.ticketStatus.length };
 }
 
 export const inventoryBotRunChecks = onCall({ ...callable, enforceAppCheck: false, ...checkOptions }, async (request) => {
@@ -209,6 +220,59 @@ export const inventoryBotGetToday = onCall(callable, async (request) => {
   const rows = issues.docs.map((doc) => publicIssue(doc.id, doc.data()));
   rows.sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.severity] - ({ high: 0, medium: 1, low: 2 })[b.severity] || b.dollarValue - a.dollarValue);
   return { date, config: configFromMain(main.data()), run: run.exists ? publicRun(date, run.data()) : null, issues: rows };
+});
+
+export const inventoryBotGetCoverage = onCall(callable, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  const date = cleanDate(request.data?.date);
+  const [statuses, reviews, wells, flags] = await Promise.all([
+    col("ticketStatus").where("date", "==", date).get(),
+    col("reviewItems").where("date", "==", date).get(),
+    col("wells").get(),
+    col("flags").get(),
+  ]);
+  return {
+    date,
+    tickets: statuses.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    reviews: reviews.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    wells: wells.docs.map((doc) => {
+      const data = doc.data();
+      return { id: doc.id, name: data.name || "", lsd: data.lsd || "", lsdNorm: data.lsdNorm || "", rig: data.rig || "", contractor: data.contractor || "", status: data.status || "", operator: data.operator || "", lastReportDate: data.lastReportDate || null, lat: data.lat ?? data.latitude ?? null, lon: data.lon ?? data.longitude ?? null };
+    }),
+    flags: flags.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+  };
+});
+
+function flagDocId(entityType, entityId) {
+  const raw = `${entityType}__${String(entityId).replace(/\//g, "_")}`;
+  return raw.length <= 400 ? raw : `${entityType}__${docSlug(entityId)}`;
+}
+
+export const inventoryBotListFlags = onCall(callable, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  const snap = await col("flags").get();
+  return { flags: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+});
+
+export const inventoryBotSetFlag = onCall(callable, async (request) => {
+  const access = await requireMiniApp(request, "inventoryBot");
+  const entityType = text(request.data?.entityType, "type", 20);
+  const entityId = text(request.data?.entityId, "id", 200);
+  if (!["well", "ticket", "issue", "review"].includes(entityType)) throw new HttpsError("invalid-argument", "Choose a well, ticket, issue, or review item.");
+  if (request.data?.status && !FLAG_STATUSES.includes(request.data.status)) throw new HttpsError("invalid-argument", "Choose new, seen, watching, or done.");
+  const ref = col("flags").doc(flagDocId(entityType, entityId));
+  const snap = await ref.get();
+  const next = applyFlag(snap.exists ? snap.data() : null, {
+    entityType, entityId,
+    status: request.data?.status,
+    note: clip(request.data?.note, 2000),
+    by: access.email,
+    at: new Date().toISOString(),
+    forGrokBot: typeof request.data?.forGrokBot === "boolean" ? request.data.forGrokBot : undefined,
+    grokBotReply: typeof request.data?.grokBotReply === "string" ? clip(request.data.grokBotReply, 4000) : undefined,
+  });
+  await ref.set(next, { merge: true });
+  return { id: ref.id, ...next };
 });
 
 export const inventoryBotUpdateIssue = onCall(callable, async (request) => {
