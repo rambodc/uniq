@@ -163,7 +163,7 @@ test("every callable except the public inquiry and getAccess is guarded, and rem
       assert.match(body, guard, `${name} in ${file}`);
     }
   }
-  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMimBoard", "inventoryBotMoveTicket", "inventoryBotOpenMimWell", "inventoryBotOpenXpressWell", "inventoryBotRequestWellRefresh", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser", "voiceChatToken"]);
+  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMimBoard", "inventoryBotMoveTicket", "inventoryBotOpenAppWell", "inventoryBotOpenMimWell", "inventoryBotOpenXpressWell", "inventoryBotRequestWellRefresh", "inventoryBotSaveCorrection", "inventoryBotUndoCorrection", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser", "voiceChatToken"]);
   const tree = readdirSync(new URL("..", import.meta.url));
   assert.equal(tree.includes("apps"), false);
   const bundle = names.join("\n") + read("../index.js");
