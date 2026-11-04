@@ -36,7 +36,7 @@ export default function XpressBoard() {
   const cards = useMemo(() => (board?.cards || []).filter((card) => !needle || `${card.name} ${card.operator} ${card.lsd} ${card.rig} ${card.tickets.map((ticket) => ticket.number).join(" ")}`.toLowerCase().includes(needle)), [board, needle]);
   const loose = useMemo(() => (board?.unassigned || []).filter((ticket) => !needle || `${ticket.number} ${ticket.customer} ${ticket.shipTo} ${ticket.rig} ${ticket.lsd}`.toLowerCase().includes(needle)), [board, needle]);
 
-  return <InventoryFrame pulledAt={board?.pulledAt} home source={source}>
+  return <InventoryFrame title="Inventory Bot" eyebrow={source === "mim" ? "MIM" : "Xpress"} pulledAt={board?.pulledAt} source={source}>
     <div className="xb-tabs" role="tablist">
       <NavLink to="/inventory-bot" end className={({ isActive }) => `xb-tab${isActive ? " on" : ""}`} role="tab">Xpress</NavLink>
       <NavLink to="/inventory-bot/mim" className={({ isActive }) => `xb-tab${isActive ? " on" : ""}`} role="tab">MIM</NavLink>

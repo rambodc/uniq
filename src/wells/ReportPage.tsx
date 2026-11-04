@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { asList, dayLabel, grouped, loadReport, loadWell, money, type DocMap } from "./data";
-import { BackLink, WellsFrame } from "./chrome";
+import { WellsPage } from "./chrome";
 
 export default function ReportPage() {
   const { wellId = "", reportId = "" } = useParams();
@@ -35,13 +35,11 @@ export default function ReportPage() {
   const shakers = namedRows((report?.solidsControl as Record<string, unknown> | undefined)?.shakers);
   const controls = namedRows((report?.solidsControl as Record<string, unknown> | undefined)?.solidcontrols);
 
-  return <WellsFrame copiedAt={String(well?.copiedAt || "")}>
-    <BackLink to={`/wells/older/${encodeURIComponent(id)}/reports`}>← Back to reports</BackLink>
-    {report === undefined ? <p className="wl-note">Loading report…</p> : !report ? <h1>That report is not in the copy.</h1> : <>
+  return <WellsPage title={report ? `Report #${String(report.reportNumber ?? "")}` : "Report"} backTo={`/wells/older/${encodeURIComponent(id)}/reports`} copiedAt={well ? String(well.copiedAt || "") : ""}>
+    {report === undefined ? <p className="wl-note">Loading report…</p> : !report ? <h2>That report is not in the copy.</h2> : <>
       <div className="wl-title">
         <div>
-          <h1>Report #{String(report.reportNumber ?? "")} · {dayLabel(report.reportDay || report.date)}</h1>
-          <p className="wl-sub">{[well?.name, report.holeSectionType, report.propertyType, report.reportType, report.status].filter(Boolean).join(" · ")}</p>
+          <p className="wl-sub">{[dayLabel(report.reportDay || report.date), well?.name, report.holeSectionType, report.propertyType, report.reportType, report.status].filter(Boolean).join(" · ")}</p>
         </div>
         <div className="wl-chips"><span className="wl-chip">Day cost {money(report.dailyTotalCost)}</span><span className="wl-chip">Running {money(report.totalDailyCosts)}</span></div>
       </div>
@@ -96,7 +94,7 @@ export default function ReportPage() {
         {annular.length > 8 && <p className="wl-note">… {annular.length - 8} more intervals</p>}
       </section>
     </>}
-  </WellsFrame>;
+  </WellsPage>;
 }
 
 function Kv({ k, v }: { k: string; v: unknown }) {

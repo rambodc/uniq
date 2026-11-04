@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ASSIGNABLE_MINI_APP_IDS, MINI_APPS, USER_TYPE_LABELS, type MiniAppId, type UserType } from "../auth/miniApps";
 import { createUser, listUsers, messageOf, sendUserInvite, setUserDisabled, updateUser, type InviteResult, type UserInput, type UserRecord } from "../core/api";
 import { previewUsers } from "../auth/preview";
-import Shell from "../auth/Shell";
+import { PageShell } from "../auth/Shell";
 import Avatar from "../auth/Avatar";
 
 const empty: UserInput = { firstName: "", lastName: "", email: "", type: "staff", miniApps: [] };
@@ -59,7 +59,7 @@ export default function UsersApp() {
   }
   const alerts = users.filter((user) => user.invite && problems.has(user.invite.status));
 
-  return <Shell title="User Access" eyebrow="Super admin" appId="users" back>
+  return <PageShell title="User Access" eyebrow="Super admin" appId="users" back>
     <p className="portal-lead">Invite people with email and password. Staff only see the mini apps you assign. Profile is available to everyone.</p>
     {alerts.length > 0 && <div className="portal-status error" role="alert">{alerts.length} invite{alerts.length === 1 ? "" : "s"} need attention.</div>}
     {error && <div className="portal-status error" role="alert">{error}</div>}
@@ -105,5 +105,5 @@ export default function UsersApp() {
         <button type="button" onClick={() => setEditing(null)}>Cancel</button>
       </div>
     </form>}
-  </Shell>;
+  </PageShell>;
 }

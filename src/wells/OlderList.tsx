@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { dayLabel, loadOlderIndex, money, type WellIndex } from "./data";
-import { WellsFrame } from "./chrome";
+import { WellsPage } from "./chrome";
 
 export default function OlderList() {
   const [wells, setWells] = useState<WellIndex[]>([]);
@@ -22,7 +22,7 @@ export default function OlderList() {
   const needle = query.trim().toLowerCase();
   const rows = useMemo(() => wells.filter((well) => !needle || `${well.name} ${well.location} ${well.rig} ${well.operator} ${well.contractor} ${well.fieldName}`.toLowerCase().includes(needle)), [wells, needle]);
 
-  return <WellsFrame copiedAt={copiedAt}>
+  return <WellsPage title="Wells" copiedAt={copiedAt}>
     <div className="wl-tabs"><span className="wl-tab on">Older Wells <b>{wells.length}</b></span></div>
     <div className="wl-bar">
       <div>
@@ -44,5 +44,5 @@ export default function OlderList() {
       </Link>)}
     </div>
     <p className="wl-note">{rows.length} wells · {money(rows.reduce((sum, well) => sum + (Number(well.totalCost) || 0), 0))} combined cost on the index</p>
-  </WellsFrame>;
+  </WellsPage>;
 }

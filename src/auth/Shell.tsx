@@ -5,7 +5,8 @@ import { useAuth } from "./AuthContext";
 import { ICONS, miniAppById, type MiniAppId } from "./miniApps";
 import { ThemeToggle } from "./Theme";
 
-export default function Shell({ title, eyebrow, appId, back, backTo = "/dashboard", watermark, children }: {
+/** Shared chrome for every mini app: the same top bar, logo, and Back button as Profile. */
+export function PageShell({ title, eyebrow, appId, back, backTo = "/dashboard", watermark, children }: {
   title: string;
   eyebrow?: string;
   appId?: MiniAppId;
@@ -42,3 +43,5 @@ export default function Shell({ title, eyebrow, appId, back, backTo = "/dashboar
     </main>
   </div>;
 }
+
+export default PageShell;

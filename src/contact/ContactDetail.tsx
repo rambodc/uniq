@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { archiveContactInquiry, listContactInquiries, messageOf, restoreContactInquiry, type Inquiry } from "../core/api";
 import { previewActive, previewInquiries } from "../auth/preview";
-import Shell from "../auth/Shell";
+import { PageShell } from "../auth/Shell";
 import { armInboxScrollRestore, formatInquiryDate, inboxPath, inquiryLabel, legacyFields } from "./inbox";
 
 function FieldValue({ value }: { value: string }) {
@@ -65,7 +65,7 @@ export default function ContactDetail() {
     }
   }
 
-  return <Shell title={inquiry?.name || "Message"} eyebrow="Contact Form" appId="contact" back backTo={backTo}>
+  return <PageShell title={inquiry?.name || "Message"} eyebrow="Contact Form" appId="contact" back backTo={backTo}>
     {error && <div className="portal-status error" role="alert">{error}</div>}
     {notice && <div className="portal-status success">{notice}</div>}
     {items == null ? <p className="portal-empty">Loading message…</p> : !inquiry ? <p className="portal-empty">This message is no longer in the inbox.</p> : <article className="portal-panel mail-detail">
@@ -88,5 +88,5 @@ export default function ContactDetail() {
         <button type="button" className="portal-text-button" disabled={busy} onClick={() => void toggleArchive()}>{archived ? "Restore" : "Archive"}</button>
       </div>
     </article>}
-  </Shell>;
+  </PageShell>;
 }
