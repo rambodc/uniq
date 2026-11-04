@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { inventoryBotUndoCorrection, inventoryBotXpressBoard, messageOf, type RigBoard, type RigCard, type RigTicket, type RigWell } from "../core/api";
+import { inventoryBotXpressBoard, messageOf, type RigBoard, type RigCard, type XrefRow } from "../core/api";
 import { previewInventory } from "../auth/preview";
 
 let cached: RigBoard | null = null;
@@ -40,29 +40,21 @@ export function useRigBoard() {
   return { board, error, reload, preview: Boolean(fixture) };
 }
 
-export function allRigs(board: RigBoard) {
-  return [...board.rigs, ...board.quietRigs];
-}
-
 export function findRig(board: RigBoard, key: string) {
-  return allRigs(board).find((rig) => rig.key === key) ?? null;
+  return board.rigs.find((rig) => rig.key === key) ?? null;
 }
 
-export function findWell(board: RigBoard, wellId: string): { rig: RigCard; well: RigWell } | null {
-  for (const rig of allRigs(board)) {
-    const well = rig.wells.find((row) => row.id === wellId);
-    if (well) return { rig, well };
-  }
-  return null;
+export function rowsOf(rig: RigCard) {
+  return [...rig.needs, ...rig.pending, ...rig.transfers, ...rig.pairs];
 }
 
-export function findTicket(board: RigBoard, ticketId: string): { rig: RigCard | null; ticket: RigTicket } | null {
+export function findRow(board: RigBoard, rowId: string): { rig: RigCard | null; row: XrefRow } | null {
   for (const rig of board.rigs) {
-    const ticket = rig.tickets.find((row) => row.id === ticketId);
-    if (ticket) return { rig, ticket };
+    const row = rowsOf(rig).find((item) => item.id === rowId);
+    if (row) return { rig, row };
   }
-  const loose = [...board.unassigned, ...board.warehouse].find((row) => row.id === ticketId);
-  return loose ? { rig: null, ticket: loose } : null;
+  const loose = board.loose.find((item) => item.id === rowId);
+  return loose ? { rig: null, row: loose } : null;
 }
 
 export function MoreMenu({ label, items }: { label: string; items: { label: string; to?: string; onClick?: () => void }[] }) {
@@ -92,9 +84,4 @@ export function MoreMenu({ label, items }: { label: string; items: { label: stri
         : <button key={item.label} type="button" role="menuitem" onClick={() => { setOpen(false); item.onClick?.(); }}>{item.label}</button>)}
     </div>}
   </div>;
-}
-
-export async function undoCorrection(ids: string[], preview: boolean) {
-  if (preview || !ids.length) return;
-  await inventoryBotUndoCorrection(ids.length === 1 ? { id: ids[0] } : { ids });
 }

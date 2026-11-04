@@ -7,9 +7,9 @@ import { FieldPath } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, text } from "./core.js";
 import { copiedReportRows, isTestWell } from "./inventoryBot/copiedReports.js";
-import { dayKey, docSlug, lsdNorm } from "./inventoryBot/engine.js";
+import { dayKey, docSlug, lsdNorm, todayKey } from "./inventoryBot/engine.js";
 import { acceptGrokLink, askGrokLinks, askGrokSort } from "./inventoryBot/grokSort.js";
-import { buildRigBoard, correctionDocId } from "./inventoryBot/rigMatch.js";
+import { buildXref, rigNumber, wellIsCurrent } from "./inventoryBot/xrefMatch.js";
 import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citesWarehouseTicket, citedWellIds, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
@@ -186,39 +186,105 @@ async function publishBoard(request, source) {
   };
 }
 
-async function writeMatches(matches, prior) {
-  const pending = matches.filter((row) => {
-    const current = prior.get(row.id) || {};
-    return current.rigKey !== row.rigKey || current.matchReason !== row.matchReason || current.matchConfidence !== row.matchConfidence;
-  });
-  for (let index = 0; index < pending.length; index += 400) {
-    const batch = db.batch();
-    for (const row of pending.slice(index, index + 400)) {
-      batch.set(col("tickets").doc(row.id), { rigKey: row.rigKey, matchReason: row.matchReason, matchConfidence: row.matchConfidence }, { merge: true });
+async function loadAppLines(wells) {
+  const lines = [];
+  await pool(wells, 8, async (well) => {
+    const snap = await col("appWells").doc(well.id).collection("reports").get();
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      for (const side of ["received", "returned"]) {
+        const rows = Array.isArray(data[side]) ? data[side] : [];
+        rows.forEach((row, index) => {
+          if (!row || typeof row !== "object") return;
+          const products = Array.isArray(row.products) ? row.products : [];
+          lines.push({
+            wellId: well.id,
+            reportId: doc.id,
+            index: String(row.index ?? index),
+            date: row.date || data.date || "",
+            rawTicket: row.ticket || row.rawTicket || "",
+            kind: row.kind || (side === "returned" ? "returned" : "received"),
+            products: products.map((product) => ({ name: product.name || product.product || "", pack: product.pack || product.unit || "", qty: Number(product.qty) || 0, productId: product.productId || "" })),
+          });
+        });
+      }
     }
-    await batch.commit();
-  }
+  });
+  return lines;
 }
 
-async function publishRigBoard(request) {
+function ticketState(row) {
+  if (row.tone === "matched") return "matched";
+  if (row.tone === "loose") return "loose";
+  if (row.side === "xpress") return "onlyX";
+  return "";
+}
+
+async function writeXref(board, prior) {
+  const now = new Date().toISOString();
+  const tickets = [];
+  for (const rig of board.rigs) {
+    for (const row of [...rig.needs, ...rig.pairs]) {
+      if (!row.ticketId || !ticketState(row)) continue;
+      tickets.push({ id: row.ticketId, rigKey: rig.key, xrefState: ticketState(row), xrefReason: row.how || row.reason });
+    }
+  }
+  for (const row of board.loose) if (row.ticketId) tickets.push({ id: row.ticketId, rigKey: "", xrefState: "loose", xrefReason: "no-rig" });
+  const changed = tickets.filter((row) => {
+    const current = prior.get(row.id) || {};
+    return current.xrefState !== row.xrefState || current.xrefReason !== row.xrefReason || current.rigKey !== row.rigKey;
+  });
+  for (let index = 0; index < changed.length; index += 400) {
+    const batch = db.batch();
+    for (const row of changed.slice(index, index + 400)) batch.set(col("tickets").doc(row.id), { rigKey: row.rigKey, xrefState: row.xrefState, xrefReason: row.xrefReason }, { merge: true });
+    await batch.commit();
+  }
+  for (const rig of board.rigs) {
+    await col("rigBoard").doc(rig.key).set({
+      rig: rig.key, name: rig.name, operators: rig.operator ? rig.operator.split(" / ") : [],
+      counts: { matched: rig.matched, onlyApp: rig.onlyApp, onlyX: rig.onlyXpress, noTicket: rig.placeholders },
+      ok: rig.tone === "green", updatedAt: now,
+    });
+  }
+  await col("meta").doc("xref").set({ runAt: now, xpressFrom: board.since, appFrom: board.appSince, totals: board.totals, prefixes: ["NK", "TBAR", "WBFS", "BRKS", "BLKD"] });
+}
+
+async function publishXref(request) {
   await requireMiniApp(request, "inventoryBot");
-  const [ticketSnap, wellSnap, correctionSnap] = await Promise.all([
+  const today = todayKey();
+  const [ticketSnap, wellSnap, correctionSnap, productSnap] = await Promise.all([
     col("tickets").where("source", "==", "xpress").get(),
     col("appWells").get(),
-    col("corrections").get(),
+    col("xrefCorrections").get(),
+    col("products").get(),
   ]);
-  const tickets = ticketSnap.docs.map((doc) => ({ ...xpressTicket(doc.id, doc.data()), ticketNumber: doc.data().ticketNumber || "" }));
-  const wells = wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const tickets = ticketSnap.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      ...xpressTicket(doc.id, data),
+      ticketNumber: data.ticketNumber || "",
+      hasLines: true,
+      lines: Array.isArray(data.lines) ? data.lines.map((line) => ({ name: line.name || line.product || "", qty: Number(line.qty) || 0, unit: line.unit || "", productId: line.productId || "" })) : [],
+    };
+  });
+  const wells = wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((well) => wellIsCurrent(well, today));
   const corrections = correctionSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const board = buildRigBoard({ tickets, wells, corrections });
-  await writeMatches(board.matches, new Map(ticketSnap.docs.map((doc) => [doc.id, doc.data()])));
-  const pulledAt = tickets.map((ticket) => ticket.collectedAt).filter(Boolean).sort().at(-1) || "";
-  return { rigs: board.rigs, quietRigs: board.quietRigs, unassigned: board.unassigned, warehouse: board.warehouse, pulledAt };
+  const products = productSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const appLines = await loadAppLines(wells);
+  const board = buildXref({ tickets, wells, appLines, corrections, products, today });
+  await writeXref(board, new Map(ticketSnap.docs.map((doc) => [doc.id, doc.data()])));
+  return { since: board.since, appSince: board.appSince, rigs: board.rigs, loose: board.loose };
 }
 
 export const inventoryBotXpressBoard = onCall({ ...callable, timeoutSeconds: 120 }, async (request) => {
   await requireMiniApp(request, "inventoryBot");
-  return publishRigBoard(request);
+  return publishXref(request);
+});
+export const inventoryBotRecomputeXref = onCall({ ...callable, timeoutSeconds: 120 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  const board = await publishXref(request);
+  const sum = (pick) => board.rigs.reduce((total, rig) => total + pick(rig), 0);
+  return { ok: true, rigs: board.rigs.length, matched: sum((rig) => rig.matched), onlyApp: sum((rig) => rig.onlyApp), onlyXpress: sum((rig) => rig.onlyXpress), loose: board.loose.length, since: board.since };
 });
 export const inventoryBotMimBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
   await requireMiniApp(request, "inventoryBot");
@@ -336,7 +402,9 @@ export const inventoryBotRequestWellRefresh = onCall(callable, async (request) =
   return { ok: true };
 });
 
-const RIG_KEY = /^[0-9]+~[a-z0-9]*$/;
+function correctionDoc(id) {
+  return col("xrefCorrections").doc(id.replace(/[/\s]+/g, "_").slice(0, 240));
+}
 
 export const inventoryBotSaveCorrection = onCall(callable, async (request) => {
   const access = await requireMiniApp(request, "inventoryBot");
@@ -344,23 +412,33 @@ export const inventoryBotSaveCorrection = onCall(callable, async (request) => {
   const note = clip(request.data?.note, 500);
   const now = new Date().toISOString();
   const by = access.email || "";
-  if (type === "merge") {
-    const alias = text(request.data?.rigKey, "rig", 200);
-    const into = text(request.data?.into, "rig", 200);
-    if (!RIG_KEY.test(alias) || !RIG_KEY.test(into) || alias === into) throw new HttpsError("invalid-argument", "Choose a different rig.");
-    const id = correctionDocId("merge", alias);
-    await col("corrections").doc(id).set({ id, type: "merge", rigKey: alias, into, by, at: now, note, undone: false, undoneBy: "", undoneAt: "" });
+  const stamp = { by, at: now, note, undone: false, undoneBy: "", undoneAt: "" };
+  if (type === "pair" || type === "unpair") {
+    const wellId = text(request.data?.wellId, "well", 240);
+    const reportId = text(request.data?.reportId, "report", 240);
+    const index = text(String(request.data?.index ?? ""), "line", 40);
+    const xpress = text(request.data?.xpress, "ticket", 80);
+    const appLine = { wellId, reportId, index };
+    const id = `${type}_${wellId}_${reportId}_${index}`;
+    if (type === "pair") await correctionDoc(`unpair_${wellId}_${reportId}_${index}`).set({ undone: true, undoneBy: by, undoneAt: now }, { merge: true });
+    else await correctionDoc(`pair_${wellId}_${reportId}_${index}`).set({ undone: true, undoneBy: by, undoneAt: now }, { merge: true });
+    await correctionDoc(id).set({ id, type, appLine, xpress, ...stamp });
     return { ok: true, id };
   }
-  if (type === "wellRig" || type === "ticketRig") {
-    const rigKey = text(request.data?.rigKey, "rig", 200);
-    if (!RIG_KEY.test(rigKey)) throw new HttpsError("invalid-argument", "Choose a rig.");
-    const subject = type === "wellRig" ? text(request.data?.wellId, "well", 240) : text(request.data?.ticketId, "ticket", 200);
-    const id = correctionDocId(type === "wellRig" ? "well" : "ticket", subject);
-    const payload = { id, type, rigKey, by, at: now, note, undone: false, undoneBy: "", undoneAt: "" };
-    if (type === "wellRig") payload.wellId = subject;
-    else payload.ticketId = subject;
-    await col("corrections").doc(id).set(payload);
+  if (type === "rig") {
+    const xpress = text(request.data?.xpress, "ticket", 80);
+    const rig = rigNumber(text(request.data?.rig, "rig", 40));
+    if (!rig) throw new HttpsError("invalid-argument", "Choose a rig.");
+    const id = `rig_${xpress}`;
+    await correctionDoc(id).set({ id, type: "rig", xpress, rig, ...stamp });
+    return { ok: true, id };
+  }
+  if (type === "alias") {
+    const from = rigNumber(text(request.data?.rig, "rig", 40));
+    const into = rigNumber(text(request.data?.into, "rig", 40));
+    if (!from || !into || from === into) throw new HttpsError("invalid-argument", "Choose a different rig.");
+    const id = `alias_${from}`;
+    await correctionDoc(id).set({ id, type: "alias", rig: from, into, ...stamp });
     return { ok: true, id };
   }
   throw new HttpsError("invalid-argument", "Unknown correction.");
@@ -370,11 +448,11 @@ export const inventoryBotUndoCorrection = onCall(callable, async (request) => {
   const access = await requireMiniApp(request, "inventoryBot");
   const ids = (Array.isArray(request.data?.ids) ? request.data.ids : [request.data?.id])
     .map((id) => clip(id, 240))
-    .filter((id) => /^(merge|well|ticket)__/.test(id))
+    .filter((id) => /^(alias|pair|unpair|rig)_/.test(id))
     .slice(0, 20);
   if (!ids.length) throw new HttpsError("invalid-argument", "Nothing to undo.");
   const now = new Date().toISOString();
-  await Promise.all(ids.map((id) => col("corrections").doc(id).set({ undone: true, undoneBy: access.email || "", undoneAt: now }, { merge: true })));
+  await Promise.all(ids.map((id) => col("xrefCorrections").doc(id).set({ undone: true, undoneBy: access.email || "", undoneAt: now }, { merge: true })));
   return { ok: true };
 });
 
