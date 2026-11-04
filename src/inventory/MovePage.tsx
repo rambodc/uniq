@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { inventoryBotMoveTicket, messageOf, type XpressCard } from "../core/api";
 import { useBoard } from "./boardState";
-import { BackToBoard, InventoryFrame, pretty } from "./parts";
+import { BackToBoard, InventoryFrame, pretty, TicketPdf } from "./parts";
 import "./xpress.css";
 
 function recentCards(cards: XpressCard[]) {
@@ -49,6 +49,7 @@ export default function MovePage() {
       <div className="xb-title">
         <div>
           <h1>Move ticket {ticket.number}</h1>
+          <TicketPdf ticket={ticket} label="Open PDF" />
           <p className="xb-sub">{[ticket.type === "CT" || ticket.return ? "Return" : "Delivery", pretty(ticket.date), ticket.customer || ticket.shipTo, !ticket.lsd && !ticket.rig ? "no rig or LSD on the ticket" : ""].filter(Boolean).join(" · ")}</p>
         </div>
       </div>

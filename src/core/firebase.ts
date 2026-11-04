@@ -3,6 +3,7 @@ import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "
 import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { getStorage } from "firebase/storage";
 
 const app = initializeApp({
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDuQItRbvvG5D8Pe8jhZtGir09e4O6x3bc",
@@ -29,3 +30,4 @@ if (appCheckKey && typeof window !== "undefined") {
 
 export const functions = getFunctions(app, "us-central1");
 export const db = getFirestore(app);
+export const storage = getStorage(app);

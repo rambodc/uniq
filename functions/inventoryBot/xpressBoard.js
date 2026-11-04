@@ -45,8 +45,16 @@ function roundMoney(value) {
   return Math.round(value * 100) / 100;
 }
 
+/** Xpress PDFs live at inventoryBot/tickets/xpress/{ticket number}.pdf. MIM tickets stay closed. */
+export function ticketPdf(ticket) {
+  const path = String(ticket?.pdfPath || "");
+  if (ticket?.hasPdf !== true || !/^inventoryBot\/tickets\/xpress\/[^/]+\.pdf$/.test(path)) return "";
+  return path;
+}
+
 function publicTicket(ticket, placement) {
   const type = String(ticket.type || "").toUpperCase();
+  const pdfPath = ticketPdf(ticket);
   return {
     id: ticket.id,
     number: warehouseTicketNumber(ticket),
@@ -59,6 +67,8 @@ function publicTicket(ticket, placement) {
     value: ticketValue(ticket),
     lines: (ticket.lines || []).map((line) => ({ name: line.name || line.product || "", qty: Number(line.qty) || 0, unit: line.unit || "", price: Number(line.price) || 0 })),
     return: type === "CT" || type === "SR",
+    hasPdf: Boolean(pdfPath),
+    pdfPath,
     suggestion: placement?.suggestion && !placement.manual ? placement.suggestion : null,
   };
 }

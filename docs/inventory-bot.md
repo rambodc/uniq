@@ -73,7 +73,11 @@ Missing config uses those defaults. Checks do not overwrite `config`.
 | `lines` | `{ code, name, qty, unitWeight, weight }[]`. `qty`, `unitWeight`, and `weight` are numbers. |
 | `charges` | `{ service, qty, billingMethod, price, total }[]`. Used for MIM `TT`. Numbers. |
 | `total` | number |
-| `pdfPath` | Storage path `inventoryBot/tickets/{source}/{file}.pdf` |
+| `ticketNumber` | string. The plain warehouse number, such as `NK-004804`. The document id is `xpress_{ticketNumber}`. |
+| `pdfPath` | Storage path `inventoryBot/tickets/xpress/{ticketNumber}.pdf` in bucket `uniqenergy-de71c.firebasestorage.app`. Empty when there is no file. |
+| `hasPdf` | boolean. `true` only after that file is uploaded. MIM tickets are `false`. |
+| `pdfSize` | number, bytes, when a PDF was uploaded. |
+| `pdfUploadedAt` | ISO string, when a PDF was uploaded. |
 | `collectedAt` | ISO string |
 | `runId` | string, usually the run date |
 
@@ -295,11 +299,17 @@ Grok is `grok-4.3` through `https://api.x.ai/v1/chat/completions`. The key is Se
 
 ## PDFs
 
-Upload the file to `inventoryBot/tickets/{source}/{file}.pdf` and store that path on the ticket as `pdfPath`. The board does not mint a signed URL.
+Xpress files are `inventoryBot/tickets/xpress/{ticketNumber}.pdf` in `uniqenergy-de71c.firebasestorage.app`. The ticket document `inventoryBot/main/tickets/xpress_{ticketNumber}` stores `pdfPath`, `hasPdf`, `pdfSize`, and `pdfUploadedAt`. A ticket is clickable only when `hasPdf` is true and `pdfPath` is that Xpress path. MIM tickets have `hasPdf: false` and no PDF.
+
+The board, the well page, the unassigned list, and the move page show a small PDF icon on those tickets. The click opens a browser tab immediately, then fills it from `getBlob` and an object URL so Storage does not mint a public download token. If `getBlob` fails because the bucket has no CORS rule for this site, the page falls back to `getDownloadURL`. Move and link buttons are separate controls and do not open the PDF.
+
+`storage.rules` lets a signed-in person read `inventoryBot/tickets/**` only when their `users/{uid}` record is an active super admin or a staff user whose `miniApps` includes `inventoryBot` (verified email, matching email, both names). Browser writes stay closed. `firebase.json` points the Storage deploy at `storage.rules`. The web client uses the same Firebase app, so App Check is attached the same way as the other Firebase calls.
+
+`storage.cors.json` allows GET from uniqenergy.com, www, the Firebase hosting hosts, and localhost. `firebase deploy --only storage` publishes rules; apply `storage.cors.json` to the bucket as well or `getBlob` cannot read the file from the browser.
 
 ## After ingest
 
 1. Write Xpress and MIM tickets, warehouse stock, and products with the Admin SDK.
-2. Upload ticket PDFs under `inventoryBot/tickets/{source}/{file}.pdf`.
+2. Upload Xpress ticket PDFs to `inventoryBot/tickets/xpress/{ticketNumber}.pdf` and set `pdfPath`, `hasPdf: true`, `pdfSize`, and `pdfUploadedAt` on `tickets/xpress_{ticketNumber}`. Leave MIM at `hasPdf: false`.
 
-Do not write `wells`, `appTickets`, `issues`, `rigInventory`, `ticketStatus`, `reviewItems`, `flags`, or `chats`, and do not set `checksRequestedAt`. Those checks are retired. The Xpress board reads tickets from Firestore and reads the app well live from the mirror when a card is opened. The app-well directory refreshes itself, at most once a day, the next time someone opens the board.
+Do not write `wells`, `appTickets`, `issues`, `rigInventory`, `ticketStatus`, `reviewItems`, `flags`, or `chats`, and do not set `checksRequestedAt`. Those checks are retired. The Xpress board reads tickets from Firestore. Opening a linked card reads the copied app reports from Firestore.

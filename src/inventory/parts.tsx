@@ -1,5 +1,6 @@
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { ReactNode } from "react";
+import { canOpenTicketPdf, openTicketPdf } from "./ticketPdf";
 
 export function pretty(date: string) {
   if (!date) return "";
@@ -32,9 +33,10 @@ export function Rig() {
   </svg>;
 }
 
-export function InventoryFrame({ pulledAt, children }: { pulledAt?: string; children: ReactNode }) {
+export function InventoryFrame({ pulledAt, home, children }: { pulledAt?: string; home?: boolean; children: ReactNode }) {
   return <div className="xb">
     <div className="xb-wrap">
+      {home && <Link className="xb-back" to="/dashboard">← Back to Dashboard</Link>}
       <header className="xb-head">
         <Link className="xb-brand" to="/dashboard">
           <span className="xb-logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="#04201d" /></svg></span>
@@ -49,4 +51,25 @@ export function InventoryFrame({ pulledAt, children }: { pulledAt?: string; chil
 
 export function BackToBoard() {
   return <Link className="xb-back" to="/inventory-bot">← Back to board</Link>;
+}
+
+export function TicketPdf({ ticket, label, plain, mark }: { ticket: { number: string; hasPdf?: boolean; pdfPath?: string }; label?: string; plain?: boolean; mark?: boolean }) {
+  const [note, setNote] = useState("");
+  const text = label || ticket.number;
+  if (!canOpenTicketPdf(ticket)) return label ? null : <span className={plain ? "xb-mono" : undefined}>{ticket.number}</span>;
+  return <>
+    <button className={`xb-pdf${plain ? " plain" : ""}${mark ? " ret" : ""}`} type="button" aria-label={`Open PDF for ${ticket.number}`} onClick={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setNote("");
+      void openTicketPdf(ticket.pdfPath || "").catch((error: unknown) => setNote(error instanceof Error ? error.message : "The PDF could not be opened."));
+    }}>
+      <PdfIcon /><span>{text}</span>
+    </button>
+    {note && <span className="xb-pdf-note" role="alert">{note}</span>}
+  </>;
+}
+
+function PdfIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" /></svg>;
 }

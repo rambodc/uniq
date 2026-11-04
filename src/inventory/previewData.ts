@@ -7,7 +7,7 @@ const ticket = (fields: Partial<XpressTicket> & Pick<XpressTicket, "id" | "numbe
 
 const bonanzaLines = [
   ticket({ id: "xpress_BRKS-000538", number: "BRKS-000538", date: "2026-10-30", customer: "Cardinal Energy Ltd.", lines: [line("UniCide G15", 32, "19 L"), line("Elixir", 24, "200 L"), line("Lime Hydrated", 50, "22.68 kg")] }),
-  ticket({ id: "xpress_BRKS-000540", number: "BRKS-000540", date: "2026-11-02", customer: "Cardinal Energy Ltd.", lines: [line("Caustic Soda", 20, "22.68 kg"), line("Soda Ash", 120, "25 kg")] }),
+  ticket({ id: "xpress_BRKS-000540", number: "BRKS-000540", date: "2026-11-02", customer: "Cardinal Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/BRKS-000540.pdf", lines: [line("Caustic Soda", 20, "22.68 kg"), line("Soda Ash", 120, "25 kg")] }),
 ];
 
 export const inventoryPreview: { xpress: XpressBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> } = {
@@ -69,7 +69,7 @@ export const inventoryPreview: { xpress: XpressBoard; openWell?: OpenXpressWell;
       },
     ],
     unassigned: [
-      ticket({ id: "xpress_NK-004804", number: "NK-004804", date: "2026-10-30", customer: "Wozniak Bulk Fuel Sales Inc.", lines: [line("Caustic Soda", 45, "22.68 kg"), line("Sulphamic Acid", 210, "25 kg"), line("Bentonite - Regular", 120, "40 kg"), line("PALLETS", 1, "22.7 kg")] }),
+      ticket({ id: "xpress_NK-004804", number: "NK-004804", date: "2026-10-30", customer: "Wozniak Bulk Fuel Sales Inc.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/NK-004804.pdf", lines: [line("Caustic Soda", 45, "22.68 kg"), line("Sulphamic Acid", 210, "25 kg"), line("Bentonite - Regular", 120, "40 kg"), line("PALLETS", 1, "22.7 kg")] }),
       ticket({ id: "xpress_NK-004808", number: "NK-004808", date: "2026-11-02", customer: "The Crossing Company", rig: "CC-Rig 4" }),
       ticket({ id: "xpress_NK-000891", number: "NK-000891", type: "CT", date: "2026-11-02", customer: "The Crossing Company", rig: "CC-Rig 4", return: true }),
       ticket({ id: "xpress_NK-000604", number: "NK-000604", type: "SR", date: "2026-11-02", customer: "Di-Corp", rig: "CC-Rig 4" }),

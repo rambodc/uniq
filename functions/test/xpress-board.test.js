@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { acceptGrokLink, parseGrokLinks, parseGrokSort } from "../inventoryBot/grokSort.js";
 import { copiedReportRows, isTestWell } from "../inventoryBot/copiedReports.js";
 import { reportTickets } from "../inventoryBot/mirrorWells.js";
-import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citedWellIds, fieldRig, lsdNear, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
+import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citedWellIds, fieldRig, lsdNear, ticketPdf, ticketValue, ticketsNeedingGrok } from "../inventoryBot/xpressBoard.js";
 
 const ticket = (fields) => ({ id: "xpress_NK-DT-1", source: "xpress", type: "DT", rig: "14", lsd: "1-21-63-24W4", lsdNorm: "1-21-63-24W4", customer: "Ish Energy", wellName: "ISH 8HZ", postedAt: "2026-10-15", lines: [{ name: "Elixir", qty: 2, price: 100 }], ...fields });
 
@@ -29,6 +29,23 @@ test("xpress cards group by LSD and rig, and returns are negative", () => {
   assert.equal(board.cards[0].status.tone, "red");
   assert.equal(board.unassigned.length, 1);
   assert.equal(board.unassigned[0].number, "NK-004804");
+});
+
+test("a ticket pdf is offered only when hasPdf and the xpress storage path agree", () => {
+  assert.equal(ticketPdf({ hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/NK-004804.pdf" }), "inventoryBot/tickets/xpress/NK-004804.pdf");
+  assert.equal(ticketPdf({ hasPdf: false, pdfPath: "inventoryBot/tickets/xpress/NK-004804.pdf" }), "");
+  assert.equal(ticketPdf({ hasPdf: true, pdfPath: "inventoryBot/tickets/mim/MBFS-1.pdf" }), "");
+  assert.equal(ticketPdf({ hasPdf: true, pdfPath: "https://example.com/a.pdf" }), "");
+  const board = buildXpressBoard({
+    tickets: [
+      ticket({ id: "xpress_NK-1", ticketNumber: "NK-1", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/NK-1.pdf", lsd: "", lsdNorm: "", rig: "", wellName: "", customer: "" }),
+      ticket({ id: "xpress_NK-2", ticketNumber: "NK-2", hasPdf: false, pdfPath: "inventoryBot/tickets/xpress/NK-2.pdf", lsd: "", lsdNorm: "", rig: "", wellName: "", customer: "" }),
+    ],
+  });
+  assert.equal(board.unassigned[0].hasPdf, true);
+  assert.equal(board.unassigned[0].pdfPath, "inventoryBot/tickets/xpress/NK-1.pdf");
+  assert.equal(board.unassigned[1].hasPdf, false);
+  assert.equal(board.unassigned[1].pdfPath, "");
 });
 
 test("a manual move wins over LSD placement", () => {
