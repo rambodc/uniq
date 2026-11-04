@@ -8,6 +8,7 @@ test("the functions entry loads, so a bad export fails before deploy", async () 
   assert.equal(typeof loaded.inventoryBotSaveCorrection, "function");
   assert.equal(typeof loaded.inventoryBotUndoCorrection, "function");
   assert.equal(typeof loaded.inventoryBotOpenAppWell, "function");
+  assert.equal(typeof loaded.inventoryBotRecomputeXref, "function");
   assert.equal(typeof loaded.inventoryBotOpenXpressWell, "function");
   assert.equal(typeof loaded.inventoryBotOpenMimWell, "function");
   assert.equal(typeof loaded.inventoryBotRequestWellRefresh, "function");

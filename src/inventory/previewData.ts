@@ -1,4 +1,4 @@
-import type { OpenXpressWell, RigBoard, RigTicket, RigWell, XpressBoard, XpressTicket } from "../core/api";
+import type { OpenXpressWell, RigBoard, XpressBoard, XpressTicket, XrefRow } from "../core/api";
 
 const line = (name: string, qty: number, unit: string): XpressTicket["lines"][number] => ({ name, qty, unit, price: 0 });
 const ticket = (fields: Partial<XpressTicket> & Pick<XpressTicket, "id" | "number" | "date">): XpressTicket => ({
@@ -10,97 +10,54 @@ const bonanzaLines = [
   ticket({ id: "xpress_BRKS-000540", number: "BRKS-000540", date: "2026-11-02", customer: "Cardinal Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/BRKS-000540.pdf", lines: [line("Caustic Soda", 20, "22.68 kg"), line("Soda Ash", 120, "25 kg")] }),
 ];
 
-const rigTicket = (fields: Partial<RigTicket> & Pick<RigTicket, "id" | "number" | "date">): RigTicket => ({
-  rigKey: "", matchReason: "rig-number", matchConfidence: "green", note: "", moved: false, correctionId: "", ...ticket(fields), ...fields,
-});
-const rigWell = (fields: Partial<RigWell> & Pick<RigWell, "id" | "name">): RigWell => ({
-  lsd: "", lsdNorm: "", status: "active", operator: "", rig: "", firstReport: "2026-10-02", lastReport: "2026-11-02", moved: false, correctionId: "", ...fields,
+function row(fields: Partial<XrefRow> & Pick<XrefRow, "id" | "number" | "date" | "tone" | "side">): XrefRow {
+  return { pill: "Xpress · DT", summary: "", reason: "", typoFixed: false, paired: false, moved: false, correctionId: "", appId: "", ticketId: "", wellId: "", reportId: "", index: "", hasPdf: false, pdfPath: "", app: null, xpress: null, ...fields };
+}
+function card(fields: { key: string; name: string; operator: string; matched: number; onlyApp: number; onlyXpress: number; tone?: "green" | "amber" }): RigBoard["rigs"][number] {
+  return { placeholders: 0, merged: false, aliases: [], needs: [], pending: [], transfers: [], pairs: [], tone: fields.onlyApp + fields.onlyXpress ? "amber" : "green", ...fields };
+}
+
+const pair = row({
+  id: "pair-1220", date: "2026-10-24", number: "TBAR-DT-001220", tone: "matched", side: "pair", pill: "Xpress · DT", how: "exact",
+  label: "2026-10-24 · TBAR-DT-001220 · DT · app delivery", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001220.pdf",
+  app: { number: "TBAR-DT-001220", pill: "App · Delivery", summary: "40 Calcium Nitrate, 6 Clay-Control, 30 GAF-A245, 8 Pallet Recycling, 0 Potash (UES)", date: "2026-10-24" },
+  xpress: { number: "TBAR-DT-001220", pill: "Xpress · DT", summary: "40 Calcium Nitrate, 6 Clay-Control, 30 GAF-A245", date: "2026-10-24", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001220.pdf", rig: "PD 156", customer: "Baytex Energy Ltd." },
 });
 
 export const rigPreview: RigBoard = {
-  pulledAt: "2026-11-03T16:01:00.000Z",
+  since: "2026-10-01",
+  appSince: "2026-09-05",
   rigs: [
-    {
-      key: "55~strathcona", name: "Horizon 55", operator: "Strathcona Resources", xpressName: "Horizon 55", appRig: "55", appRigs: ["55"],
-      merged: true, aliases: [{ key: "19~strathcona", correctionId: "merge__19~strathcona" }],
-      currentWell: rigWell({ id: "pad", name: "Strathcona 4-5 Pad", lsd: "4-5-46-17W3", lsdNorm: "4-5-46-17W3", operator: "Strathcona Resources", rig: "55", reports: [{ id: "r8", date: "2026-11-02", number: "8" }, { id: "r7", date: "2026-10-28", number: "7" }] }),
-      wells: [
-        rigWell({ id: "pad", name: "Strathcona 4-5 Pad", lsd: "4-5-46-17W3", lsdNorm: "4-5-46-17W3", operator: "Strathcona Resources", rig: "55", reports: [{ id: "r8", date: "2026-11-02", number: "8" }, { id: "r7", date: "2026-10-28", number: "7" }] }),
-        rigWell({ id: "other", name: "Strathcona 1-1 Pad", lsd: "1-1-1-1W4", lsdNorm: "1-1-1-1W4", status: "completed", operator: "Strathcona Resources", rig: "19", firstReport: "2026-10-01", lastReport: "2026-10-18" }),
+    card({ key: "2", name: "Twilight 2", operator: "Mahikan Oil Corp / Tamarack Valley Energy", matched: 2, onlyApp: 3, onlyXpress: 10 }),
+    card({ key: "420", name: "Savanna 420", operator: "Cardinal Energy / Westgate Energy", matched: 2, onlyApp: 3, onlyXpress: 8 }),
+    card({ key: "361", name: "Ensign 361", operator: "Spur", matched: 3, onlyApp: 3, onlyXpress: 7 }),
+    card({ key: "4", name: "Bonanza 4", operator: "Caltex Trilogy / Spur / Taprock Energy / Tundra Oil and Gas", matched: 2, onlyApp: 1, onlyXpress: 8 }),
+    card({ key: "182", name: "Precision 182", operator: "CNRL", matched: 9, onlyApp: 2, onlyXpress: 6 }),
+    card({ key: "299", name: "Precision 299", operator: "Tamarack Valley Energy", matched: 0, onlyApp: 4, onlyXpress: 3 }),
+    card({ key: "859", name: "Ensign 859", operator: "Headwater Exploration", matched: 3, onlyApp: 2, onlyXpress: 5 }),
+    card({ key: "218", name: "Ensign 218", operator: "CNRL", matched: 2, onlyApp: 0, onlyXpress: 6 }),
+    { ...card({ key: "156", name: "Precision 156", operator: "Baytex", matched: 5, onlyApp: 1, onlyXpress: 4 }),
+      needs: [
+        row({ id: "app-ct", date: "2026-11-03", number: "TBAR-CT-0000", tone: "needs", side: "app", pill: "App · Return", summary: "Not in Xpress · 5 TKPP, 30 GAF-C1280, 8 Elixir, 5 Clay-Control", wellId: "silverdale", reportId: "r", index: "2" }),
+        row({ id: "x-331", date: "2026-10-18", number: "TBAR-CT-000331", tone: "needs", side: "xpress", pill: "Xpress · CT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-CT-000331.pdf", ticketId: "xpress_TBAR-CT-000331" }),
+        row({ id: "x-1207", date: "2026-10-17", number: "TBAR-DT-001207", tone: "needs", side: "xpress", pill: "Xpress · DT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001207.pdf", ticketId: "xpress_TBAR-DT-001207" }),
+        row({ id: "x-1201", date: "2026-10-15", number: "TBAR-DT-001201", tone: "needs", side: "xpress", pill: "Xpress · DT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001201.pdf", ticketId: "xpress_TBAR-DT-001201" }),
+        row({ id: "x-1173", date: "2026-10-01", number: "TBAR-DT-001173", tone: "needs", side: "xpress", pill: "Xpress · DT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001173.pdf", ticketId: "xpress_TBAR-DT-001173" }),
       ],
-      wellCount: 2, ticketCount: 3, lineCount: 6, latest: "2026-11-02",
-      note: "Ticket LSD 9-7-46-17W3 differs from pad LSD 4-5-46-17W3 — amber until confirmed.",
-      status: { tone: "amber", label: "Needs a look" },
-      tickets: [
-        rigTicket({ id: "xpress_TBAR-DT-001243", number: "TBAR-DT-001243", date: "2026-11-02", customer: "Strathcona Resources", rig: "Horizon 55", lsd: "9-7-46-17W3", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001243.pdf", rigKey: "55~strathcona", matchConfidence: "amber", note: "Ticket LSD 9-7-46-17W3 differs from pad LSD 4-5-46-17W3 — amber until confirmed.", lines: [line("Barite", 20, "40 kg"), line("Gel", 8, "25 kg")] }),
-        rigTicket({ id: "xpress_TBAR-DT-001242", number: "TBAR-DT-001242", date: "2026-11-01", customer: "Strathcona Resources", rig: "Horizon 55", lsd: "9-7-46-17W3", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001242.pdf", rigKey: "55~strathcona", matchConfidence: "amber", moved: true, correctionId: "ticket__xpress_TBAR-DT-001242", lines: [line("Caustic Soda", 10, "22.68 kg")] }),
-        rigTicket({ id: "xpress_TBAR-DT-001234", number: "TBAR-DT-001234", date: "2026-10-29", customer: "Strathcona Resources", rig: "Horizon 55", lsd: "9-7-46-17W3", rigKey: "55~strathcona", matchConfidence: "amber", lines: [line("Soda Ash", 40, "25 kg"), line("Lime", 12, "22.68 kg"), line("Polymer", 6, "19 L")] }),
-      ],
+      transfers: [row({ id: "tr", date: "2026-10-25", number: "App transfer", tone: "transfer", side: "app", pill: "App · Transfer", summary: "Expected app-only · 7 Megasol, 235 Sawdust, 12 UniCorr Clear, 70 UniVis, 12 Elixir" })],
+      pairs: [pair, row({ id: "pair-2", date: "2026-10-20", number: "TBAR-DT-001200", tone: "matched", side: "pair", label: "2026-10-20 · TBAR-DT-001200 · DT · app delivery" }), row({ id: "pair-3", date: "2026-10-12", number: "TBAR-DT-001180", tone: "matched", side: "pair", label: "2026-10-12 · TBAR-DT-001180 · DT · app delivery" }), row({ id: "pair-4", date: "2026-10-08", number: "TBAR-CT-000320", tone: "matched", side: "pair", pill: "Xpress · CT", label: "2026-10-08 · TBAR-CT-000320 · CT · app return" }), row({ id: "pair-5", date: "2026-10-02", number: "TBAR-DT-001160", tone: "matched", side: "pair", label: "2026-10-02 · TBAR-DT-001160 · DT · app delivery" })],
     },
-    {
-      key: "7~north", name: "Bonanza 7", operator: "North 40 Resources", xpressName: "Bonanza 7", appRig: "7", appRigs: ["7"],
-      merged: false, aliases: [],
-      currentWell: rigWell({ id: "verger", name: "North 40 4B HZ Verger", lsd: "4-9-22-14W4", lsdNorm: "4-9-22-14W4", operator: "North 40 Resources", rig: "7" }),
-      wells: [rigWell({ id: "verger", name: "North 40 4B HZ Verger", lsd: "4-9-22-14W4", lsdNorm: "4-9-22-14W4", operator: "North 40 Resources", rig: "7" })],
-      wellCount: 1, ticketCount: 2, lineCount: 4, latest: "2026-11-01", note: "", status: { tone: "green", label: "Matches app" },
-      tickets: [
-        rigTicket({ id: "xpress_BRKS-000539", number: "BRKS-000539", date: "2026-11-01", customer: "North 40 Resources", rig: "Bonanza 7", lsd: "4-9-22-14W4", rigKey: "7~north", lines: [line("Potash", 120, "25 kg"), line("UniSTAR", 105, "22.68 kg")] }),
-        rigTicket({ id: "xpress_BRKS-000537", number: "BRKS-000537", date: "2026-10-29", customer: "North 40 Resources", rig: "Bonanza 7", lsd: "4-9-22-14W4", rigKey: "7~north", lines: [line("Can-Break ECA", 16, "16 kg"), line("UniBreak 1", 32, "19 L")] }),
-      ],
-    },
-    {
-      key: "156~baytex", name: "Precision 156", operator: "Baytex Energy", xpressName: "PD 156", appRig: "156", appRigs: ["156"],
-      merged: false, aliases: [],
-      currentWell: rigWell({ id: "baytex", name: "Baytex 13-35", lsd: "13-35-48-28W3", lsdNorm: "13-35-48-28W3", operator: "Baytex Energy", rig: "156" }),
-      wells: [rigWell({ id: "baytex", name: "Baytex 13-35", lsd: "13-35-48-28W3", lsdNorm: "13-35-48-28W3", operator: "Baytex Energy", rig: "156" })],
-      wellCount: 1, ticketCount: 1, lineCount: 1, latest: "2026-10-28", note: "", status: { tone: "green", label: "Matches app" },
-      tickets: [rigTicket({ id: "xpress_TBAR-DT-001233", number: "TBAR-DT-001233", date: "2026-10-28", customer: "Baytex Energy", rig: "PD 156", lsd: "13-35-48-28W3", rigKey: "156~baytex", lines: [line("Elixir", 4, "200 L")] })],
-    },
-    {
-      key: "535~baytex", name: "Ensign 535", operator: "Baytex Energy", xpressName: "Ensign 535", appRig: "535", appRigs: ["535"],
-      merged: false, aliases: [],
-      currentWell: rigWell({ id: "beaver", name: "S515 Beaverdam", lsd: "11-27-62-3W4", lsdNorm: "11-27-62-3W4", operator: "Baytex Energy", rig: "535", status: "active" }),
-      wells: [rigWell({ id: "beaver", name: "S515 Beaverdam", lsd: "11-27-62-3W4", lsdNorm: "11-27-62-3W4", operator: "Baytex Energy", rig: "535" })],
-      wellCount: 1, ticketCount: 1, lineCount: 1, latest: "2026-10-29", note: "", status: { tone: "amber", label: "Needs a look" },
-      tickets: [rigTicket({ id: "xpress_TBAR-DT-001232", number: "TBAR-DT-001232", date: "2026-10-29", customer: "Baytex Energy", rig: "Ensign 535", lsd: "11-27-62-3W4", rigKey: "535~baytex", matchReason: "operator-span", matchConfidence: "amber", lines: [line("Barite", 40, "40 kg")] })],
-    },
-    {
-      key: "254~cenovus", name: "Rig 254", operator: "Cenovus", xpressName: "PD 254", appRig: "254", appRigs: ["254"],
-      merged: false, aliases: [],
-      currentWell: rigWell({ id: "beacon", name: "Beacon Hill", lsd: "6-6-60-6W4", lsdNorm: "6-6-60-6W4", operator: "Cenovus", rig: "254" }),
-      wells: [rigWell({ id: "beacon", name: "Beacon Hill", lsd: "6-6-60-6W4", lsdNorm: "6-6-60-6W4", operator: "Cenovus", rig: "254" })],
-      wellCount: 1, ticketCount: 2, lineCount: 2, latest: "2026-11-01",
-      note: "Rig 254 is shared by Precision and Ensign for Cenovus — amber until confirmed.",
-      status: { tone: "amber", label: "Needs a look" },
-      tickets: [
-        rigTicket({ id: "xpress_PD-254", number: "NK-004900", date: "2026-11-01", customer: "Cenovus", rig: "PD 254", lsd: "6-6-60-6W4", rigKey: "254~cenovus", matchConfidence: "amber" }),
-        rigTicket({ id: "xpress_EN-254", number: "NK-004901", date: "2026-10-30", customer: "Cenovus", rig: "Ensign 254", lsd: "6-6-60-6W4", rigKey: "254~cenovus", matchConfidence: "amber" }),
-      ],
-    },
+    card({ key: "535", name: "Ensign 535", operator: "Baytex", matched: 2, onlyApp: 0, onlyXpress: 6 }),
+    card({ key: "10", name: "Excalibur 10", operator: "CNRL / Tundra Oil and Gas", matched: 2, onlyApp: 1, onlyXpress: 4 }),
+    card({ key: "19", name: "Horizon 19", operator: "CNRL", matched: 6, onlyApp: 1, onlyXpress: 4 }),
+    card({ key: "7", name: "Bonanza 7", operator: "North 40", matched: 5, onlyApp: 2, onlyXpress: 2 }),
+    card({ key: "11", name: "Bonanza 11", operator: "Cardinal Energy", matched: 3, onlyApp: 0, onlyXpress: 4 }),
+    card({ key: "254", name: "Ensign 254", operator: "Cenovus", matched: 3, onlyApp: 0, onlyXpress: 4 }),
+    card({ key: "55", name: "Horizon 55", operator: "Strathcona Resources", matched: 4, onlyApp: 0, onlyXpress: 1 }),
   ],
-  quietRigs: [
-    {
-      key: "12~tundra", name: "Rig 12", operator: "Tundra", xpressName: "Rig 12", appRig: "12", appRigs: ["12"],
-      merged: false, aliases: [], currentWell: rigWell({ id: "tundra-well", name: "Tundra 13-26", lsd: "13-26-2-28W1", operator: "Tundra", rig: "12" }),
-      wells: [rigWell({ id: "tundra-well", name: "Tundra 13-26", lsd: "13-26-2-28W1", operator: "Tundra", rig: "12" })],
-      wellCount: 1, tickets: [], ticketCount: 0, lineCount: 0, latest: "", note: "", status: { tone: "grey", label: "No app link" },
-    },
-    {
-      key: "3~cardinal", name: "Rig 3", operator: "Cardinal Energy", xpressName: "Rig 3", appRig: "3", appRigs: ["3"],
-      merged: false, aliases: [], currentWell: rigWell({ id: "card-well", name: "Cardinal Bantry", lsd: "8-12-18-13W4", operator: "Cardinal Energy", rig: "3" }),
-      wells: [rigWell({ id: "card-well", name: "Cardinal Bantry", lsd: "8-12-18-13W4", operator: "Cardinal Energy", rig: "3" })],
-      wellCount: 1, tickets: [], ticketCount: 0, lineCount: 0, latest: "", note: "", status: { tone: "grey", label: "No app link" },
-    },
-  ],
-  unassigned: [
-    rigTicket({ id: "xpress_NK-004810", number: "NK-004810", date: "2026-11-02", customer: "Other Oil", rig: "Nabors 99", lsd: "8-8-8-8W4", matchReason: "unassigned", matchConfidence: "grey", note: "No rig on the board matched this ticket." }),
-    rigTicket({ id: "xpress_NK-004811", number: "NK-004811", date: "2026-10-31", customer: "Other Oil", rig: "Horizon 77", lsd: "2-2-2-2W4", matchReason: "unassigned", matchConfidence: "grey" }),
-  ],
-  warehouse: [
-    rigTicket({ id: "xpress_MR-1", number: "NK-004820", type: "MR", date: "2026-11-01", customer: "Warehouse", matchReason: "warehouse", matchConfidence: "grey" }),
-    rigTicket({ id: "xpress_ST-1", number: "NK-004821", type: "ST", date: "2026-10-30", customer: "Warehouse", matchReason: "warehouse", matchConfidence: "grey" }),
-    rigTicket({ id: "xpress_AT-1", number: "NK-004822", type: "AT", date: "2026-10-29", customer: "Warehouse", matchReason: "warehouse", matchConfidence: "grey" }),
-    rigTicket({ id: "xpress_STx-1", number: "NK-004823", type: "STx", date: "2026-10-28", customer: "Warehouse", matchReason: "warehouse", matchConfidence: "grey" }),
+  loose: [
+    row({ id: "loose-1", date: "2026-11-02", number: "NK-004810", tone: "loose", side: "xpress", pill: "Xpress · DT", summary: "No rig on the ticket", ticketId: "xpress_NK-004810" }),
+    row({ id: "loose-2", date: "2026-10-28", number: "NK-004790", tone: "loose", side: "xpress", pill: "Xpress · DT", summary: "No rig on the ticket", ticketId: "xpress_NK-004790" }),
   ],
 };
 
