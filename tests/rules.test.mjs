@@ -39,18 +39,21 @@ test("Storage denies fluidlab, profile photos, and every other browser path", as
 test("Storage lets Inventory Bot staff read ticket PDFs and nobody write them", async () => {
   const bucketName = "uniqenergy-de71c.firebasestorage.app";
   const path = "inventoryBot/tickets/xpress/NK-004804.pdf";
+  const mimPath = "inventoryBot/tickets/mim/DTAWEY011649.pdf";
   const staffRecord = { email: "ann@uniqenergy.com", firstName: "Ann", lastName: "Nguyen", type: "staff", miniApps: ["inventoryBot"], disabled: false };
   await environment.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "users/ann"), staffRecord);
     await setDoc(doc(context.firestore(), "users/boss"), { ...staffRecord, email: "boss@uniqenergy.com", type: "super_admin", miniApps: [] });
     await setDoc(doc(context.firestore(), "users/other"), { ...staffRecord, email: "other@uniqenergy.com", miniApps: ["contact"] });
     await uploadBytes(ref(context.storage(`gs://${bucketName}`), path), new Uint8Array([0x25, 0x50, 0x44, 0x46]));
+    await uploadBytes(ref(context.storage(`gs://${bucketName}`), mimPath), new Uint8Array([0x25, 0x50, 0x44, 0x46]));
   });
   const staff = environment.authenticatedContext("ann", { email: "ann@uniqenergy.com", email_verified: true });
   const boss = environment.authenticatedContext("boss", { email: "boss@uniqenergy.com", email_verified: true });
   const other = environment.authenticatedContext("other", { email: "other@uniqenergy.com", email_verified: true });
   const anon = environment.unauthenticatedContext();
   await getBytes(ref(staff.storage(`gs://${bucketName}`), path));
+  await getBytes(ref(staff.storage(`gs://${bucketName}`), mimPath));
   await getBytes(ref(boss.storage(`gs://${bucketName}`), path));
   await assertFails(getBytes(ref(other.storage(`gs://${bucketName}`), path)));
   await assertFails(getBytes(ref(anon.storage(`gs://${bucketName}`), path)));

@@ -10,7 +10,7 @@ const bonanzaLines = [
   ticket({ id: "xpress_BRKS-000540", number: "BRKS-000540", date: "2026-11-02", customer: "Cardinal Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/BRKS-000540.pdf", lines: [line("Caustic Soda", 20, "22.68 kg"), line("Soda Ash", 120, "25 kg")] }),
 ];
 
-export const inventoryPreview: { xpress: XpressBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> } = {
+export const inventoryPreview: { xpress: XpressBoard; mim: XpressBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> } = {
   xpress: {
     pulledAt: "2026-11-03T16:01:00.000Z",
     directory: { reads: 1, added: 0, error: "" },
@@ -75,6 +75,36 @@ export const inventoryPreview: { xpress: XpressBoard; openWell?: OpenXpressWell;
       ticket({ id: "xpress_NK-000604", number: "NK-000604", type: "SR", date: "2026-11-02", customer: "Di-Corp", rig: "CC-Rig 4" }),
     ],
     warehouseOnly: 13,
+  },
+  mim: {
+    pulledAt: "2026-11-04T15:00:00.000Z",
+    directory: { reads: 0, added: 0, error: "" },
+    appWells: [
+      { id: "tundra", name: "Tundra 13-26", lsd: "13-26-2-28W1", lsdNorm: "13-26-2-28W1", rig: "12", operator: "Tundra", status: "active" },
+    ],
+    cards: [
+      {
+        id: "auto-mim-tundra", name: "Tundra 13-26", operator: "Tundra", lsd: "13-26-2-28W1", lsdNorm: "13-26-2-28W1", rig: "12",
+        ticketCount: 2, totalValue: 80, status: { tone: "green", label: "2 of 2 in app" },
+        link: { state: "linked", appWellId: "tundra", name: "Tundra 13-26", reason: "Same LSD and rig.", source: "auto" },
+        match: { matched: 2, waiting: 0, missing: 0, compared: true },
+        tickets: [
+          ticket({ id: "mim_DTAWEY011649", number: "DTAWEY011649", date: "2026-11-01", customer: "Tundra", rig: "12", lsd: "13-26-2-28W1", hasPdf: false, warehouseName: "ALCHEM", lines: [line("Bleach", 4, "19 L")] }),
+          ticket({ id: "mim_TTPROS1", number: "TTPROS1", type: "TT", date: "2026-11-03", customer: "Tundra", rig: "12", lsd: "13-26-2-28W1", hasPdf: false, warehouseName: "PR PREMIUM", value: 100, charges: [{ service: "Haul", qty: 1, billingMethod: "flat", price: 80, total: 80 }, { service: "Wait time", qty: 1, billingMethod: "hour", price: 20, total: 20 }] }),
+        ],
+      },
+      {
+        id: "auto-mim-premium", name: "UNIQENERGY pad", operator: "Cardinal Energy", lsd: "1-26-16-12W4", lsdNorm: "1-26-16-12W4", rig: "Bonanza 11",
+        ticketCount: 1, totalValue: 0, status: { tone: "grey", label: "No app well linked yet" },
+        link: { state: "none", appWellId: "", reason: "no app well found", source: "" },
+        match: { matched: 0, waiting: 0, missing: 0, compared: false },
+        tickets: [ticket({ id: "mim_DTPROS9", number: "DTPROS9", date: "2026-11-02", customer: "Cardinal Energy", rig: "Bonanza 11", lsd: "1-26-16-12W4", hasPdf: false, warehouseName: "UNIQENERGY", lines: [line("Elixir", 2, "200 L")] })],
+      },
+    ],
+    unassigned: [
+      ticket({ id: "mim_TTLOOSE", number: "TTLOOSE", type: "TT", date: "2026-11-04", customer: "Hourly haul", hasPdf: false, warehouseName: "PR PREMIUM", charges: [{ service: "Haul", qty: 1, billingMethod: "flat", price: 60, total: 60 }] }),
+    ],
+    warehouseOnly: 0,
   },
   openWells: {
     "auto-bonanza-11": {

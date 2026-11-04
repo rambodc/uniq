@@ -10,7 +10,7 @@
 .xb-title h1{margin:0;font-size:28px;font-weight:800}
 .xb-sub{color:var(--mut);font-size:13.5px;margin:4px 0 0}
 .xb-tabs{display:flex;gap:6px;margin:26px 0 22px;border-bottom:1px solid var(--line)}
-.xb-tab{padding:12px 22px;font-weight:700;font-size:15px;color:var(--mut);border:0;border-bottom:3px solid transparent;background:none;font-family:inherit}
+.xb-tab{padding:12px 22px;font-weight:700;font-size:15px;color:var(--mut);border:0;border-bottom:3px solid transparent;background:none;font-family:inherit;text-decoration:none;display:inline-block}
 .xb-tab.on{color:var(--text);border-color:var(--teal)}
 .xb-tab.off{opacity:.55}
 .xb-soon{font-size:11px;font-weight:600;background:#1e2b46;padding:2px 8px;border-radius:20px;margin-left:8px}

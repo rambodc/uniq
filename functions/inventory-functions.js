@@ -49,18 +49,25 @@ function xpressTicket(id, data) {
     shippedAt: data.shippedAt || null, deliveredAt: data.deliveredAt || null, date: data.date || null, postedAt: data.postedAt || null,
     collectedAt: data.collectedAt || null, total: asNumber(data.total),
     hasPdf: data.hasPdf === true, pdfPath: typeof data.pdfPath === "string" ? data.pdfPath : "",
+    warehouseName: data.warehouseName || "",
+    charges: Array.isArray(data.charges) ? data.charges : [],
     lines: Array.isArray(data.lines) ? data.lines.map((line) => ({ name: line.name || line.product || "", qty: asNumber(line.qty) || 0, unit: line.unit || "", price: asNumber(line.price) || 0 })) : [],
   };
 }
 
-async function loadXpressPieces() {
+function cardsName(source) {
+  return source === "mim" ? "mimCards" : "xpressCards";
+}
+
+async function loadPieces(source) {
   const [ticketSnap, placeSnap, cardSnap, wellSnap] = await Promise.all([
-    col("tickets").where("source", "==", "xpress").get(),
+    col("tickets").where("source", "==", source).get(),
     col("placements").get(),
-    col("xpressCards").get(),
+    col(cardsName(source)).get(),
     col("appWells").get(),
   ]);
   return {
+    source,
     tickets: ticketSnap.docs.map((doc) => xpressTicket(doc.id, doc.data())),
     placements: placeSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     savedCards: cardSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
@@ -86,7 +93,7 @@ function rowsFromCopiedDocs(docs) {
   return docs.flatMap((doc) => copiedReportRows(doc.id, doc.data()));
 }
 
-async function rememberCardLinks(board) {
+async function rememberCardLinks(board, source) {
   const pending = cardsNeedingGrok(board.cards).slice(0, 20);
   if (!pending.length) return { asked: 0 };
   const payload = pending.map((card) => ({
@@ -102,7 +109,7 @@ async function rememberCardLinks(board) {
     const suggestion = links.find((row) => row.cardId === card.id);
     const allowed = acceptGrokLink(suggestion, card.link.candidates);
     const well = allowed ? card.link.candidates.find((row) => row.id === suggestion.appWellId) : null;
-    await col("xpressCards").doc(card.id).set({
+    await col(cardsName(source)).doc(card.id).set({
       id: card.id,
       name: card.name,
       lsd: card.lsd,
@@ -119,7 +126,7 @@ async function rememberCardLinks(board) {
   return { asked: pending.length };
 }
 
-async function rankByCitedTickets(board) {
+async function rankByCitedTickets(board, source) {
   const pending = cardsNeedingCitation(board.cards);
   if (!pending.length) return 0;
   let reads = 0;
@@ -143,31 +150,31 @@ async function rankByCitedTickets(board) {
       patch.linkLocked = false;
       patch.linkReason = card.link.reason;
     }
-    await col("xpressCards").doc(card.id).set(patch, { merge: true });
+    await col(cardsName(source)).doc(card.id).set(patch, { merge: true });
   });
   return reads;
 }
 
-export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
+async function publishBoard(request, source) {
   await requireMiniApp(request, "inventoryBot");
   let directory = { reads: 0, added: 0, operators: 0, error: "" };
   try { directory = { ...await syncAppWells(), error: "" }; }
   catch (error) { directory = { reads: 0, added: 0, operators: 0, error: error instanceof Error ? error.message : "The app copy status could not be read." }; }
-  const pieces = await loadXpressPieces();
+  const pieces = await loadPieces(source);
   const board = buildXpressBoard(pieces);
   for (const card of board.cards) {
     const saved = pieces.savedCards.find((row) => row.id === card.id);
     if (saved?.citationChecked && card.link.state !== "linked") Object.assign(card, applyCitation(card, saved.citedWellIds || []), { citationChecked: true });
   }
-  try { directory.citationReads = await rankByCitedTickets(board); }
+  try { directory.citationReads = await rankByCitedTickets(board, source); }
   catch (error) { directory.citationReads = 0; directory.citationError = error instanceof Error ? error.message : "Candidate reports could not be read."; }
-  try { directory.cardsAsked = (await rememberCardLinks(board)).asked; }
+  try { directory.cardsAsked = (await rememberCardLinks(board, source)).asked; }
   catch (error) { directory.cardsAsked = 0; directory.linkError = error instanceof Error ? error.message : "Unlinked cards could not be checked."; }
   const pulledAt = pieces.tickets.map((ticket) => ticket.collectedAt).filter(Boolean).sort().at(-1) || "";
   for (const card of board.cards) {
     if (card.link.source === "auto" && card.link.state === "linked") {
       const prior = pieces.savedCards.find((row) => row.id === card.id);
-      if (!prior?.linkLocked && prior?.appWellId !== card.link.appWellId) await col("xpressCards").doc(card.id).set({ id: card.id, name: card.name, operator: card.operator, lsd: card.lsd, lsdNorm: card.lsdNorm, rig: card.rig, appWellId: card.link.appWellId, linkState: "linked", linkSource: "auto", linkLocked: false, linkReason: card.link.reason }, { merge: true });
+      if (!prior?.linkLocked && prior?.appWellId !== card.link.appWellId) await col(cardsName(source)).doc(card.id).set({ id: card.id, name: card.name, operator: card.operator, lsd: card.lsd, lsdNorm: card.lsdNorm, rig: card.rig, appWellId: card.link.appWellId, linkState: "linked", linkSource: "auto", linkLocked: false, linkReason: card.link.reason }, { merge: true });
     }
   }
   return {
@@ -176,6 +183,15 @@ export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey
     directory,
     appWells: pieces.appWells.map((well) => ({ id: well.id, name: well.name || "", lsd: well.lsd || "", lsdNorm: well.lsdNorm || "", rig: well.rig || "", operator: well.operator || "", status: well.status || "" })),
   };
+}
+
+export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  return publishBoard(request, "xpress");
+});
+export const inventoryBotMimBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  return publishBoard(request, "mim");
 });
 
 export const inventoryBotMoveTicket = onCall(callable, async (request) => {
@@ -185,7 +201,7 @@ export const inventoryBotMoveTicket = onCall(callable, async (request) => {
   if (request.data?.create && typeof request.data.create === "object") {
     const name = text(request.data.create.name, "well name", 160);
     cardId = `manual-${docSlug(name)}-${Date.now().toString(36)}`;
-    await col("xpressCards").doc(cardId).set({
+    await col(cardsName(request.data?.source)).doc(cardId).set({
       id: cardId, name, manual: true,
       operator: clip(request.data.create.operator, 160),
       lsd: clip(request.data.create.lsd, 80),
@@ -203,7 +219,7 @@ export const inventoryBotLinkAppWell = onCall(callable, async (request) => {
   const access = await requireMiniApp(request, "inventoryBot");
   const cardId = text(request.data?.cardId, "card", 200);
   const appWellId = clip(request.data?.appWellId, 240);
-  await col("xpressCards").doc(cardId).set({
+  await col(cardsName(request.data?.source)).doc(cardId).set({
     id: cardId,
     appWellId,
     appWellName: clip(request.data?.appWellName, 160),
@@ -215,15 +231,15 @@ export const inventoryBotLinkAppWell = onCall(callable, async (request) => {
   return { ok: true };
 });
 
-export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 60 }, async (request) => {
+async function openBoardWell(request, source) {
   await requireMiniApp(request, "inventoryBot");
   const cardId = text(request.data?.cardId, "card", 200);
-  const pieces = await loadXpressPieces();
+  const pieces = await loadPieces(source);
   const board = buildXpressBoard(pieces);
   const found = board.cards.find((row) => row.id === cardId);
   const ours = found?.tickets || [];
   const emptyMatch = { matched: 0, missing: 0, waiting: ours.length };
-  const cardSnap = await col("xpressCards").doc(cardId).get();
+  const cardSnap = await col(cardsName(source)).doc(cardId).get();
   const card = cardSnap.exists ? cardSnap.data() : {};
   const appWellId = card.appWellId || found?.link?.appWellId || "";
   if (!appWellId) return { appWell: null, appTickets: [], tickets: ours, match: emptyMatch, reads: { well: 0, reports: 0, reportCount: 0 }, unavailable: false, appDataAsOf: "", syncStatus: "", note: "No app well is linked." };
@@ -250,7 +266,7 @@ export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 
       return { ...ticket, inApp: hit ? "matched" : (appTickets.length ? "missing" : "waiting"), appTicket: hit || null };
     });
     const match = { matched: compared.filter((row) => row.inApp === "matched").length, missing: compared.filter((row) => row.inApp === "missing").length, waiting: compared.filter((row) => row.inApp === "waiting").length, byTicket: Object.fromEntries(compared.map((row) => [row.id, row.inApp])), at: new Date().toISOString() };
-    if (appTickets.length) await col("xpressCards").doc(cardId).set({ match }, { merge: true });
+    if (appTickets.length) await col(cardsName(source)).doc(cardId).set({ match }, { merge: true });
     const copied = Boolean(wellSnap.exists && (Number(data.reportCount) > 0 || appTickets.length > 0 || data.reportsSyncedAt));
     return {
       appWell,
@@ -266,6 +282,15 @@ export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 
   } catch (error) {
     return { appWell: null, appTickets: [], tickets: ours, match: emptyMatch, reads: { well: 0, reports: 0, reportCount: 0 }, unavailable: true, appDataAsOf: "", syncStatus: "", note: error instanceof Error ? error.message : "App data unavailable right now" };
   }
+}
+
+export const inventoryBotOpenXpressWell = onCall({ ...callable, timeoutSeconds: 60 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  return openBoardWell(request, "xpress");
+});
+export const inventoryBotOpenMimWell = onCall({ ...callable, timeoutSeconds: 60 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  return openBoardWell(request, "mim");
 });
 
 export const inventoryBotRequestWellRefresh = onCall(callable, async (request) => {
@@ -282,9 +307,9 @@ export const inventoryBotRequestWellRefresh = onCall(callable, async (request) =
 
 export const inventoryBotGrokSort = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
   await requireMiniApp(request, "inventoryBot");
-  const pieces = await loadXpressPieces();
+  const pieces = await loadPieces("xpress");
   const board = buildXpressBoard(pieces);
-  const cardLinks = await rememberCardLinks(board);
+  const cardLinks = await rememberCardLinks(board, "xpress");
   const tickets = ticketsNeedingGrok(board.unassigned).map((ticket) => ({ id: ticket.id, number: ticket.number, date: ticket.date, customer: ticket.customer, shipTo: ticket.shipTo, rig: ticket.rig, lsd: ticket.lsd, value: ticket.value }));
   if (!tickets.length) return { suggestions: [], accepted: 0, skipped: board.unassigned.length, cardsAsked: cardLinks.asked };
   const cards = board.cards.map((card) => ({ id: card.id, name: card.name, lsd: card.lsd, lsdNorm: card.lsdNorm, rig: card.rig }));

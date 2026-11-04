@@ -2,15 +2,15 @@ import { getBlob, getDownloadURL, ref } from "firebase/storage";
 import { previewActive } from "../auth/preview";
 import { storage } from "../core/firebase";
 
-const XPRESS_PDF = /^inventoryBot\/tickets\/xpress\/[^/]+\.pdf$/;
+const TICKET_PDF = /^inventoryBot\/tickets\/(?:xpress|mim)\/[^/]+\.pdf$/;
 
 export function canOpenTicketPdf(ticket: { hasPdf?: boolean; pdfPath?: string }) {
-  return ticket.hasPdf === true && XPRESS_PDF.test(ticket.pdfPath || "");
+  return ticket.hasPdf === true && TICKET_PDF.test(ticket.pdfPath || "");
 }
 
 /** Open the tab in the click turn, then point it at the PDF. getBlob avoids creating a public download token. */
 export async function openTicketPdf(path: string) {
-  if (!XPRESS_PDF.test(path)) throw new Error("That ticket has no PDF.");
+  if (!TICKET_PDF.test(path)) throw new Error("That ticket has no PDF.");
   const tab = window.open("about:blank", "_blank");
   if (!tab) throw new Error("Allow pop-ups to open the ticket PDF.");
   try { tab.opener = null; } catch { /* the blank tab can already be sealed */ }

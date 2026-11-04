@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { inventoryBotLinkAppWell, inventoryBotOpenXpressWell, inventoryBotRequestWellRefresh, messageOf, type AppWellOption, type OpenXpressWell, type WellCandidate, type XpressCard, type XpressTicket } from "../core/api";
+import { inventoryBotRequestWellRefresh, messageOf, type AppWellOption, type OpenXpressWell, type WellCandidate, type XpressCard, type XpressTicket } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import { useBoard } from "./boardState";
 import { BackToBoard, InventoryFrame, pretty, Rig, TicketPdf } from "./parts";
@@ -29,15 +29,20 @@ function suggestWhy(card: XpressCard, well: WellCandidate) {
 }
 
 function ticketKind(ticket: XpressTicket) {
+  if (ticket.type === "TT") return "trucking";
   if (ticket.return || ticket.type === "CT") return "return";
   if (ticket.type === "SR") return "receipt";
   return "delivery";
 }
 
+function money(value: number) {
+  return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(value || 0);
+}
+
 export default function WellPage() {
   const { cardId = "" } = useParams();
   const id = decodeURIComponent(cardId);
-  const { board, reload, preview } = useBoard();
+  const { board, reload, preview, openWell, linkWell, home, source } = useBoard();
   const card = board?.cards.find((row) => row.id === id) || null;
   const [live, setLive] = useState<OpenXpressWell | null>(null);
   const [changing, setChanging] = useState(false);
@@ -53,7 +58,7 @@ export default function WellPage() {
   useEffect(() => {
     if (preview || !card?.link.appWellId) return;
     let active = true;
-    inventoryBotOpenXpressWell(id).then((result) => {
+    openWell(id).then((result) => {
       if (!active) return;
       setLive(result);
       setNote(result.unavailable ? "App data unavailable right now" : "");
@@ -65,13 +70,13 @@ export default function WellPage() {
       setBusy("");
     });
     return () => { active = false; };
-  }, [id, card?.link.appWellId, card?.link.state, preview]);
+  }, [id, card?.link.appWellId, card?.link.state, preview, openWell]);
 
   useEffect(() => {
     if (!refreshing || preview || !card?.link.appWellId) return;
     const before = open?.appDataAsOf || "";
     const timer = window.setInterval(() => {
-      inventoryBotOpenXpressWell(id).then((result) => {
+      openWell(id).then((result) => {
         if ((result.appDataAsOf || "") === before) return;
         setLive(result);
         setRefreshing(false);
@@ -81,7 +86,7 @@ export default function WellPage() {
     }, 15000);
     const stop = window.setTimeout(() => { window.clearInterval(timer); setRefreshing(false); }, 5 * 60 * 1000);
     return () => { window.clearInterval(timer); window.clearTimeout(stop); };
-  }, [refreshing, id, preview, card?.link.appWellId, open?.appDataAsOf]);
+  }, [refreshing, id, preview, card?.link.appWellId, open?.appDataAsOf, openWell]);
 
   async function requestRefresh() {
     const wellId = card?.link.appWellId;
@@ -123,7 +128,7 @@ export default function WellPage() {
     }
     setBusy("link");
     try {
-      await inventoryBotLinkAppWell({ cardId: card.id, appWellId: well?.id || "", appWellName: well?.name || "" });
+      await linkWell(card.id, well?.id || "", well?.name || "");
       setChanging(false);
       setQuery("");
       await reload();
@@ -144,8 +149,8 @@ export default function WellPage() {
     return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number));
   }, [open]);
 
-  return <InventoryFrame pulledAt={board?.pulledAt}>
-    <BackToBoard />
+  return <InventoryFrame pulledAt={board?.pulledAt} source={source}>
+    <BackToBoard to={home} />
     {!card ? <h1>That well card is not on the board.</h1> : <>
       <div className="xb-title">
         <div>
@@ -264,7 +269,8 @@ export default function WellPage() {
 
 function TicketLines({ ticket, found }: { ticket: XpressTicket; found: boolean }) {
   return <>
-    <tr className="grp"><td colSpan={3}><TicketPdf ticket={ticket} plain /> <span className="xb-note">· {ticketKind(ticket)} · {pretty(ticket.date)}</span></td><td>{found && <span className="xb-tick">✓ found in app</span>}</td></tr>
+    <tr className="grp"><td colSpan={3}><TicketPdf ticket={ticket} plain /> <span className="xb-note">· {ticketKind(ticket)}{ticket.type === "TT" && ticket.warehouseName ? ` · ${ticket.warehouseName}` : ""} · {pretty(ticket.date)}</span></td><td>{found && <span className="xb-tick">✓ found in app</span>}</td></tr>
+    {ticket.charges?.map((charge, index) => <tr key={`${charge.service}-${index}`}><td>{charge.service}</td><td className="xb-note">{[charge.qty || "", charge.billingMethod].filter(Boolean).join(" ")}</td><td className="num">{money(charge.total)}</td><td /></tr>)}
     {ticket.lines.map((line, index) => <tr key={`${line.name}-${index}`}><td>{line.name}</td><td className="xb-note">{line.unit}</td><td className="num">{line.qty}</td><td /></tr>)}
   </>;
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { inventoryBotMoveTicket, messageOf, type XpressCard } from "../core/api";
+import { messageOf, type XpressCard, type XpressTicket } from "../core/api";
 import { useBoard } from "./boardState";
 import { BackToBoard, InventoryFrame, pretty, TicketPdf } from "./parts";
 import "./xpress.css";
@@ -17,7 +17,7 @@ export default function MovePage() {
   const { ticketId = "" } = useParams();
   const id = decodeURIComponent(ticketId);
   const navigate = useNavigate();
-  const { board, reload, preview } = useBoard();
+  const { board, reload, preview, moveTicket, home, source } = useBoard();
   const ticket = board?.unassigned.find((row) => row.id === id) || board?.cards.flatMap((card) => card.tickets).find((row) => row.id === id) || null;
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,28 +29,28 @@ export default function MovePage() {
   async function move(card: XpressCard) {
     if (!ticket) return;
     if (preview) {
-      navigate("/inventory-bot");
+      navigate(home);
       return;
     }
     setBusy(true);
     try {
-      await inventoryBotMoveTicket({ ticketId: ticket.id, cardId: card.id });
+      await moveTicket(ticket.id, card.id);
       await reload();
-      navigate("/inventory-bot");
+      navigate(home);
     } catch (cause) {
       setNote(messageOf(cause, "The ticket could not be moved."));
       setBusy(false);
     }
   }
 
-  return <InventoryFrame pulledAt={board?.pulledAt}>
-    <BackToBoard />
+  return <InventoryFrame pulledAt={board?.pulledAt} source={source}>
+    <BackToBoard to={home} />
     {!ticket ? <h1>That ticket is not on the board.</h1> : <>
       <div className="xb-title">
         <div>
           <h1>Move ticket {ticket.number}</h1>
           <TicketPdf ticket={ticket} label="Open PDF" />
-          <p className="xb-sub">{[ticket.type === "CT" || ticket.return ? "Return" : "Delivery", pretty(ticket.date), ticket.customer || ticket.shipTo, !ticket.lsd && !ticket.rig ? "no rig or LSD on the ticket" : ""].filter(Boolean).join(" · ")}</p>
+          <p className="xb-sub">{[ticket.type === "TT" ? "Trucking" : ticket.type === "CT" || ticket.return ? "Return" : "Delivery", pretty(ticket.date), ticket.customer || ticket.shipTo, ticket.type === "TT" ? ticket.warehouseName : "", !ticket.lsd && !ticket.rig ? "no rig or LSD on the ticket" : ""].filter(Boolean).join(" · ")}</p>
         </div>
       </div>
       {note && <p className="xb-note" role="alert">{note}</p>}
@@ -59,7 +59,10 @@ export default function MovePage() {
           <div className="xb-shead"><h2>Ticket lines</h2></div>
           <table className="xb-table">
             <thead><tr><th>Product</th><th>Pack</th><th className="num">Qty</th></tr></thead>
-            <tbody>{ticket.lines.map((line, index) => <tr key={`${line.name}-${index}`}><td>{line.name}</td><td className="xb-note">{line.unit}</td><td className="num">{line.qty}</td></tr>)}</tbody>
+            <tbody>
+              {ticket.lines.map((line, index) => <tr key={`${line.name}-${index}`}><td>{line.name}</td><td className="xb-note">{line.unit}</td><td className="num">{line.qty}</td></tr>)}
+              <ChargeRows ticket={ticket} />
+            </tbody>
           </table>
         </section>
         <section className="xb-section">
@@ -81,6 +84,11 @@ export default function MovePage() {
       </div>
     </>}
   </InventoryFrame>;
+}
+
+function ChargeRows({ ticket }: { ticket: XpressTicket }) {
+  if (!ticket.charges?.length) return null;
+  return <>{ticket.charges.map((charge, index) => <tr key={`${charge.service}-${index}`}><td>{charge.service}</td><td className="xb-note">{[charge.qty || "", charge.billingMethod].filter(Boolean).join(" ")}</td><td className="num">{new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(charge.total || 0)}</td></tr>)}</>;
 }
 
 function CardList({ cards, busy, onMove }: { cards: XpressCard[]; busy: boolean; onMove: (card: XpressCard) => void }) {
