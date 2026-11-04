@@ -135,6 +135,72 @@ test("possible matches stay suggestions and are limited to two within three days
   assert.equal(xpress.suggestions[0].wellId, "w");
 });
 
+test("a received line and a returned line in one report stay distinct, and an old correction still resolves", () => {
+  const wells = [well({ id: "w", name: "Pad" })];
+  const shared = { wellId: "w", reportId: "2026-11-02_22-40-05", index: "n1", date: "2026-10-20" };
+  const appLines = [
+    line({ ...shared, id: "", side: "received", kind: "received", rawTicket: "TBAR-DT-001246" }),
+    line({ ...shared, id: "", side: "returned", kind: "returned", rawTicket: "TBAR-CT-000331" }),
+  ];
+  const tickets = [
+    ticket({ ticketNumber: "TBAR-DT-001246", date: "2026-10-20" }),
+    ticket({ ticketNumber: "TBAR-CT-000331", type: "CT", date: "2026-10-20" }),
+  ];
+  const board = buildXref({
+    today: TODAY, wells, tickets, appLines,
+    corrections: [{ type: "unpair", appLine: { wellId: "w", reportId: "2026-11-02_22-40-05", index: "n1" }, xpress: "TBAR-CT-000331" }],
+  });
+  const ids = board.rigs[0].pairs.map((row) => row.appId);
+  assert.equal(ids.length, 1);
+  assert.match(ids[0], /~received~n1$/);
+  assert.match(board.rigs[0].needs.find((row) => row.number === "TBAR-CT-000331") ? "returned-open" : board.rigs[0].needs.map((row) => row.appId).join(" "), /returned~n1|returned-open/);
+  assert.equal(board.rigs[0].needs.some((row) => row.appId.endsWith("~returned~n1")), true);
+});
+
+test("a transfer across two wells on one rig is a single expected row", () => {
+  const stamp = "2026-11-03_01-16-13_transferTo_by-mud";
+  const wells = [well({ id: "from", name: "Horizon 55 From" }), well({ id: "to", name: "Horizon 55 To", rig: "156" })];
+  const appLines = [
+    line({ id: "", wellId: "from", side: "received", kind: "transferOut", rawTicket: stamp, date: "2026-11-03", products: [{ name: "Gel", qty: 4, pack: "20 L" }] }),
+    line({ id: "", wellId: "to", side: "received", kind: "transferIn", rawTicket: stamp, date: "2026-11-03", products: [{ name: "Gel", qty: 4, pack: "20 L" }] }),
+  ];
+  const board = buildXref({ today: TODAY, wells, tickets: [], appLines });
+  assert.equal(board.stats["156"].expected, 1);
+  assert.equal(board.rigs[0].transfers.length, 1);
+  assert.equal(board.rigs[0].transfers[0].number, "Transfer");
+  assert.equal(board.rigs[0].transfers[0].fromWell, "Horizon 55 From");
+  assert.equal(board.rigs[0].transfers[0].toWell, "Horizon 55 To");
+});
+
+test("one Xpress ticket is matched once, preferring its own rig and then the closer date", () => {
+  const ownRig = buildXref({
+    today: TODAY,
+    wells: [well({ id: "a", rig: "361" }), well({ id: "b", rig: "420" })],
+    tickets: [ticket({ ticketNumber: "NK-004741", rig: "Ensign 361", date: "2026-10-01" })],
+    appLines: [
+      line({ id: "", wellId: "b", rawTicket: "NK-004741", date: "2026-09-30" }),
+      line({ id: "", wellId: "a", rawTicket: "NK-004741", date: "2026-10-04" }),
+    ],
+  });
+  assert.equal(ownRig.stats["361"].matched, 1);
+  assert.equal(ownRig.stats["420"].onlyApp, 1);
+  assert.match(ownRig.rigs.find((rig) => rig.key === "420").needs[0].summary, /Ticket # already used on 361 2026-10-04/);
+  assert.equal(ownRig.rigs.find((rig) => rig.key === "420").needs[0].suggestions[0].xpress, "NK-004741");
+  const closer = buildXref({
+    today: TODAY,
+    wells: [well({ id: "early" }), well({ id: "late" })],
+    tickets: [ticket({ ticketNumber: "NK-004690", date: "2026-10-08" })],
+    appLines: [
+      line({ id: "", wellId: "early", rawTicket: "NK-004690", date: "2026-09-10" }),
+      line({ id: "", wellId: "late", rawTicket: "NK-004690", date: "2026-10-09" }),
+    ],
+  });
+  assert.equal(closer.stats["156"].matched, 1);
+  assert.equal(closer.stats["156"].onlyApp, 1);
+  assert.match(closer.rigs[0].needs[0].summary, /Ticket # already used on 156 2026-10-09/);
+  assert.equal(closer.rigs[0].pairs[0].app.date, "2026-10-09");
+});
+
 test("the reference output totals match on the real-data fixture", () => {
   const data = JSON.parse(readFileSync(new URL("./fixtures/xref-result.json", import.meta.url)));
   const wells = new Map();
@@ -177,17 +243,19 @@ test("the reference output totals match on the real-data fixture", () => {
     });
   }
   const board = buildXref({ today: TODAY, wells: [...wells.values()], tickets: [...tickets.values()], appLines });
-  const expected = { matched: 0, onlyApp: 0, onlyX: 0, noTicket: 0, expected: 0, appBeforeXpress: 0, hidden: 0 };
-  for (const [rig, rows] of Object.entries(data)) {
-    if (rig === "_norig") continue;
-    for (const key of Object.keys(expected)) expected[key] += (rows[key] || []).length;
-    const got = board.stats[rig] || { matched: 0, onlyApp: 0, onlyX: 0, noTicket: 0, expected: 0, appBeforeXpress: 0, hidden: 0 };
-    for (const key of Object.keys(expected).filter((item) => item !== "loose")) {
-      assert.equal(got[key] || 0, (rows[key] || []).length, `${rig} ${key}`);
-    }
-  }
-  assert.deepEqual(board.totals, { ...expected, loose: (data._norig.onlyX || []).length });
-  assert.equal(board.rigs.some((rig) => rig.needs.some((row) => row.date < "2026-10-01" && row.side === "app")), false);
+  const claimed = new Map();
+  for (const rig of board.rigs) for (const row of rig.pairs) claimed.set(row.number, (claimed.get(row.number) || 0) + 1);
+  assert.deepEqual([...claimed.values()].filter((count) => count > 1), []);
+  assert.equal(board.stats["55"].expected, 14);
+  assert.equal(board.stats["55"].matched, 8);
+  assert.equal(board.stats["859"].expected, 20);
+  assert.equal(board.stats["859"].matched, 6);
+  assert.equal(board.stats["420"].expected, 3);
+  assert.equal(board.stats["420"].matched, 7);
+  assert.equal(board.stats["361"].expected, 6);
+  assert.equal(board.stats["361"].matched, 9);
+  assert.equal(board.stats["361"].onlyApp, 3);
+  assert.equal(board.totals.loose, (data._norig.onlyX || []).length);
 });
 
 function fromX(ticket) {

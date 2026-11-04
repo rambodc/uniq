@@ -201,9 +201,10 @@ async function loadAppLines(wells) {
             wellId: well.id,
             reportId: doc.id,
             index: String(row.index ?? index),
+            side,
             date: row.date || data.date || "",
             rawTicket: row.ticket || row.rawTicket || "",
-            kind: row.kind || (side === "returned" ? "returned" : "received"),
+            kind: row.kind || side,
             products: products.map((product) => ({ name: product.name || product.product || "", pack: product.pack || product.unit || "", qty: Number(product.qty) || 0, productId: product.productId || "" })),
           });
         });

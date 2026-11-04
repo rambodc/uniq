@@ -72,6 +72,7 @@ function Detail({ rigKey, row, preview, reload, setNote }: { rigKey: string; row
       {single.map((product) => <div className="xb-prod-row" key={`${product.name}-${product.qty}`}><ProductCell product={product} /></div>)}
       {!single.length && <p className="xb-note">No products on this ticket.</p>}
     </div>}
+    {(row.fromWell || row.toWell) && <p className="xb-xfer-wells">{row.fromWell || "Another well"} → {row.toWell || "Another well"}</p>}
     {(row.suggestions || []).map((suggestion) => <div className="xb-suggest" key={`${suggestion.number}-${suggestion.date}`}>
       <span>Possible match: {suggestion.number} · {pretty(suggestion.date)} · {suggestion.compared ? `${suggestion.shared}/${suggestion.compared} products same` : "close date"}</span>
       <MoreMenu label={`Pair with ${suggestion.number}`} items={[{ label: "Pair with this", onClick: () => { void pairWith(row, suggestion, preview, reload, setNote); } }]} />
@@ -144,12 +145,7 @@ export default function RigPage() {
       </section>}
       {rig.transfers.length > 0 && <section className="xb-block muted">
         <h2>Expected app-only transfers <span>{rig.transfers.length}</span></h2>
-        {rig.transfers.map((row) => <div className="xb-xref-row transfer" key={row.id}>
-          <span className="xb-xref-date">{pretty(row.date)}</span>
-          <span>{row.number}</span>
-          <span className="xb-pill">{row.pill}</span>
-          <span className="xb-xref-sum">{row.summary}</span>
-        </div>)}
+        {rig.transfers.map((row) => <TicketRow key={row.id} rigKey={rig.key} row={row} open={openId === row.id} toggle={() => setOpenId((value) => value === row.id ? "" : row.id)} preview={preview} reload={reload} setNote={setNote} />)}
       </section>}
       <section className="xb-block matched">
         <button className="xb-match-head" type="button" aria-expanded={matchedOpen} onClick={() => setMatchedOpen((value) => !value)}>

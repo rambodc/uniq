@@ -172,6 +172,7 @@
 .xb-prod-row.bad{background:#f59e0b22}
 .xb-miss{color:var(--mut)}
 .xb-suggest{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;color:#fbbf68;font-size:13px}
+.xb-xfer-wells{margin:0 0 8px;color:var(--mut);font-size:12px}
 .xb-hide{display:none}
 .xb-match-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;width:100%;text-align:left;background:#10192c;border:1px solid #1f6f4a;border-radius:12px;color:var(--text);font:inherit;font-weight:600;padding:10px 12px;cursor:pointer}
 @media(max-width:800px){.xb-products,.xb-loose{grid-template-columns:1fr}}
