@@ -243,6 +243,7 @@ async function writeXref(board, prior) {
     await col("rigBoard").doc(rig.key).set({
       rig: rig.key, name: rig.name, operators: rig.operator ? rig.operator.split(" / ") : [],
       counts: { matched: rig.matched, onlyApp: rig.onlyApp, onlyX: rig.onlyXpress, noTicket: rig.placeholders },
+      suggestions: rig.suggestions || [],
       ok: rig.tone === "green", updatedAt: now,
     });
   }

@@ -114,6 +114,27 @@ test("a rig override moves an Xpress ticket, and a close number needs product ov
   assert.equal(typo.rigs[0].pairs[0].typoFixed, true);
 });
 
+test("possible matches stay suggestions and are limited to two within three days", () => {
+  const wells = [well()];
+  const tickets = [
+    ticket({ id: "near", ticketNumber: "NK-004901", date: "2026-10-11", lines: [{ productId: "barite", name: "Barite", qty: 10 }, { productId: "gel", name: "Gel", qty: 4 }] }),
+    ticket({ id: "mid", ticketNumber: "NK-004902", date: "2026-10-14", lines: [{ productId: "barite", name: "Barite", qty: 10 }] }),
+    ticket({ id: "far", ticketNumber: "NK-004903", date: "2026-10-20", lines: [{ productId: "barite", name: "Barite", qty: 10 }, { productId: "gel", name: "Gel", qty: 4 }] }),
+    ticket({ id: "third", ticketNumber: "NK-004904", date: "2026-10-12", lines: [{ productId: "soda", name: "Soda", qty: 1 }] }),
+  ];
+  const appLines = [line({ rawTicket: "TBAR-DT-009999", date: "2026-10-12", products: [{ productId: "barite", name: "Barite", qty: 10 }, { productId: "gel", name: "Gel", qty: 4 }] })];
+  const board = buildXref({ today: TODAY, wells, tickets, appLines });
+  const row = board.rigs[0].needs.find((item) => item.side === "app");
+  assert.deepEqual(row.suggestions.map((item) => item.number), ["NK-004901", "NK-004902"]);
+  assert.equal(row.suggestions[0].shared, 2);
+  assert.equal(row.suggestions[0].compared, 2);
+  assert.equal(board.rigs[0].matched, 0);
+  assert.equal(board.rigs[0].suggestions.find((item) => item.side === "app").matches.length, 2);
+  const xpress = board.rigs[0].needs.find((item) => item.number === "NK-004901");
+  assert.equal(xpress.suggestions[0].xpress, "NK-004901");
+  assert.equal(xpress.suggestions[0].wellId, "w");
+});
+
 test("the reference output totals match on the real-data fixture", () => {
   const data = JSON.parse(readFileSync(new URL("./fixtures/xref-result.json", import.meta.url)));
   const wells = new Map();
