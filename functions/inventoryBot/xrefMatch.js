@@ -153,24 +153,46 @@ function baseRow(fields) {
   return { typoFixed: false, paired: false, moved: false, correctionId: "", hasPdf: false, pdfPath: "", appId: "", ticketId: "", wellId: "", reportId: "", index: "", app: null, xpress: null, how: "", score: null, ...fields };
 }
 
+function publicProducts(rows) {
+  return (rows || []).filter((row) => row?.name && !SKIP.has(nn(row.name))).map((row) => ({
+    name: row.name, pack: row.pack || row.unit || "", qty: Number(row.qty) || 0, productId: row.productId || "",
+  }));
+}
+
 function appSide(line) {
   const kind = String(line.kind || "");
   const pill = kind.startsWith("transfer") ? "App · Transfer" : kind === "returned" ? "App · Return" : "App · Delivery";
-  return { number: line.rawTicket || "", pill, summary: productText(line.products), date: dayKey(line.date) };
+  return { number: line.rawTicket || "", pill, summary: productText(line.products), date: dayKey(line.date), products: publicProducts(line.products) };
 }
 
 function xpressSide(ticket) {
   const path = ticketPdf(ticket);
   return {
     number: ticketNo(ticket),
+    type: String(ticket.type || "DT").toUpperCase(),
     pill: `Xpress · ${String(ticket.type || "DT").toUpperCase()}`,
     summary: productText(ticket.lines),
-    date: ticketWhen(ticket),
+    date: dayKey(ticket.shippedAt) || dayKey(ticket.date) || ticketWhen(ticket),
     hasPdf: Boolean(path),
     pdfPath: path,
     rig: ticket.rig || "",
+    lsd: ticket.lsd || "",
     customer: ticket.customer || "",
+    products: publicProducts(ticket.lines),
   };
+}
+
+function suggestionRank(date, products, candidates, catalog) {
+  return candidates.map((candidate) => {
+    const otherDate = candidate.date;
+    if (!date || !otherDate || daysApart(date, otherDate) > 3) return null;
+    const score = productOverlap(products, candidate.products, catalog);
+    const left = productMap(products, catalog);
+    const right = productMap(candidate.products, catalog);
+    const shared = [...left.keys()].filter((id) => right.has(id)).length;
+    const compared = Math.min(left.size, right.size);
+    return { candidate, overlap: score.overlap, shared, compared, days: daysApart(date, otherDate) };
+  }).filter(Boolean).sort((a, b) => b.overlap - a.overlap || b.shared - a.shared || a.days - b.days || String(a.candidate.number).localeCompare(String(b.candidate.number))).slice(0, 2);
 }
 
 function byDate(a, b) {
@@ -349,6 +371,28 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
     const pendingRows = rows.noTicket.map((line) => appRow(line, "placeholder", "no-ticket")).sort(byDate);
     const transfers = rows.expected.map((line) => appRow(line, "transfer", "transfer")).sort(byDate);
     const pairs = rows.matched.map((item) => pairRow(item)).sort(byDate);
+    const appPool = [...rows.onlyApp, ...rows.noTicket].map((line) => ({ ...line, number: line.rawTicket || "No number", date: dayKey(line.date), products: line.products }));
+    const xpressPool = rows.onlyX.map((ticket) => ({ ...ticket, number: ticketNo(ticket), date: dayKey(ticket.shippedAt) || dayKey(ticket.date) || ticketWhen(ticket), products: ticket.lines }));
+    for (const row of [...needs, ...pendingRows]) {
+      const pool = row.side === "app" ? xpressPool : appPool;
+      const ownProducts = row.side === "app" ? row.app?.products : row.xpress?.products;
+      row.suggestions = suggestionRank(row.date, ownProducts, pool, catalog).map((hit) => ({
+        number: hit.candidate.number,
+        date: hit.candidate.date,
+        shared: hit.shared,
+        compared: hit.compared,
+        wellId: row.side === "app" ? row.wellId : (hit.candidate.wellId || ""),
+        reportId: row.side === "app" ? row.reportId : (hit.candidate.reportId || ""),
+        index: row.side === "app" ? row.index : String(hit.candidate.index ?? ""),
+        xpress: row.side === "xpress" ? row.number : hit.candidate.number,
+        ticketId: hit.candidate.id || "",
+      }));
+    }
+    const suggestions = [...needs, ...pendingRows].filter((row) => row.suggestions?.length).map((row) => ({
+      side: row.side, number: row.number, date: row.date, wellId: row.wellId, reportId: row.reportId, index: row.index, ticketId: row.ticketId,
+      xpress: row.side === "xpress" ? row.number : "",
+      matches: row.suggestions,
+    }));
     rigs.push({
       key: rig,
       name: parsed.display || `Rig ${rig}`,
@@ -360,7 +404,7 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
       placeholders: counts.noTicket,
       merged: [...aliases.entries()].some(([, into]) => into === rig),
       aliases: [...aliases.entries()].filter(([, into]) => into === rig).map(([from]) => ({ key: from, correctionId: `alias_${from}` })),
-      needs, pending: pendingRows, transfers, pairs,
+      needs, pending: pendingRows, transfers, pairs, suggestions,
     });
   }
   const problem = (rig) => rig.onlyApp + rig.onlyXpress;
@@ -375,8 +419,8 @@ function appRow(line, tone, reason) {
   const app = appSide(line);
   const summary = tone === "needs" ? `Not in Xpress · ${app.summary || "No products"}` : (app.summary || line.rawTicket || "No number");
   return baseRow({
-    id: `app-${line.id}`, date: app.date, number: app.number || "No number", pill: app.pill, summary, tone, side: "app", reason,
-    appId: line.id, wellId: line.wellId || "", reportId: line.reportId || "", index: String(line.index ?? ""), app,
+    id: `app-${line.uid || line.id}`, date: app.date, number: app.number || "No number", pill: app.pill, summary, tone, side: "app", reason,
+    appId: line.id, wellId: line.wellId || "", reportId: line.reportId || "", index: String(line.index ?? ""), app, suggestions: [],
   });
 }
 
@@ -384,8 +428,8 @@ function xpressRow(ticket, tone, reason) {
   const side = xpressSide(ticket);
   return baseRow({
     id: `xpress-${ticket.id || side.number}`, date: side.date, number: side.number, pill: side.pill,
-    summary: tone === "loose" ? (side.rig || side.customer || "No rig on the ticket") : `Not in app · ${[side.rig, side.customer].filter(Boolean).join(" · ") || "No app ticket"}`,
-    tone, side: "xpress", reason, ticketId: ticket.id || "", hasPdf: side.hasPdf, pdfPath: side.pdfPath, xpress: side,
+    summary: tone === "loose" ? [side.rig, side.lsd, side.customer].filter(Boolean).join(" · ") : `Not in app · ${[side.rig, side.customer].filter(Boolean).join(" · ") || "No app ticket"}`,
+    tone, side: "xpress", reason, ticketId: ticket.id || "", hasPdf: side.hasPdf, pdfPath: side.pdfPath, xpress: side, lsd: side.lsd, suggestions: [],
     moved: Boolean(ticket.moved),
   });
 }

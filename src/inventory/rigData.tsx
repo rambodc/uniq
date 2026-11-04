@@ -77,11 +77,11 @@ export function MoreMenu({ label, items }: { label: string; items: { label: stri
   }, [open]);
   if (!items.length) return null;
   return <div className="xb-menu" ref={ref}>
-    <button className="xb-more" type="button" aria-label={label} aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen((value) => !value)}>⋯</button>
+    <button className="xb-more" type="button" aria-label={label} aria-expanded={open} aria-haspopup="menu" onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}>⋯</button>
     {open && <div className="xb-menu-pop" role="menu">
       {items.map((item) => item.to
-        ? <Link key={item.label} role="menuitem" to={item.to} onClick={() => setOpen(false)}>{item.label}</Link>
-        : <button key={item.label} type="button" role="menuitem" onClick={() => { setOpen(false); item.onClick?.(); }}>{item.label}</button>)}
+        ? <Link key={item.label} role="menuitem" to={item.to} onClick={(event) => { event.stopPropagation(); setOpen(false); }}>{item.label}</Link>
+        : <button key={item.label} type="button" role="menuitem" onClick={(event) => { event.stopPropagation(); setOpen(false); item.onClick?.(); }}>{item.label}</button>)}
     </div>}
   </div>;
 }

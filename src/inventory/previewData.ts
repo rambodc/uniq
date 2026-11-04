@@ -18,10 +18,10 @@ function card(fields: { key: string; name: string; operator: string; matched: nu
 }
 
 const pair = row({
-  id: "pair-1220", date: "2026-10-24", number: "TBAR-DT-001220", tone: "matched", side: "pair", pill: "Xpress · DT", how: "exact",
-  label: "2026-10-24 · TBAR-DT-001220 · DT · app delivery", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001220.pdf",
-  app: { number: "TBAR-DT-001220", pill: "App · Delivery", summary: "40 Calcium Nitrate, 6 Clay-Control, 30 GAF-A245, 8 Pallet Recycling, 0 Potash (UES)", date: "2026-10-24" },
-  xpress: { number: "TBAR-DT-001220", pill: "Xpress · DT", summary: "40 Calcium Nitrate, 6 Clay-Control, 30 GAF-A245", date: "2026-10-24", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001220.pdf", rig: "PD 156", customer: "Baytex Energy Ltd." },
+  id: "pair-1220", date: "2026-10-23", number: "TBAR-DT-001220", tone: "matched", side: "pair", pill: "Xpress · DT", how: "exact",
+  label: "TBAR-DT-001220 · DT · app delivery", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001220.pdf",
+  app: { number: "TBAR-DT-001220", pill: "App · Delivery", summary: "40 Calcium Nitrate, 6 Clay-Control", date: "2026-10-24", products: [{ name: "Calcium Nitrate", pack: "25 kg", qty: 40 }, { name: "Clay-Control", pack: "19 L", qty: 6 }, { name: "Potash (UES)", pack: "25 kg", qty: 8 }] },
+  xpress: { number: "TBAR-DT-001220", pill: "Xpress · DT", type: "DT", summary: "40 Calcium Nitrate, 4 Clay-Control", date: "2026-10-23", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001220.pdf", rig: "PD 156", customer: "Baytex Energy Ltd.", products: [{ name: "Calcium Nitrate", pack: "25 kg", qty: 40 }, { name: "Clay-Control", pack: "19 L", qty: 4 }, { name: "Soda Ash", pack: "25 kg", qty: 10 }] },
 });
 
 export const rigPreview: RigBoard = {
@@ -38,7 +38,7 @@ export const rigPreview: RigBoard = {
     card({ key: "218", name: "Ensign 218", operator: "CNRL", matched: 2, onlyApp: 0, onlyXpress: 6 }),
     { ...card({ key: "156", name: "Precision 156", operator: "Baytex", matched: 5, onlyApp: 1, onlyXpress: 4 }),
       needs: [
-        row({ id: "app-ct", date: "2026-11-03", number: "TBAR-CT-0000", tone: "needs", side: "app", pill: "App · Return", summary: "Not in Xpress · 5 TKPP, 30 GAF-C1280, 8 Elixir, 5 Clay-Control", wellId: "silverdale", reportId: "r", index: "2" }),
+        row({ id: "app-ct", date: "2026-11-03", number: "TBAR-CT-0000", tone: "needs", side: "app", pill: "App · Return", summary: "Not in Xpress · 5 TKPP, 30 GAF-C1280, 8 Elixir, 5 Clay-Control", wellId: "silverdale", reportId: "r", index: "2", app: { number: "TBAR-CT-0000", pill: "App · Return", summary: "5 TKPP", date: "2026-11-03", products: [{ name: "TKPP", pack: "25 kg", qty: 5 }, { name: "GAF-C1280", pack: "20 L", qty: 30 }, { name: "Elixir", pack: "200 L", qty: 8 }, { name: "Clay-Control", pack: "19 L", qty: 5 }] }, suggestions: [{ number: "TBAR-CT-000331", date: "2026-11-01", shared: 3, compared: 4, wellId: "silverdale", reportId: "r", index: "2", xpress: "TBAR-CT-000331", ticketId: "xpress_TBAR-CT-000331" }] }),
         row({ id: "x-331", date: "2026-10-18", number: "TBAR-CT-000331", tone: "needs", side: "xpress", pill: "Xpress · CT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-CT-000331.pdf", ticketId: "xpress_TBAR-CT-000331" }),
         row({ id: "x-1207", date: "2026-10-17", number: "TBAR-DT-001207", tone: "needs", side: "xpress", pill: "Xpress · DT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001207.pdf", ticketId: "xpress_TBAR-DT-001207" }),
         row({ id: "x-1201", date: "2026-10-15", number: "TBAR-DT-001201", tone: "needs", side: "xpress", pill: "Xpress · DT", summary: "Not in app · PD 156 · Baytex Energy Ltd.", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/TBAR-DT-001201.pdf", ticketId: "xpress_TBAR-DT-001201" }),
@@ -56,8 +56,8 @@ export const rigPreview: RigBoard = {
     card({ key: "55", name: "Horizon 55", operator: "Strathcona Resources", matched: 4, onlyApp: 0, onlyXpress: 1 }),
   ],
   loose: [
-    row({ id: "loose-1", date: "2026-11-02", number: "NK-004810", tone: "loose", side: "xpress", pill: "Xpress · DT", summary: "No rig on the ticket", ticketId: "xpress_NK-004810" }),
-    row({ id: "loose-2", date: "2026-10-28", number: "NK-004790", tone: "loose", side: "xpress", pill: "Xpress · DT", summary: "No rig on the ticket", ticketId: "xpress_NK-004790" }),
+    row({ id: "loose-1", date: "2026-11-02", number: "NK-004810", tone: "loose", side: "xpress", pill: "Xpress · DT", summary: "Rig 99 · 8-8-8-8W4 · Other Oil", ticketId: "xpress_NK-004810", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/NK-004810.pdf", xpress: { number: "NK-004810", pill: "Xpress · DT", type: "DT", summary: "", date: "2026-11-02", rig: "Rig 99", lsd: "8-8-8-8W4", customer: "Other Oil", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/NK-004810.pdf" } }),
+    row({ id: "loose-2", date: "2026-10-28", number: "NK-004790", tone: "loose", side: "xpress", pill: "Xpress · CT", summary: "Horizon 77 · 2-2-2-2W4 · Other Oil", ticketId: "xpress_NK-004790", xpress: { number: "NK-004790", pill: "Xpress · CT", type: "CT", summary: "", date: "2026-10-28", rig: "Horizon 77", lsd: "2-2-2-2W4", customer: "Other Oil" } }),
   ],
 };
 

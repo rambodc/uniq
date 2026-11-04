@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { RigCard } from "../core/api";
-import { dot, InventoryFrame, pretty } from "./parts";
+import { dot, InventoryFrame, pretty, TicketPdf } from "./parts";
 import { MoreMenu, rowsOf, useRigBoard } from "./rigData";
 
 function haystack(rig: RigCard) {
@@ -49,11 +49,12 @@ export default function RigBoard() {
           {loose.length} Xpress tickets with no rig
         </button>
         {(looseOpen || (needle && loose.length > 0)) && <div className="xb-lines">
-          {loose.map((row) => <div className="xb-xref-row" key={row.id}>
-            <span className="xb-xref-date">{pretty(row.date)}</span>
+          {loose.map((row) => <div className="xb-loose" key={row.id}>
+            <span className="xb-when">{pretty(row.xpress?.date || row.date)}</span>
             <span className="xb-mono">{row.number}</span>
-            <span className="xb-pill">{row.pill}</span>
-            <span className="xb-xref-sum">{row.summary}</span>
+            <span className="xb-pill">{row.xpress?.type || row.pill}</span>
+            <span className="xb-xref-sum">{[row.xpress?.rig, row.xpress?.lsd || row.lsd, row.xpress?.customer].filter(Boolean).join(" · ") || row.summary}</span>
+            {row.hasPdf ? <TicketPdf ticket={row} /> : <span className="xb-pending">PDF pending</span>}
             <MoreMenu label="More for this ticket" items={[{ label: "Move to rig", to: `/inventory-bot/move-ticket/${encodeURIComponent(row.ticketId)}` }]} />
           </div>)}
         </div>}
