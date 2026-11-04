@@ -26,6 +26,7 @@ export function ticketValue(ticket) {
     const price = Number(line.price) || Number(line.unitPrice) || 0;
     sum += qty * price;
   }
+  if (!sum) for (const charge of ticket?.charges || []) sum += Math.abs(Number(charge.total) || 0);
   if (!sum && Number.isFinite(Number(ticket?.total))) sum = Math.abs(Number(ticket.total));
   const type = String(ticket?.type || "").toUpperCase();
   const signed = type === "CT" || type === "SR" ? -sum : sum;
@@ -45,11 +46,23 @@ function roundMoney(value) {
   return Math.round(value * 100) / 100;
 }
 
-/** Xpress PDFs live at inventoryBot/tickets/xpress/{ticket number}.pdf. MIM tickets stay closed. */
+/** PDFs live at inventoryBot/tickets/{xpress|mim}/{ticket number}.pdf. hasPdf false stays closed. */
 export function ticketPdf(ticket) {
   const path = String(ticket?.pdfPath || "");
-  if (ticket?.hasPdf !== true || !/^inventoryBot\/tickets\/xpress\/[^/]+\.pdf$/.test(path)) return "";
+  const source = ticket?.source === "mim" ? "mim" : "xpress";
+  if (ticket?.hasPdf !== true || !new RegExp(`^inventoryBot/tickets/${source}/[^/]+\\.pdf$`).test(path)) return "";
   return path;
+}
+
+function publicCharges(ticket) {
+  if (!Array.isArray(ticket?.charges)) return [];
+  return ticket.charges.map((charge) => ({
+    service: String(charge.service || charge.description || "Charge"),
+    qty: Number(charge.qty) || 0,
+    billingMethod: String(charge.billingMethod || ""),
+    price: Number(charge.price) || 0,
+    total: Number(charge.total) || 0,
+  }));
 }
 
 function publicTicket(ticket, placement) {
@@ -69,6 +82,8 @@ function publicTicket(ticket, placement) {
     return: type === "CT" || type === "SR",
     hasPdf: Boolean(pdfPath),
     pdfPath,
+    warehouseName: ticket.warehouseName || "",
+    charges: publicCharges(ticket),
     suggestion: placement?.suggestion && !placement.manual ? placement.suggestion : null,
   };
 }
@@ -212,14 +227,14 @@ function usableName(list, stored) {
   return "";
 }
 
-export function buildXpressBoard({ tickets = [], placements = [], savedCards = [], appWells = [] , appTickets = [] }) {
+export function buildXpressBoard({ tickets = [], placements = [], savedCards = [], appWells = [] , appTickets = [], source = "xpress" }) {
   const place = new Map((placements || []).map((row) => [row.ticketId || row.id, row]));
   const saved = new Map((savedCards || []).map((card) => [card.id, card]));
   const groups = new Map();
   const unassigned = [];
   let warehouseOnly = 0;
   for (const ticket of tickets || []) {
-    if (ticket.source && ticket.source !== "xpress") continue;
+    if ((ticket.source || "xpress") !== source) continue;
     const manual = place.get(ticket.id);
     if (manual?.manual && manual.cardId) {
       const list = groups.get(manual.cardId) || [];

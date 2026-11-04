@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import type { XpressCard, XpressTicket } from "../core/api";
 import { useBoard } from "./boardState";
 import { canOpenTicketPdf } from "./ticketPdf";
@@ -30,21 +30,21 @@ function whyHere(ticket: XpressTicket) {
 }
 
 export default function XpressBoard() {
-  const { board, error, reload } = useBoard();
+  const { board, error, reload, source, home } = useBoard();
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
   const cards = useMemo(() => (board?.cards || []).filter((card) => !needle || `${card.name} ${card.operator} ${card.lsd} ${card.rig} ${card.tickets.map((ticket) => ticket.number).join(" ")}`.toLowerCase().includes(needle)), [board, needle]);
   const loose = useMemo(() => (board?.unassigned || []).filter((ticket) => !needle || `${ticket.number} ${ticket.customer} ${ticket.shipTo} ${ticket.rig} ${ticket.lsd}`.toLowerCase().includes(needle)), [board, needle]);
 
-  return <InventoryFrame pulledAt={board?.pulledAt} home>
+  return <InventoryFrame pulledAt={board?.pulledAt} home source={source}>
     <div className="xb-tabs" role="tablist">
-      <button className="xb-tab on" type="button" role="tab" aria-selected="true">Xpress</button>
-      <button className="xb-tab off" type="button" role="tab" aria-selected="false" disabled>MIM <span className="xb-soon">coming next</span></button>
+      <NavLink to="/inventory-bot" end className={({ isActive }) => `xb-tab${isActive ? " on" : ""}`} role="tab">Xpress</NavLink>
+      <NavLink to="/inventory-bot/mim" className={({ isActive }) => `xb-tab${isActive ? " on" : ""}`} role="tab">MIM</NavLink>
     </div>
     <div className="xb-bar">
       <div>
-        <h2>Wells from Xpress tickets</h2>
-        <p>Click a well card to open its own page. Nothing opens on top of this board.</p>
+        <h2>{source === "mim" ? "Wells from MIM tickets" : "Wells from Xpress tickets"}</h2>
+        <p>{source === "mim" ? "UNIQENERGY / PR PREMIUM and ALCHEM. Click a well card to open its own page." : "Click a well card to open its own page. Nothing opens on top of this board."}</p>
       </div>
       <div className="xb-tools">
         <input className="xb-search" aria-label="Search well, LSD, rig or ticket" placeholder="Search well, LSD, rig or ticket…" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -61,7 +61,7 @@ export default function XpressBoard() {
     </div>
     {!board && !error ? <p className="xb-note">Loading Xpress tickets…</p> : <div className="xb-grid">
       {cards.map((card) => {
-        const wellUrl = `/inventory-bot/well/${encodeURIComponent(card.id)}`;
+        const wellUrl = `${home}/well/${encodeURIComponent(card.id)}`;
         return <article className="xb-card" key={card.id}>
           <div className={`xb-accent ${card.status.tone}`} />
           <Link className="xb-card-link" to={wellUrl}>
@@ -79,7 +79,7 @@ export default function XpressBoard() {
             </div>
           </Link>
           <div className="xb-chips">{card.tickets.map((ticket) => {
-            const label = `${ticket.number}${ticket.return ? " · return" : ""} · ${pretty(ticket.date)}`;
+            const label = `${ticket.number}${ticket.return ? " · return" : ticket.type === "TT" ? " · trucking" : ""} · ${pretty(ticket.date)}`;
             return canOpenTicketPdf(ticket) ? <TicketPdf key={ticket.id} ticket={ticket} label={label} mark={ticket.return} /> : <span key={ticket.id} className={ticket.return ? "ret" : ""}>{label}</span>;
           })}</div>
           <Link className="xb-card-link" to={wellUrl}>
@@ -101,7 +101,7 @@ export default function XpressBoard() {
         <span>{ticket.customer || ticket.shipTo || "No customer"}</span>
         <span>{pretty(ticket.date)}</span>
         <span className="xb-note">{whyHere(ticket)}</span>
-        <Link className="xb-btn" to={`/inventory-bot/move/${encodeURIComponent(ticket.id)}`}>Move to well →</Link>
+        <Link className="xb-btn" to={`${home}/move/${encodeURIComponent(ticket.id)}`}>Move to well →</Link>
       </div>)}
     </div>
     {(board?.warehouseOnly || 0) > 0 && <p className="xb-sec-p">{board?.warehouseOnly} warehouse-only tickets (MR / ST) are kept off the board.</p>}

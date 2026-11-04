@@ -1,6 +1,6 @@
 import type { Inquiry, OpenXpressWell, UserRecord, XpressBoard } from "../core/api";
 
-export type InventoryPreviewData = { xpress?: XpressBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> };
+export type InventoryPreviewData = { xpress?: XpressBoard; mim?: XpressBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> };
 
 /** Dev-only fixtures for local screenshots. Production builds drop this branch. */
 export function previewActive() {

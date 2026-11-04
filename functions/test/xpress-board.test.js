@@ -36,6 +36,9 @@ test("a ticket pdf is offered only when hasPdf and the xpress storage path agree
   assert.equal(ticketPdf({ hasPdf: false, pdfPath: "inventoryBot/tickets/xpress/NK-004804.pdf" }), "");
   assert.equal(ticketPdf({ hasPdf: true, pdfPath: "inventoryBot/tickets/mim/MBFS-1.pdf" }), "");
   assert.equal(ticketPdf({ hasPdf: true, pdfPath: "https://example.com/a.pdf" }), "");
+  assert.equal(ticketPdf({ source: "mim", hasPdf: false, pdfPath: "inventoryBot/tickets/mim/DTAWEY011649.pdf" }), "");
+  assert.equal(ticketPdf({ source: "mim", hasPdf: true, pdfPath: "inventoryBot/tickets/mim/DTAWEY011649.pdf" }), "inventoryBot/tickets/mim/DTAWEY011649.pdf");
+  assert.equal(ticketPdf({ source: "xpress", hasPdf: true, pdfPath: "inventoryBot/tickets/mim/DTAWEY011649.pdf" }), "");
   const board = buildXpressBoard({
     tickets: [
       ticket({ id: "xpress_NK-1", ticketNumber: "NK-1", hasPdf: true, pdfPath: "inventoryBot/tickets/xpress/NK-1.pdf", lsd: "", lsdNorm: "", rig: "", wellName: "", customer: "" }),
@@ -46,6 +49,27 @@ test("a ticket pdf is offered only when hasPdf and the xpress storage path agree
   assert.equal(board.unassigned[0].pdfPath, "inventoryBot/tickets/xpress/NK-1.pdf");
   assert.equal(board.unassigned[1].hasPdf, false);
   assert.equal(board.unassigned[1].pdfPath, "");
+});
+
+test("mim tickets group like the xpress board and keep trucking charges", () => {
+  const board = buildXpressBoard({
+    source: "mim",
+    tickets: [
+      ticket({ id: "mim_DTAWEY011649", source: "mim", type: "DT", ticketNumber: "DTAWEY011649", hasPdf: false, lsd: "13-26-2-28W1", lsdNorm: "13-26-2-28W1", rig: "12", customer: "Tundra", wellName: "Tundra 13-26", warehouseName: "ALCHEM" }),
+      ticket({ id: "mim_TTPROS1", source: "mim", type: "TT", ticketNumber: "TTPROS1", lsd: "13-26-2-28W1", lsdNorm: "13-26-2-28W1", rig: "12", lines: [], charges: [{ service: "Haul", qty: 1, billingMethod: "flat", price: 80, total: 80 }], warehouseName: "PR PREMIUM" }),
+      ticket({ id: "xpress_NK-1", source: "xpress", ticketNumber: "NK-1", lsd: "", lsdNorm: "", rig: "", wellName: "", customer: "" }),
+      ticket({ id: "mim_loose", source: "mim", type: "DT", ticketNumber: "LOOSE", lsd: "", lsdNorm: "", rig: "", wellName: "", customer: "" }),
+    ],
+  });
+  assert.equal(board.cards.length, 1);
+  assert.equal(board.cards[0].ticketCount, 2);
+  const trucking = board.cards[0].tickets.find((row) => row.type === "TT");
+  assert.equal(trucking.charges[0].service, "Haul");
+  assert.equal(trucking.charges[0].total, 80);
+  assert.equal(trucking.value, 80);
+  assert.equal(trucking.hasPdf, false);
+  assert.equal(board.unassigned.map((row) => row.number).join(), "LOOSE");
+  assert.equal(board.cards[0].tickets.some((row) => row.number === "NK-1"), false);
 });
 
 test("a manual move wins over LSD placement", () => {

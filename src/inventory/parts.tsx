@@ -9,11 +9,12 @@ export function pretty(date: string) {
   return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function pulledLabel(value: string) {
-  if (!value) return "No Xpress pull recorded";
+export function pulledLabel(value: string, source?: "xpress" | "mim") {
+  const name = source === "mim" ? "MIM" : "Xpress";
+  if (!value) return `No ${name} pull recorded`;
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return `Last Xpress pull: ${value.slice(0, 10)}`;
-  return `Last Xpress pull: ${parsed.toLocaleString("en-US", { timeZone: "America/Edmonton", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} MT`;
+  if (Number.isNaN(parsed.getTime())) return `Last ${name} pull: ${value.slice(0, 10)}`;
+  return `Last ${name} pull: ${parsed.toLocaleString("en-US", { timeZone: "America/Edmonton", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} MT`;
 }
 
 export function dot(tone: string) {
@@ -33,7 +34,7 @@ export function Rig() {
   </svg>;
 }
 
-export function InventoryFrame({ pulledAt, home, children }: { pulledAt?: string; home?: boolean; children: ReactNode }) {
+export function InventoryFrame({ pulledAt, home, source, children }: { pulledAt?: string; home?: boolean; source?: "xpress" | "mim"; children: ReactNode }) {
   return <div className="xb">
     <div className="xb-wrap">
       {home && <Link className="xb-back" to="/dashboard">← Back to Dashboard</Link>}
@@ -42,15 +43,15 @@ export function InventoryFrame({ pulledAt, home, children }: { pulledAt?: string
           <span className="xb-logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="#04201d" /></svg></span>
           <span>UniqEnergy<small>Inventory Bot · field delivery check</small></span>
         </Link>
-        <div className="xb-pull">{pulledLabel(pulledAt || "")}</div>
+        <div className="xb-pull">{pulledLabel(pulledAt || "", source)}</div>
       </header>
       {children}
     </div>
   </div>;
 }
 
-export function BackToBoard() {
-  return <Link className="xb-back" to="/inventory-bot">← Back to board</Link>;
+export function BackToBoard({ to = "/inventory-bot" }: { to?: string }) {
+  return <Link className="xb-back" to={to}>← Back to board</Link>;
 }
 
 export function TicketPdf({ ticket, label, plain, mark }: { ticket: { number: string; hasPdf?: boolean; pdfPath?: string }; label?: string; plain?: boolean; mark?: boolean }) {
