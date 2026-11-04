@@ -135,8 +135,54 @@ export function wellIsCurrent(well, today = todayKey()) {
   return active || (Boolean(last) && last >= floor);
 }
 
-function lineId(line) {
-  return line.id || `${line.wellId}~${line.reportId}~${line.index}`;
+function arraySide(line) {
+  if (line?.side === "received" || line?.side === "returned") return line.side;
+  return String(line?.kind || "").toLowerCase() === "returned" ? "returned" : "received";
+}
+
+/** Received and returned are numbered separately, so the side is part of the id. */
+export function lineId(line) {
+  return `${line.wellId}~${line.reportId}~${arraySide(line)}~${line.index}`;
+}
+
+function legacyLineId(line) {
+  return `${line.wellId}~${line.reportId}~${line.index}`;
+}
+
+function numbersAgree(raw, ticketNumber) {
+  if (!raw || !ticketNumber) return false;
+  const left = canon(raw);
+  const right = canon(ticketNumber);
+  if (left && right && left.number != null && left.prefix === right.prefix && left.number === right.number) return true;
+  return clean(raw) === clean(ticketNumber);
+}
+
+function compareLines(a, b) {
+  return String(a.date).localeCompare(String(b.date))
+    || String(a.wellId).localeCompare(String(b.wellId))
+    || String(a.reportId).localeCompare(String(b.reportId))
+    || arraySide(a).localeCompare(arraySide(b))
+    || String(a.index).localeCompare(String(b.index), undefined, { numeric: true });
+}
+
+function ticketDate(ticket) {
+  return dayKey(ticket?.shippedAt) || dayKey(ticket?.date) || ticketWhen(ticket);
+}
+
+function transferKey(raw) {
+  const text = String(raw || "");
+  const stamp = text.match(/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/);
+  if (stamp) return stamp[0];
+  return text.replace(/_by-.*/, "") || text;
+}
+
+function isTransfer(line) {
+  return String(line?.rawTicket || "").includes("transferTo") || String(line?.kind || "").toLowerCase().startsWith("transfer");
+}
+
+function rankClaim(line, ticket) {
+  const same = line.rig && line.rig === ticket.rigNumber ? 0 : 1;
+  return same * 100000 + daysApart(line.date, ticketDate(ticket));
 }
 
 function applyAlias(number, aliases) {
@@ -220,11 +266,13 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
   }
   const shownWells = (wells || []).filter((well) => wellIsCurrent(well, window.today));
   const wellRig = new Map();
+  const wellNames = new Map();
   const operators = new Map();
   for (const well of shownWells) {
     const number = applyAlias(rigNumber(well.rig), aliases);
     if (!number) continue;
     wellRig.set(well.id, number);
+    wellNames.set(well.id, well.name || "");
     const name = well.operator || well.operator_name || "";
     if (name) {
       if (!operators.has(number)) operators.set(number, new Set());
@@ -255,8 +303,9 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
     if (!rig) continue;
     const date = dayKey(line.date);
     if (!date || date < window.appFrom || date < window.floor) continue;
-    lines.push({ ...line, id: lineId(line), uid: `${lineId(line)}#${lines.length}`, rig, date });
+    lines.push({ ...line, id: lineId(line), side: arraySide(line), uid: `${lineId(line)}#${lines.length}`, rig, date, wellName: wellNames.get(line.wellId) || "" });
   }
+  lines.sort(compareLines);
   const buckets = new Map();
   const bucket = (rig) => {
     if (!buckets.has(rig)) buckets.set(rig, { matched: [], onlyApp: [], onlyX: [], noTicket: [], expected: [], appBeforeXpress: [], hidden: [] });
@@ -264,21 +313,46 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
   };
   const used = new Set();
   const matchedLine = new Set();
+  const claimed = new Map();
   const ticketByNo = new Map(xpress.map((ticket) => [ticket.ticketNumber, ticket]));
-  for (const pair of forced) {
-    if (blocks.has(`${pair.id}|${pair.number}`)) continue;
-    const line = lines.find((row) => row.uid === pair.id || row.id === pair.id || `${row.wellId}~${row.reportId}~${row.index}` === pair.id);
-    const ticket = ticketByNo.get(pair.number);
-    if (!line || !ticket || matchedLine.has(line.uid)) continue;
+  const blocked = (line, number) => [line.id, legacyLineId(line)].some((id) => blocks.has(`${id}|${number}`));
+  const markAlreadyUsed = (line, ticket, winner) => {
+    const rig = winner?.line?.rig || ticket.rigNumber || "another rig";
+    const date = winner?.line?.date || ticketDate(ticket);
+    line.usedNote = `Ticket # already used on ${rig} ${date}`;
+    const left = productMap(line.products, catalog);
+    const right = productMap(ticket.lines, catalog);
+    const shared = [...left.keys()].filter((id) => right.has(id)).length;
+    line.suggestions = [{
+      number: ticket.ticketNumber, date: ticketDate(ticket), shared, compared: Math.min(left.size, right.size),
+      wellId: line.wellId || "", reportId: line.reportId || "", index: String(line.index ?? ""),
+      xpress: ticket.ticketNumber, ticketId: ticket.id || "",
+    }];
+  };
+  const claim = (line, ticket, how, score, correctionId = "") => {
     matchedLine.add(line.uid);
     used.add(ticket.ticketNumber);
-    bucket(line.rig).matched.push({ line, ticket, how: "manual", score: null, correctionId: pair.correctionId });
+    claimed.set(ticket.ticketNumber, { line, ticket });
+    bucket(line.rig).matched.push({ line, ticket, how, score, correctionId });
+  };
+  const resolveLine = (id, ticketNumber) => {
+    const exact = lines.filter((row) => row.id === id || row.uid === id);
+    const pool = exact.length ? exact : lines.filter((row) => legacyLineId(row) === id);
+    if (!pool.length) return null;
+    return pool.find((row) => numbersAgree(row.rawTicket, ticketNumber)) || pool[0];
+  };
+  for (const pair of forced) {
+    if (blocks.has(`${pair.id}|${pair.number}`)) continue;
+    const line = resolveLine(pair.id, pair.number);
+    const ticket = ticketByNo.get(pair.number);
+    if (!line || !ticket || matchedLine.has(line.uid) || used.has(ticket.ticketNumber)) continue;
+    claim(line, ticket, "manual", null, pair.correctionId);
   }
   const pending = [];
-  const blocked = (line, number) => blocks.has(`${line.wellId}~${line.reportId}~${line.index}|${number}`) || blocks.has(`${line.id}|${number}`);
+  const exactOptions = [];
   for (const line of lines) {
     if (matchedLine.has(line.uid)) continue;
-    if (String(line.rawTicket || "").includes("transferTo") || String(line.kind || "").startsWith("transfer")) {
+    if (isTransfer(line)) {
       bucket(line.rig).expected.push(line);
       continue;
     }
@@ -297,43 +371,71 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
       if (!parsed.type) return true;
       return String(ticket.type || "").startsWith(parsed.type) || ticket.ticketNumber.includes(parsed.type);
     });
-    if (hits.length) {
-      matchedLine.add(line.uid);
-      used.add(hits[0].ticketNumber);
-      bucket(line.rig).matched.push({ line, ticket: hits[0], how: "exact", score: null });
-      continue;
-    }
-    pending.push({ line, parsed });
+    if (hits.length) exactOptions.push({ line, hits });
+    else pending.push({ line, parsed });
   }
+  const exactPairs = exactOptions.flatMap((option) => option.hits.map((ticket) => ({ line: option.line, ticket })));
+  exactPairs.sort((a, b) => rankClaim(a.line, a.ticket) - rankClaim(b.line, b.ticket) || compareLines(a.line, b.line) || a.ticket.ticketNumber.localeCompare(b.ticket.ticketNumber));
+  for (const pair of exactPairs) {
+    if (matchedLine.has(pair.line.uid) || used.has(pair.ticket.ticketNumber)) continue;
+    claim(pair.line, pair.ticket, "exact", null);
+  }
+  for (const option of exactOptions) {
+    if (matchedLine.has(option.line.uid)) continue;
+    const ticket = option.hits.find((hit) => used.has(hit.ticketNumber)) || option.hits[0];
+    const winner = claimed.get(ticket.ticketNumber);
+    markAlreadyUsed(option.line, ticket, winner);
+    bucket(option.line.rig).onlyApp.push(option.line);
+  }
+  const fuzzy = [];
   for (const item of pending) {
     const { line, parsed } = item;
-    let best = null;
+    if (matchedLine.has(line.uid)) continue;
+    let offered = false;
     for (const ticket of xpress) {
       if (used.has(ticket.ticketNumber) || blocked(line, ticket.ticketNumber) || ticket.rigNumber !== line.rig) continue;
       if (!parsed.prefix && parsed.number != null) {
         const tail = String(ticket.ticketNumber).match(/(\d+)$/);
         const digits = tail ? tail[1].replace(/^0+/, "") : "";
         if (digits === String(parsed.number) && TYPE_MAP[line.kind]?.has(ticket.type)) {
-          best = { ticket, overlap: 1, qty: 1, how: "digits" };
-          break;
+          fuzzy.push({ line, ticket, overlap: 1, qty: 1, how: "digits", parsed });
+          offered = true;
         }
+        continue;
       }
       if (!ticket.hasLines || !parsed.prefix || ticket.ticketNumber.split("-")[0] !== parsed.prefix) continue;
       if (!TYPE_MAP[line.kind]?.has(ticket.type) || (parsed.type && parsed.type !== ticket.type)) continue;
-      if (!ticketWhen(ticket) || daysApart(ticketWhen(ticket), line.date) > 5 || !numberClose(parsed.digits, ticket.ticketNumber)) continue;
+      if (!ticketDate(ticket) || daysApart(ticketDate(ticket), line.date) > 5 || !numberClose(parsed.digits, ticket.ticketNumber)) continue;
       const score = productOverlap(line.products, ticket.lines, catalog);
-      if (score.overlap >= 0.6 && score.qty >= 0.5 && (!best || score.overlap > best.overlap || (score.overlap === best.overlap && score.qty > best.qty))) {
-        best = { ticket, ...score, how: "typo" };
+      if (score.overlap >= 0.6 && score.qty >= 0.5) {
+        fuzzy.push({ line, ticket, overlap: score.overlap, qty: score.qty, how: "typo", parsed });
+        offered = true;
       }
     }
-    if (best) {
-      matchedLine.add(line.uid);
-      used.add(best.ticket.ticketNumber);
-      bucket(line.rig).matched.push({ line, ticket: best.ticket, how: best.how, score: { overlap: best.overlap, qty: best.qty } });
-    } else if (!parsed.prefix) bucket(line.rig).hidden.push(line);
-    else if (line.date < window.xpressFrom) bucket(line.rig).appBeforeXpress.push(line);
-    else if (parsed.number == null) bucket(line.rig).noTicket.push(line);
-    else bucket(line.rig).onlyApp.push(line);
+    if (!offered) {
+      if (!parsed.prefix) bucket(line.rig).hidden.push(line);
+      else if (line.date < window.xpressFrom) bucket(line.rig).appBeforeXpress.push(line);
+      else if (parsed.number == null) bucket(line.rig).noTicket.push(line);
+      else bucket(line.rig).onlyApp.push(line);
+    }
+  }
+  fuzzy.sort((a, b) => b.overlap - a.overlap || b.qty - a.qty || rankClaim(a.line, a.ticket) - rankClaim(b.line, b.ticket) || compareLines(a.line, b.line));
+  for (const item of fuzzy) {
+    if (matchedLine.has(item.line.uid) || used.has(item.ticket.ticketNumber)) continue;
+    claim(item.line, item.ticket, item.how, { overlap: item.overlap, qty: item.qty });
+  }
+  const fuzzySeen = new Set();
+  for (const item of fuzzy) {
+    if (matchedLine.has(item.line.uid) || fuzzySeen.has(item.line.uid)) continue;
+    fuzzySeen.add(item.line.uid);
+    const winner = claimed.get(item.ticket.ticketNumber);
+    if (winner) {
+      markAlreadyUsed(item.line, item.ticket, winner);
+      bucket(item.line.rig).onlyApp.push(item.line);
+    } else if (!item.parsed?.prefix) bucket(item.line.rig).hidden.push(item.line);
+    else if (item.line.date < window.xpressFrom) bucket(item.line.rig).appBeforeXpress.push(item.line);
+    else if (item.parsed?.number == null) bucket(item.line.rig).noTicket.push(item.line);
+    else bucket(item.line.rig).onlyApp.push(item.line);
   }
   const loose = [];
   for (const ticket of xpress) {
@@ -353,12 +455,13 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
   const stats = {};
   const rigs = [];
   for (const [rig, rows] of buckets) {
+    const transfers = mergeTransfers(rows.expected).map((line) => appRow(line, "transfer", "transfer")).sort(byDate);
     const counts = {
       matched: rows.matched.length,
       onlyApp: rows.onlyApp.length,
       onlyX: rows.onlyX.length,
       noTicket: rows.noTicket.length,
-      expected: rows.expected.length,
+      expected: transfers.length,
       appBeforeXpress: rows.appBeforeXpress.length,
       hidden: rows.hidden.length,
     };
@@ -369,14 +472,13 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
     const parsed = parseXpressRig(names[0]?.[0] || "");
     const needs = [...rows.onlyApp.map((line) => appRow(line, "needs", "only-app")), ...rows.onlyX.map((ticket) => xpressRow(ticket, "needs", "only-xpress"))].sort(byDate);
     const pendingRows = rows.noTicket.map((line) => appRow(line, "placeholder", "no-ticket")).sort(byDate);
-    const transfers = rows.expected.map((line) => appRow(line, "transfer", "transfer")).sort(byDate);
     const pairs = rows.matched.map((item) => pairRow(item)).sort(byDate);
     const appPool = [...rows.onlyApp, ...rows.noTicket].map((line) => ({ ...line, number: line.rawTicket || "No number", date: dayKey(line.date), products: line.products }));
     const xpressPool = rows.onlyX.map((ticket) => ({ ...ticket, number: ticketNo(ticket), date: dayKey(ticket.shippedAt) || dayKey(ticket.date) || ticketWhen(ticket), products: ticket.lines }));
     for (const row of [...needs, ...pendingRows]) {
       const pool = row.side === "app" ? xpressPool : appPool;
       const ownProducts = row.side === "app" ? row.app?.products : row.xpress?.products;
-      row.suggestions = suggestionRank(row.date, ownProducts, pool, catalog).map((hit) => ({
+      const ranked = suggestionRank(row.date, ownProducts, pool, catalog).map((hit) => ({
         number: hit.candidate.number,
         date: hit.candidate.date,
         shared: hit.shared,
@@ -387,6 +489,8 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
         xpress: row.side === "xpress" ? row.number : hit.candidate.number,
         ticketId: hit.candidate.id || "",
       }));
+      const seen = new Set((row.suggestions || []).map((item) => item.number));
+      row.suggestions = [...(row.suggestions || []), ...ranked.filter((item) => !seen.has(item.number))].slice(0, 2);
     }
     const suggestions = [...needs, ...pendingRows].filter((row) => row.suggestions?.length).map((row) => ({
       side: row.side, number: row.number, date: row.date, wellId: row.wellId, reportId: row.reportId, index: row.index, ticketId: row.ticketId,
@@ -415,12 +519,40 @@ export function buildXref({ tickets = [], wells = [], appLines = [], corrections
   return { since: window.xpressFrom, appSince: window.appFrom, rigs, loose: loose.map((ticket) => xpressRow(ticket, "loose", "no-rig")).sort(byDate), totals, stats };
 }
 
+function mergeTransfers(list) {
+  const groups = new Map();
+  const order = [];
+  for (const line of list) {
+    const key = transferKey(line.rawTicket) || line.uid;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key).push(line);
+  }
+  return order.map((key) => {
+    const group = groups.get(key);
+    const outgoing = group.find((line) => /out$/i.test(String(line.kind)));
+    const incoming = group.find((line) => /in$/i.test(String(line.kind)));
+    const richest = group.slice().sort((a, b) => (b.products?.length || 0) - (a.products?.length || 0))[0];
+    const primary = group.slice().sort(compareLines)[0];
+    return {
+      ...primary,
+      products: richest?.products || [],
+      fromWell: outgoing?.wellName || "",
+      toWell: incoming?.wellName || "",
+      kind: "transfer",
+    };
+  });
+}
+
 function appRow(line, tone, reason) {
   const app = appSide(line);
-  const summary = tone === "needs" ? `Not in Xpress · ${app.summary || "No products"}` : (app.summary || line.rawTicket || "No number");
+  const summary = line.usedNote || (tone === "needs" ? `Not in Xpress · ${app.summary || "No products"}` : (app.summary || line.rawTicket || "No number"));
   return baseRow({
-    id: `app-${line.uid || line.id}`, date: app.date, number: app.number || "No number", pill: app.pill, summary, tone, side: "app", reason,
-    appId: line.id, wellId: line.wellId || "", reportId: line.reportId || "", index: String(line.index ?? ""), app, suggestions: [],
+    id: `app-${line.uid || line.id}`, date: app.date, number: tone === "transfer" ? "Transfer" : (app.number || "No number"), pill: app.pill, summary, tone, side: "app", reason,
+    appId: line.id, wellId: line.wellId || "", reportId: line.reportId || "", index: String(line.index ?? ""),
+    fromWell: line.fromWell || "", toWell: line.toWell || "", app, suggestions: line.suggestions || [],
   });
 }
 
