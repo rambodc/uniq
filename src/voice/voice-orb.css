@@ -1,0 +1,73 @@
+/* UniqEnergy "Talk to AI" voice orb. Pure CSS animation, reusable in the real build.
+   States on .vo-overlay: data-state="listening" | "speaking" | "connecting". */
+.vo-fab{position:fixed;right:28px;bottom:28px;z-index:40;display:flex;align-items:center;gap:12px;padding:8px 20px 8px 8px;border:1px solid rgba(163,215,225,.22);border-radius:999px;background:rgba(8,30,40,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#f4fbfd;font:700 15px/1 Inter,system-ui,sans-serif;box-shadow:0 18px 40px rgba(0,0,0,.35),0 0 0 1px rgba(28,231,190,.08) inset;cursor:pointer}
+.portal-root[data-theme="light"] .vo-fab{background:rgba(255,255,255,.9);color:#06202b;border-color:rgba(6,32,43,.12);box-shadow:0 16px 36px rgba(6,32,43,.14)}
+.vo-fab-orb{position:relative;display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#b8fff0 0,#35f5c7 22%,#12caa7 48%,#1b8fd0 78%,#5a5cf0 100%);box-shadow:0 0 22px rgba(28,231,190,.55);color:#032018}
+.vo-fab-orb::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(28,231,190,.45);animation:vo-ping 2.4s ease-out infinite}
+.vo-fab small{display:block;margin-top:4px;font-weight:500;font-size:12px;color:#8ea6b3}
+@keyframes vo-ping{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.35);opacity:0}}
+
+.vo-overlay{position:fixed;inset:0;z-index:100;display:grid;place-items:center;font-family:Inter,system-ui,sans-serif;color:#f4fbfd;animation:vo-fade .35s ease}
+.vo-backdrop{position:absolute;inset:0;background:radial-gradient(circle at 50% 46%,rgba(12,60,76,.55),rgba(2,10,16,.82) 62%);backdrop-filter:blur(18px) saturate(1.1);-webkit-backdrop-filter:blur(18px) saturate(1.1)}
+.vo-stage{position:relative;z-index:1;pointer-events:none}
+.vo-orb,.vo-controls,.vo-dismiss{pointer-events:auto}
+.vo-overlay button.vo-chip,.vo-overlay button.vo-status,.vo-overlay button.vo-hint,.vo-overlay button.vo-backdrop{font-family:inherit;color:inherit;cursor:pointer}
+.vo-overlay button.vo-status,.vo-overlay button.vo-hint{background:none;border:0}
+.vo-overlay button.vo-status{padding:0}
+.vo-overlay button.vo-backdrop{border:0;padding:0}
+@keyframes vo-fade{from{opacity:0}to{opacity:1}}
+.vo-stage{display:flex;flex-direction:column;align-items:center;gap:30px}.vo-stage .vo-chip{margin-bottom:34px}
+.vo-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(163,215,225,.2);background:rgba(8,30,40,.55);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#a9c4cf}
+.vo-chip i{width:7px;height:7px;border-radius:50%;background:#1ce7be;box-shadow:0 0 10px #1ce7be}
+
+/* the orb: --s is its size */
+.vo-orb{--s:280px;position:relative;width:var(--s);height:var(--s);animation:vo-breathe 4.2s ease-in-out infinite}
+.vo-orb .halo{position:absolute;inset:-40%;border-radius:50%;background:radial-gradient(circle,rgba(28,231,190,.34) 0,rgba(50,201,237,.14) 40%,rgba(50,201,237,.05) 55%,transparent 70%)}
+.vo-orb .core{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:radial-gradient(circle at 50% 60%,#0d6f8c,#073247 70%);clip-path:circle(50%);-webkit-clip-path:circle(50%)}
+.vo-orb .glow{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 60px rgba(28,231,190,.45),0 0 140px rgba(50,201,237,.25)}
+.vo-orb .blob{position:absolute;width:85%;height:85%;border-radius:50%;filter:blur(26px);opacity:.95}
+.vo-orb .b1{left:-10%;top:-8%;background:radial-gradient(circle,#35f5c7 0,rgba(53,245,199,0) 65%);animation:vo-drift1 7s ease-in-out infinite}
+.vo-orb .b2{right:-14%;top:8%;background:radial-gradient(circle,#32c9ed 0,rgba(50,201,237,0) 65%);animation:vo-drift2 8.5s ease-in-out infinite}
+.vo-orb .b3{left:10%;bottom:-20%;background:radial-gradient(circle,#7a6cff 0,rgba(122,108,255,0) 65%);animation:vo-drift3 9.5s ease-in-out infinite}
+.vo-orb .swirl{position:absolute;inset:-20%;background:conic-gradient(from 0deg,transparent,rgba(184,255,240,.35),transparent 30%,rgba(90,92,240,.3),transparent 60%,rgba(50,201,237,.35),transparent);filter:blur(18px);animation:vo-spin 12s linear infinite}
+.vo-orb .gloss{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 34% 24%,rgba(255,255,255,.55),rgba(255,255,255,0) 26%),radial-gradient(circle at 70% 85%,rgba(255,255,255,.08),transparent 40%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),inset 0 -20px 60px rgba(3,19,29,.5)}
+.vo-orb .ring{position:absolute;inset:0;border-radius:50%;border:2px solid rgba(53,245,199,.5);opacity:0}
+
+@keyframes vo-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes vo-spin{to{transform:rotate(360deg)}}
+@keyframes vo-drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(18%,14%)}}
+@keyframes vo-drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-16%,18%)}}
+@keyframes vo-drift3{0%,100%{transform:translate(0,0)}50%{transform:translate(12%,-20%)}}
+@keyframes vo-ring{0%{transform:scale(1);opacity:.75}100%{transform:scale(1.45);opacity:0}}
+@keyframes vo-talk{0%,100%{transform:scale(1)}20%{transform:scale(1.09)}40%{transform:scale(1.02)}60%{transform:scale(1.12)}80%{transform:scale(1.04)}}
+
+/* speaking: brighter, faster, rings radiate. In the build, drive --level (0..1) from the audio output level. */
+.vo-overlay[data-state="speaking"] .vo-orb{animation:vo-talk 1.4s ease-in-out infinite;animation-duration:calc(1.4s - var(--level, 0) * .65s)}
+.vo-overlay[data-state="speaking"] .vo-orb .glow{box-shadow:0 0 90px rgba(28,231,190,.7),0 0 200px rgba(50,201,237,.4)}
+.vo-overlay[data-state="speaking"] .vo-orb .halo{transform:scale(calc(1 + var(--level, 0) * .22))}
+.vo-overlay[data-state="speaking"] .vo-orb .halo{background:radial-gradient(circle,rgba(53,245,199,.6),rgba(50,201,237,.28) 45%,transparent 70%)}
+.vo-overlay[data-state="speaking"] .vo-orb .swirl{animation-duration:4s}
+.vo-overlay[data-state="speaking"] .vo-orb .blob{opacity:1;filter:blur(20px)}
+.vo-overlay[data-state="speaking"] .vo-orb .ring{animation:vo-ring 2.1s ease-out infinite;animation-duration:calc(2.1s - var(--level, 0) * .7s)}
+.vo-overlay[data-state="speaking"] .vo-orb .ring.r2{animation-delay:.7s}
+.vo-overlay[data-state="speaking"] .vo-orb .ring.r3{animation-delay:1.4s}
+
+.vo-status{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.vo-status b{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.vo-status span{font-size:14px;color:#8ea6b3}
+.vo-bars{display:flex;gap:4px;height:18px;align-items:center}
+.vo-bars i{width:4px;border-radius:4px;background:#1ce7be;animation:vo-bar 1s ease-in-out infinite}
+.vo-bars i:nth-child(1){height:6px}.vo-bars i:nth-child(2){height:14px;animation-delay:.15s}.vo-bars i:nth-child(3){height:18px;animation-delay:.3s}.vo-bars i:nth-child(4){height:10px;animation-delay:.45s}.vo-bars i:nth-child(5){height:6px;animation-delay:.6s}
+@keyframes vo-bar{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.2)}}
+
+.vo-controls{display:flex;align-items:flex-end;gap:26px;margin-top:6px}
+.vo-btn{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#a9c4cf;background:none;border:0;cursor:pointer;font-family:inherit}
+.vo-btn .c{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#f4fbfd}
+.vo-btn.end .c{width:72px;height:72px;background:linear-gradient(160deg,#ff5a52,#d92d2d);border:0;box-shadow:0 12px 30px rgba(217,45,45,.45);color:#fff}
+.vo-hint{position:absolute;bottom:26px;left:0;right:0;text-align:center;font-size:12.5px;color:#6f8894}
+
+@media (max-width:520px){
+  .vo-orb{--s:220px}.vo-stage{gap:26px}.vo-stage .vo-chip{margin-bottom:22px}.vo-status b{font-size:20px}
+  .vo-fab{right:16px;bottom:16px;padding:6px}.vo-fab .t{display:none}
+}
+@media (prefers-reduced-motion:reduce){.vo-orb,.vo-orb *{animation:none!important}}

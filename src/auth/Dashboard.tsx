@@ -4,13 +4,14 @@ import { useAuth } from "./AuthContext";
 import { ICONS, MINI_APPS, USER_TYPE_LABELS } from "./miniApps";
 import Avatar from "./Avatar";
 import Shell from "./Shell";
+import VoiceChat from "../voice/VoiceChat";
 
 const greeting = (hour: number) => hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
 export default function Dashboard() {
   const { can, profile, type } = useAuth();
   const apps = MINI_APPS.filter((app) => can(app.id));
-  return <Shell title={profile ? `${greeting(new Date().getHours())}, ${profile.firstName}` : "Dashboard"} eyebrow="Workspace" watermark>
+  return <><Shell title={profile ? `${greeting(new Date().getHours())}, ${profile.firstName}` : "Dashboard"} eyebrow="Workspace" watermark>
     {profile && <div className="portal-welcome">
       <Avatar src={profile.photo} firstName={profile.firstName} lastName={profile.lastName} size={56} />
       <p className="portal-lead">{type ? USER_TYPE_LABELS[type] : ""} · {profile.email}</p>
@@ -26,5 +27,7 @@ export default function Dashboard() {
         </Link>;
       })}
     </section>
-  </Shell>;
+  </Shell>
+  {type && <VoiceChat />}
+  </>;
 }

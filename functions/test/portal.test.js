@@ -151,7 +151,7 @@ test("Resend uses the Uniquem sender and the RESEND_API_KEY secret", async () =>
 });
 
 test("every callable except the public inquiry and getAccess is guarded, and removed apps are gone", () => {
-  const sources = { "../index.js": read("../index.js"), "../profile-functions.js": read("../profile-functions.js"), "../users-functions.js": read("../users-functions.js"), "../inventory-functions.js": read("../inventory-functions.js") };
+  const sources = { "../index.js": read("../index.js"), "../profile-functions.js": read("../profile-functions.js"), "../users-functions.js": read("../users-functions.js"), "../inventory-functions.js": read("../inventory-functions.js"), "../voice-functions.js": read("../voice-functions.js") };
   const callables = (source) => source.split(/export const (\w+) = onCall\(/).slice(1).reduce((all, part, index, parts) => (index % 2 === 0 ? [...all, { name: part, body: parts[index + 1].split(/\nexport /)[0] }] : all), []);
   const open = new Set(["submitContactInquiry", "getAccess"]);
   const names = [];
@@ -159,11 +159,11 @@ test("every callable except the public inquiry and getAccess is guarded, and rem
     for (const { name, body } of callables(source)) {
       names.push(name);
       if (open.has(name)) continue;
-      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? /requireMiniApp\(request, "inventoryBot"\)/ : /requireMiniApp\(request, "contact"\)/;
+      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? /requireMiniApp\(request, "inventoryBot"\)/ : file.includes("voice") ? /requireSignedIn\(request\)/ : /requireMiniApp\(request, "contact"\)/;
       assert.match(body, guard, `${name} in ${file}`);
     }
   }
-  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMoveTicket", "inventoryBotOpenXpressWell", "inventoryBotRequestWellRefresh", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser"]);
+  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMoveTicket", "inventoryBotOpenXpressWell", "inventoryBotRequestWellRefresh", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser", "voiceChatToken"]);
   const tree = readdirSync(new URL("..", import.meta.url));
   assert.equal(tree.includes("apps"), false);
   const bundle = names.join("\n") + read("../index.js");

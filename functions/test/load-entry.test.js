@@ -8,4 +8,5 @@ test("the functions entry loads, so a bad export fails before deploy", async () 
   assert.equal(typeof loaded.inventoryBotRequestWellRefresh, "function");
   assert.equal(typeof loaded.inventoryBotGrokSort, "function");
   assert.equal(typeof loaded.submitContactInquiry, "function");
+  assert.equal(typeof loaded.voiceChatToken, "function");
 });

@@ -50,3 +50,4 @@ export const getAccess = onCall(callable, async (request) => {
 export * from "./profile-functions.js";
 export * from "./users-functions.js";
 export * from "./inventory-functions.js";
+export * from "./voice-functions.js";

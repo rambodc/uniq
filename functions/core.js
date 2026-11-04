@@ -56,3 +56,9 @@ export async function requireSuperAdmin(request, database = db) {
   if (!access || access.type !== SUPER_ADMIN) throw new HttpsError("permission-denied", "This account is not authorized.");
   return access;
 }
+/** Throws "not authorized" unless the account is an active signed-in staff member or super admin. */
+export async function requireSignedIn(request, database = db) {
+  const access = await resolveAccess(request, database);
+  if (!access) throw new HttpsError("permission-denied", "This account is not authorized.");
+  return access;
+}
