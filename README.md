@@ -72,6 +72,7 @@ Deployed functions:
 - `setMyPhoto`, `removeMyPhoto`, `getMyPhoto`
 - `listUsers`, `createUser`, `updateUser`, `setUserDisabled`, `sendUserInvite`
 - `inventoryBotXpressBoard`, `inventoryBotMoveTicket`, `inventoryBotLinkAppWell`, `inventoryBotOpenXpressWell`, `inventoryBotGrokSort`
+- `voiceChatToken` — dashboard voice chat. Mints a five-minute xAI ephemeral token. Uses the existing Secret Manager secret `XAI_API_KEY` (the same key Inventory Bot already uses for Grok). The browser never receives that key.
 
 Removed on the next functions deploy (`--force` deletes functions that are no longer exported): `inventoryBotRunChecks`, `inventoryBotRunWritten`, `inventoryBotGetToday`, `inventoryBotGetCoverage`, `inventoryBotGetWell`, `inventoryBotListWells`, `inventoryBotUpdateIssue`, `inventoryBotListFlags`, `inventoryBotSetFlag`, `inventoryBotListTickets`, `inventoryBotGetTicket`, `inventoryBotTicketUrl`, `inventoryBotListWarehouses`, `inventoryBotListChat`, `inventoryBotChat`. Ticket and stock documents stay. The collector keeps writing those. Nothing in this repo rebuilds the old check collections.
 

@@ -85,6 +85,7 @@ export const inventoryBotLinkAppWell = (data: { cardId: string; appWellId: strin
 export const inventoryBotOpenXpressWell = (cardId: string) => invoke<{ cardId: string }, OpenXpressWell>("inventoryBotOpenXpressWell", { cardId });
 export const inventoryBotRequestWellRefresh = (wellId: string) => invoke<{ wellId: string }, { ok: boolean }>("inventoryBotRequestWellRefresh", { wellId });
 export const inventoryBotGrokSort = () => invoke<undefined, { suggestions: { ticketId: string; cardId: string; confidence: string; reason: string }[]; accepted: number }>("inventoryBotGrokSort");
+export const voiceChatToken = () => invoke<undefined, { token: string; expiresAt: number | null }>("voiceChatToken");
 
 export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);
 export const removeMyPhoto = () => invoke("removeMyPhoto");
