@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { inventoryBotLinkAppWell, inventoryBotOpenXpressWell, inventoryBotRequestWellRefresh, messageOf, type AppWellOption, type OpenXpressWell, type WellCandidate, type XpressCard, type XpressTicket } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import { useBoard } from "./boardState";
-import { BackToBoard, InventoryFrame, pretty, Rig } from "./parts";
+import { BackToBoard, InventoryFrame, pretty, Rig, TicketPdf } from "./parts";
 import "./xpress.css";
 
 function lsdBits(value: string) {
@@ -264,7 +264,7 @@ export default function WellPage() {
 
 function TicketLines({ ticket, found }: { ticket: XpressTicket; found: boolean }) {
   return <>
-    <tr className="grp"><td colSpan={3}><span className="xb-mono">{ticket.number}</span> <span className="xb-note">· {ticketKind(ticket)} · {pretty(ticket.date)}</span></td><td>{found && <span className="xb-tick">✓ found in app</span>}</td></tr>
+    <tr className="grp"><td colSpan={3}><TicketPdf ticket={ticket} plain /> <span className="xb-note">· {ticketKind(ticket)} · {pretty(ticket.date)}</span></td><td>{found && <span className="xb-tick">✓ found in app</span>}</td></tr>
     {ticket.lines.map((line, index) => <tr key={`${line.name}-${index}`}><td>{line.name}</td><td className="xb-note">{line.unit}</td><td className="num">{line.qty}</td><td /></tr>)}
   </>;
 }

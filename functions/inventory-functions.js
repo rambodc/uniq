@@ -48,6 +48,7 @@ function xpressTicket(id, data) {
     customer: data.customer || "", wellName: data.wellName || "", shipTo: data.shipTo || data.shipToName || "",
     shippedAt: data.shippedAt || null, deliveredAt: data.deliveredAt || null, date: data.date || null, postedAt: data.postedAt || null,
     collectedAt: data.collectedAt || null, total: asNumber(data.total),
+    hasPdf: data.hasPdf === true, pdfPath: typeof data.pdfPath === "string" ? data.pdfPath : "",
     lines: Array.isArray(data.lines) ? data.lines.map((line) => ({ name: line.name || line.product || "", qty: asNumber(line.qty) || 0, unit: line.unit || "", price: asNumber(line.price) || 0 })) : [],
   };
 }

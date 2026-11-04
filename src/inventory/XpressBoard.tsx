@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { XpressCard, XpressTicket } from "../core/api";
 import { useBoard } from "./boardState";
-import { dot, InventoryFrame, pretty, Rig } from "./parts";
+import { canOpenTicketPdf } from "./ticketPdf";
+import { dot, InventoryFrame, pretty, Rig, TicketPdf } from "./parts";
 import "./xpress.css";
 
 function lineCount(card: XpressCard) {
@@ -35,7 +36,7 @@ export default function XpressBoard() {
   const cards = useMemo(() => (board?.cards || []).filter((card) => !needle || `${card.name} ${card.operator} ${card.lsd} ${card.rig} ${card.tickets.map((ticket) => ticket.number).join(" ")}`.toLowerCase().includes(needle)), [board, needle]);
   const loose = useMemo(() => (board?.unassigned || []).filter((ticket) => !needle || `${ticket.number} ${ticket.customer} ${ticket.shipTo} ${ticket.rig} ${ticket.lsd}`.toLowerCase().includes(needle)), [board, needle]);
 
-  return <InventoryFrame pulledAt={board?.pulledAt}>
+  return <InventoryFrame pulledAt={board?.pulledAt} home>
     <div className="xb-tabs" role="tablist">
       <button className="xb-tab on" type="button" role="tab" aria-selected="true">Xpress</button>
       <button className="xb-tab off" type="button" role="tab" aria-selected="false" disabled>MIM <span className="xb-soon">coming next</span></button>
@@ -59,33 +60,43 @@ export default function XpressBoard() {
       <span><i className="xb-dot n" /> No app well linked yet</span>
     </div>
     {!board && !error ? <p className="xb-note">Loading Xpress tickets…</p> : <div className="xb-grid">
-      {cards.map((card) => <Link className="xb-card" key={card.id} to={`/inventory-bot/well/${encodeURIComponent(card.id)}`}>
-        <div className={`xb-accent ${card.status.tone}`} />
-        <div className="xb-top">
-          <div><div className="xb-name">{card.name}</div><div className="xb-op">{card.operator || "Operator not on ticket"}</div></div>
-          <Rig />
-        </div>
-        <div className="xb-meta">
-          <span className="xb-chip"><b>LSD</b> {card.lsd || "—"}</span>
-          <span className="xb-chip"><b>Rig</b> {card.rig || "—"}</span>
-        </div>
-        <div className="xb-stats">
-          <div className="xb-stat"><strong>{card.ticketCount}</strong><span>Tickets</span></div>
-          <div className="xb-stat"><strong>{lineCount(card)}</strong><span>Product lines</span></div>
-        </div>
-        <div className="xb-chips">{card.tickets.map((ticket) => <span key={ticket.id} className={ticket.return ? "ret" : ""}>{ticket.number}{ticket.return ? " · return" : ""} · {pretty(ticket.date)}</span>)}</div>
-        <div className="xb-foot">
-          <span className="xb-status"><i className={`xb-dot ${dot(card.link.state === "linked" && !card.match.compared ? "amber" : card.status.tone)}`} />{statusText(card)}</span>
-          <span>App well: <span className={`xb-app ${card.link.state}`}>{card.link.state === "linked" ? "● linked" : card.link.state === "suggested" ? "◐ suggested" : "○ none"}</span></span>
-        </div>
-      </Link>)}
+      {cards.map((card) => {
+        const wellUrl = `/inventory-bot/well/${encodeURIComponent(card.id)}`;
+        return <article className="xb-card" key={card.id}>
+          <div className={`xb-accent ${card.status.tone}`} />
+          <Link className="xb-card-link" to={wellUrl}>
+            <div className="xb-top">
+              <div><div className="xb-name">{card.name}</div><div className="xb-op">{card.operator || "Operator not on ticket"}</div></div>
+              <Rig />
+            </div>
+            <div className="xb-meta">
+              <span className="xb-chip"><b>LSD</b> {card.lsd || "—"}</span>
+              <span className="xb-chip"><b>Rig</b> {card.rig || "—"}</span>
+            </div>
+            <div className="xb-stats">
+              <div className="xb-stat"><strong>{card.ticketCount}</strong><span>Tickets</span></div>
+              <div className="xb-stat"><strong>{lineCount(card)}</strong><span>Product lines</span></div>
+            </div>
+          </Link>
+          <div className="xb-chips">{card.tickets.map((ticket) => {
+            const label = `${ticket.number}${ticket.return ? " · return" : ""} · ${pretty(ticket.date)}`;
+            return canOpenTicketPdf(ticket) ? <TicketPdf key={ticket.id} ticket={ticket} label={label} mark={ticket.return} /> : <span key={ticket.id} className={ticket.return ? "ret" : ""}>{label}</span>;
+          })}</div>
+          <Link className="xb-card-link" to={wellUrl}>
+            <div className="xb-foot">
+              <span className="xb-status"><i className={`xb-dot ${dot(card.link.state === "linked" && !card.match.compared ? "amber" : card.status.tone)}`} />{statusText(card)}</span>
+              <span>App well: <span className={`xb-app ${card.link.state}`}>{card.link.state === "linked" ? "● linked" : card.link.state === "suggested" ? "◐ suggested" : "○ none"}</span></span>
+            </div>
+          </Link>
+        </article>;
+      })}
     </div>}
     <h3 className="xb-sec">Tickets not on a well {loose.length > 0 && <span>{loose.length}</span>}</h3>
     <p className="xb-sec-p">These tickets have no usable rig or LSD. “Move to well” opens a page where you pick the well card.</p>
     <div className="xb-un">
       <div className="xb-row head"><span>Ticket</span><span>Type</span><span>Customer</span><span>Date</span><span>Why it is here</span><span /></div>
       {loose.map((ticket) => <div className="xb-row" key={ticket.id}>
-        <span className="xb-mono">{ticket.number}</span>
+        <span><TicketPdf ticket={ticket} plain /></span>
         <span>{ticket.type || "—"}</span>
         <span>{ticket.customer || ticket.shipTo || "No customer"}</span>
         <span>{pretty(ticket.date)}</span>

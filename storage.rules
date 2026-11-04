@@ -1,7 +1,24 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Profile photos and every other object are read and written only by Cloud Functions.
+    // Ticket PDFs are the one client read. Signed-in staff with Inventory Bot, and super admins, can read them. Nobody can write from a browser.
+    function canReadInventoryTickets() {
+      let user = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && user.disabled != true
+        && user.email == request.auth.token.email.lower()
+        && user.firstName is string
+        && user.lastName is string
+        && (user.type == "super_admin" || (user.miniApps is list && user.miniApps.hasAny(["inventoryBot"])));
+    }
+    match /inventoryBot/tickets/{file=**} {
+      allow read: if canReadInventoryTickets();
+      allow write: if false;
+    }
+    // Profile photos and every other object stay closed. Callables write those.
     match /{allPaths=**} {
       allow read, write: if false;
     }
