@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { PageShell } from "../auth/Shell";
 import { canOpenTicketPdf, openTicketPdf } from "./ticketPdf";
 
 export function pretty(date: string) {
@@ -34,24 +34,13 @@ export function Rig() {
   </svg>;
 }
 
-export function InventoryFrame({ pulledAt, home, source, children }: { pulledAt?: string; home?: boolean; source?: "xpress" | "mim"; children: ReactNode }) {
-  return <div className="xb">
-    <div className="xb-wrap">
-      {home && <Link className="xb-back" to="/dashboard">← Back to Dashboard</Link>}
-      <header className="xb-head">
-        <Link className="xb-brand" to="/dashboard">
-          <span className="xb-logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="#04201d" /></svg></span>
-          <span>UniqEnergy<small>Inventory Bot · field delivery check</small></span>
-        </Link>
-        <div className="xb-pull">{pulledLabel(pulledAt || "", source)}</div>
-      </header>
+export function InventoryFrame({ title, eyebrow = "Inventory Bot", backTo = "/dashboard", pulledAt, source, children }: { title: string; eyebrow?: string; backTo?: string; pulledAt?: string; source?: "xpress" | "mim"; children: ReactNode }) {
+  return <PageShell title={title} eyebrow={eyebrow} appId="inventoryBot" back backTo={backTo}>
+    <div className="xb">
+      {pulledAt !== undefined && <p className="xb-pull">{pulledLabel(pulledAt || "", source)}</p>}
       {children}
     </div>
-  </div>;
-}
-
-export function BackToBoard({ to = "/inventory-bot" }: { to?: string }) {
-  return <Link className="xb-back" to={to}>← Back to board</Link>;
+  </PageShell>;
 }
 
 export function TicketPdf({ ticket, label, plain, mark }: { ticket: { number: string; hasPdf?: boolean; pdfPath?: string }; label?: string; plain?: boolean; mark?: boolean }) {

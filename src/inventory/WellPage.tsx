@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { inventoryBotRequestWellRefresh, messageOf, type AppWellOption, type OpenXpressWell, type WellCandidate, type XpressCard, type XpressTicket } from "../core/api";
 import { previewInventory } from "../auth/preview";
 import { useBoard } from "./boardState";
-import { BackToBoard, InventoryFrame, pretty, Rig, TicketPdf } from "./parts";
+import { InventoryFrame, pretty, Rig, TicketPdf } from "./parts";
 import "./xpress.css";
 
 function lsdBits(value: string) {
@@ -149,13 +149,11 @@ export default function WellPage() {
     return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number));
   }, [open]);
 
-  return <InventoryFrame pulledAt={board?.pulledAt} source={source}>
-    <BackToBoard to={home} />
-    {!card ? <h1>That well card is not on the board.</h1> : <>
+  return <InventoryFrame title={card?.name || "Well"} backTo={home} pulledAt={board?.pulledAt} source={source}>
+    {!card ? <h2>That well card is not on the board.</h2> : <>
       <div className="xb-title">
         <div>
-          <h1>{card.name}</h1>
-          <p className="xb-sub">{[card.operator, "Xpress well card", `${card.ticketCount} tickets`].filter(Boolean).join(" · ")}</p>
+          <p className="xb-sub">{[card.operator, source === "mim" ? "MIM well card" : "Xpress well card", `${card.ticketCount} tickets`].filter(Boolean).join(" · ")}</p>
         </div>
         <div className="xb-meta">
           <span className="xb-chip"><b>LSD</b> {card.lsd || "—"}</span>

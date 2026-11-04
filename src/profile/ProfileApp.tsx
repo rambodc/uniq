@@ -4,7 +4,7 @@ import { auth } from "../core/firebase";
 import { getMyPhoto, messageOf, removeMyPhoto, setMyPhoto } from "../core/api";
 import { useAuth } from "../auth/AuthContext";
 import { previewActive } from "../auth/preview";
-import Shell from "../auth/Shell";
+import { PageShell } from "../auth/Shell";
 import Avatar from "../auth/Avatar";
 import { prepareAvatar } from "./avatar";
 import { checkPasswordChange, passwordErrorMessage } from "./password";
@@ -69,7 +69,7 @@ export default function ProfileApp() {
     } catch (cause) { setPasswordError(passwordErrorMessage(cause)); } finally { setBusy(false); }
   }
 
-  return <Shell title="Profile" eyebrow="Your account" appId="profile" back>
+  return <PageShell title="Profile" eyebrow="Your account" appId="profile" back>
     <div className="portal-profile">
     <div className="portal-profile-grid">
     <section className="portal-panel">
@@ -111,5 +111,5 @@ export default function ProfileApp() {
     </details>
     <button type="button" className="portal-logout" onClick={() => void logout()}>Log out</button>
     </div>
-  </Shell>;
+  </PageShell>;
 }

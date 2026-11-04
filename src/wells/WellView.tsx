@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { asList, dayLabel, grouped, loadGroup, loadWell, money, prettyEmail, type DocMap } from "./data";
-import { BackLink, WellsFrame } from "./chrome";
+import { WellsPage } from "./chrome";
 
 const TABS = ["properties", "reports", "products", "inventory", "costs", "safety", "notes", "volumes", "documents"] as const;
 type Tab = (typeof TABS)[number];
@@ -43,12 +43,10 @@ export default function WellView() {
     documents: Number(derived.documents) || undefined,
   };
 
-  return <WellsFrame copiedAt={String(well?.copiedAt || "")}>
-    <BackLink to="/wells">← Back to Older Wells</BackLink>
-    {well === undefined ? <p className="wl-note">Loading well…</p> : !well ? <h1>That well is not in the copy.</h1> : <>
+  return <WellsPage title={well ? String(well.name || id) : "Well"} backTo="/wells" copiedAt={well ? String(well.copiedAt || "") : ""}>
+    {well === undefined ? <p className="wl-note">Loading well…</p> : !well ? <h2>That well is not in the copy.</h2> : <>
       <div className="wl-title">
         <div>
-          <h1>{String(well.name || id)}</h1>
           <p className="wl-sub">{[well.operator_name, well.contractor_name, well.rig_name && `Rig ${well.rig_name}`, well.status].filter(Boolean).join(" · ")}</p>
         </div>
         <div className="wl-chips">
@@ -69,7 +67,7 @@ export default function WellView() {
       {current === "volumes" && <Volumes id={id} />}
       {current === "documents" && <Documents id={id} />}
     </>}
-  </WellsFrame>;
+  </WellsPage>;
 }
 
 function Field({ label, value }: { label: string; value: unknown }) {

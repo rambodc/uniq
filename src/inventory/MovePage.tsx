@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { messageOf, type XpressCard, type XpressTicket } from "../core/api";
 import { useBoard } from "./boardState";
-import { BackToBoard, InventoryFrame, pretty, TicketPdf } from "./parts";
+import { InventoryFrame, pretty, TicketPdf } from "./parts";
 import "./xpress.css";
 
 function recentCards(cards: XpressCard[]) {
@@ -43,12 +43,10 @@ export default function MovePage() {
     }
   }
 
-  return <InventoryFrame pulledAt={board?.pulledAt} source={source}>
-    <BackToBoard to={home} />
-    {!ticket ? <h1>That ticket is not on the board.</h1> : <>
+  return <InventoryFrame title={ticket ? `Move ${ticket.number}` : "Move ticket"} backTo={home} pulledAt={board?.pulledAt} source={source}>
+    {!ticket ? <h2>That ticket is not on the board.</h2> : <>
       <div className="xb-title">
         <div>
-          <h1>Move ticket {ticket.number}</h1>
           <TicketPdf ticket={ticket} label="Open PDF" />
           <p className="xb-sub">{[ticket.type === "TT" ? "Trucking" : ticket.type === "CT" || ticket.return ? "Return" : "Delivery", pretty(ticket.date), ticket.customer || ticket.shipTo, ticket.type === "TT" ? ticket.warehouseName : "", !ticket.lsd && !ticket.rig ? "no rig or LSD on the ticket" : ""].filter(Boolean).join(" · ")}</p>
         </div>

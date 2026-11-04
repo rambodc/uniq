@@ -97,6 +97,10 @@
   .portal-toolbar form{max-width:none}
   .portal-photo{align-items:flex-start}
   .portal-bar,.portal-main{width:min(100% - 28px,1100px)}
+  .portal-bar{flex-wrap:wrap;align-items:flex-start}
+  .portal-back-link{max-width:100%}
+  .portal-page-head{align-items:flex-start}
+  .portal-page-head h1{overflow-wrap:anywhere}
   .portal-logout,.mail-actions .portal-text-button{width:100%}
   .inv-filters{grid-template-columns:1fr 1fr}
   .inv-ask{grid-template-columns:1fr}

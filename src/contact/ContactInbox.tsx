@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { listContactInquiries, messageOf, type Inquiry } from "../core/api";
 import { previewInquiries } from "../auth/preview";
-import Shell from "../auth/Shell";
+import { PageShell } from "../auth/Shell";
 import { formatInquiryDate, inboxRows, inquiryLabel, messagePath, previewText, rememberInboxScroll, restoreInboxScroll } from "./inbox";
 
 export default function ContactInbox() {
@@ -47,7 +47,7 @@ export default function ContactInbox() {
     setParams(next);
   }
 
-  return <Shell title="Contact Form" eyebrow="Inbox" appId="contact" back>
+  return <PageShell title="Contact Form" eyebrow="Inbox" appId="contact" back>
     <p className="portal-lead">Messages from the public contact form, newest first.</p>
     <div className="portal-toolbar">
       <div className="portal-segment" role="tablist" aria-label="Message folder">
@@ -73,5 +73,5 @@ export default function ContactInbox() {
         </li>)}
       </ul>}
     </>}
-  </Shell>;
+  </PageShell>;
 }
