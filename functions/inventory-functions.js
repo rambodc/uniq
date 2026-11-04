@@ -7,8 +7,9 @@ import { FieldPath } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { db, callable, requireMiniApp, text } from "./core.js";
 import { copiedReportRows, isTestWell } from "./inventoryBot/copiedReports.js";
-import { docSlug, lsdNorm } from "./inventoryBot/engine.js";
+import { dayKey, docSlug, lsdNorm } from "./inventoryBot/engine.js";
 import { acceptGrokLink, askGrokLinks, askGrokSort } from "./inventoryBot/grokSort.js";
+import { buildRigBoard, correctionDocId } from "./inventoryBot/rigMatch.js";
 import { acceptGrokMove, applyCitation, buildXpressBoard, cardsNeedingCitation, cardsNeedingGrok, citesWarehouseTicket, citedWellIds, ticketsNeedingGrok } from "./inventoryBot/xpressBoard.js";
 
 const xaiApiKey = defineSecret("XAI_API_KEY");
@@ -185,9 +186,39 @@ async function publishBoard(request, source) {
   };
 }
 
-export const inventoryBotXpressBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
+async function writeMatches(matches, prior) {
+  const pending = matches.filter((row) => {
+    const current = prior.get(row.id) || {};
+    return current.rigKey !== row.rigKey || current.matchReason !== row.matchReason || current.matchConfidence !== row.matchConfidence;
+  });
+  for (let index = 0; index < pending.length; index += 400) {
+    const batch = db.batch();
+    for (const row of pending.slice(index, index + 400)) {
+      batch.set(col("tickets").doc(row.id), { rigKey: row.rigKey, matchReason: row.matchReason, matchConfidence: row.matchConfidence }, { merge: true });
+    }
+    await batch.commit();
+  }
+}
+
+async function publishRigBoard(request) {
   await requireMiniApp(request, "inventoryBot");
-  return publishBoard(request, "xpress");
+  const [ticketSnap, wellSnap, correctionSnap] = await Promise.all([
+    col("tickets").where("source", "==", "xpress").get(),
+    col("appWells").get(),
+    col("corrections").get(),
+  ]);
+  const tickets = ticketSnap.docs.map((doc) => ({ ...xpressTicket(doc.id, doc.data()), ticketNumber: doc.data().ticketNumber || "" }));
+  const wells = wellSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const corrections = correctionSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const board = buildRigBoard({ tickets, wells, corrections });
+  await writeMatches(board.matches, new Map(ticketSnap.docs.map((doc) => [doc.id, doc.data()])));
+  const pulledAt = tickets.map((ticket) => ticket.collectedAt).filter(Boolean).sort().at(-1) || "";
+  return { rigs: board.rigs, quietRigs: board.quietRigs, unassigned: board.unassigned, warehouse: board.warehouse, pulledAt };
+}
+
+export const inventoryBotXpressBoard = onCall({ ...callable, timeoutSeconds: 120 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  return publishRigBoard(request);
 });
 export const inventoryBotMimBoard = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {
   await requireMiniApp(request, "inventoryBot");
@@ -303,6 +334,74 @@ export const inventoryBotRequestWellRefresh = onCall(callable, async (request) =
     status: "pending",
   }, { merge: true });
   return { ok: true };
+});
+
+const RIG_KEY = /^[0-9]+~[a-z0-9]*$/;
+
+export const inventoryBotSaveCorrection = onCall(callable, async (request) => {
+  const access = await requireMiniApp(request, "inventoryBot");
+  const type = text(request.data?.type, "type", 40);
+  const note = clip(request.data?.note, 500);
+  const now = new Date().toISOString();
+  const by = access.email || "";
+  if (type === "merge") {
+    const alias = text(request.data?.rigKey, "rig", 200);
+    const into = text(request.data?.into, "rig", 200);
+    if (!RIG_KEY.test(alias) || !RIG_KEY.test(into) || alias === into) throw new HttpsError("invalid-argument", "Choose a different rig.");
+    const id = correctionDocId("merge", alias);
+    await col("corrections").doc(id).set({ id, type: "merge", rigKey: alias, into, by, at: now, note, undone: false, undoneBy: "", undoneAt: "" });
+    return { ok: true, id };
+  }
+  if (type === "wellRig" || type === "ticketRig") {
+    const rigKey = text(request.data?.rigKey, "rig", 200);
+    if (!RIG_KEY.test(rigKey)) throw new HttpsError("invalid-argument", "Choose a rig.");
+    const subject = type === "wellRig" ? text(request.data?.wellId, "well", 240) : text(request.data?.ticketId, "ticket", 200);
+    const id = correctionDocId(type === "wellRig" ? "well" : "ticket", subject);
+    const payload = { id, type, rigKey, by, at: now, note, undone: false, undoneBy: "", undoneAt: "" };
+    if (type === "wellRig") payload.wellId = subject;
+    else payload.ticketId = subject;
+    await col("corrections").doc(id).set(payload);
+    return { ok: true, id };
+  }
+  throw new HttpsError("invalid-argument", "Unknown correction.");
+});
+
+export const inventoryBotUndoCorrection = onCall(callable, async (request) => {
+  const access = await requireMiniApp(request, "inventoryBot");
+  const ids = (Array.isArray(request.data?.ids) ? request.data.ids : [request.data?.id])
+    .map((id) => clip(id, 240))
+    .filter((id) => /^(merge|well|ticket)__/.test(id))
+    .slice(0, 20);
+  if (!ids.length) throw new HttpsError("invalid-argument", "Nothing to undo.");
+  const now = new Date().toISOString();
+  await Promise.all(ids.map((id) => col("corrections").doc(id).set({ undone: true, undoneBy: access.email || "", undoneAt: now }, { merge: true })));
+  return { ok: true };
+});
+
+export const inventoryBotOpenAppWell = onCall({ ...callable, timeoutSeconds: 60 }, async (request) => {
+  await requireMiniApp(request, "inventoryBot");
+  const wellId = text(request.data?.wellId, "well", 240);
+  const wellSnap = await col("appWells").doc(wellId).get();
+  const data = wellSnap.exists ? wellSnap.data() : null;
+  if (!data || isTestWell(data)) throw new HttpsError("not-found", "That well is not on the board.");
+  const docs = await latestCopiedReports(wellId);
+  const reports = docs.map((doc) => {
+    const row = doc.data() || {};
+    return { id: doc.id, date: dayKey(row.date || row.reportDate || "") || String(row.date || "").slice(0, 10), number: String(row.number || row.reportNumber || doc.id) };
+  });
+  return {
+    well: {
+      id: wellId,
+      name: data.name || "",
+      lsd: data.lsd || "",
+      status: data.status || "",
+      operator: data.operator || data.operator_name || "",
+      rig: String(data.rig ?? ""),
+      firstReport: dayKey(data.firstReportDate || ""),
+      lastReport: dayKey(data.lastReportDate || ""),
+    },
+    reports,
+  };
 });
 
 export const inventoryBotGrokSort = onCall({ ...callable, secrets: [xaiApiKey], timeoutSeconds: 120 }, async (request) => {

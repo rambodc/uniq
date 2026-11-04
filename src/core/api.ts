@@ -78,8 +78,15 @@ export type WellCandidate = { id: string; name: string; lsd: string; rig: string
 export type XpressCard = { id: string; name: string; operator: string; lsd: string; lsdNorm: string; rig: string; ticketCount: number; totalValue: number; tickets: XpressTicket[]; status: { tone: "green" | "amber" | "red" | "grey"; label: string }; link: { state: "linked" | "suggested" | "none"; appWellId: string; reason: string; source: string; name?: string; candidates?: WellCandidate[]; citedWellIds?: string[]; grok?: { appWellId: string; name?: string; reason: string } | null }; match: { matched: number; waiting: number; missing: number; compared: boolean } };
 export type AppWellOption = { id: string; name: string; lsd: string; lsdNorm: string; rig: string; operator: string; status: string };
 export type XpressBoard = { cards: XpressCard[]; unassigned: XpressTicket[]; warehouseOnly?: number; pulledAt: string; directory: { reads: number; added: number; operators?: number; cardsAsked?: number; error: string; linkError?: string }; appWells: AppWellOption[] };
+export type RigTone = "green" | "amber" | "red" | "grey";
+export type RigWell = { id: string; name: string; lsd: string; lsdNorm: string; status: string; operator: string; rig: string; firstReport: string; lastReport: string; moved: boolean; correctionId: string; reports?: { id: string; date: string; number: string }[] };
+export type RigTicket = XpressTicket & { rigKey: string; matchReason: string; matchConfidence: RigTone; note: string; moved: boolean; correctionId: string };
+export type RigAlias = { key: string; correctionId: string };
+export type RigCard = { key: string; name: string; operator: string; xpressName: string; appRig: string; appRigs: string[]; merged: boolean; aliases: RigAlias[]; currentWell: RigWell | null; wells: RigWell[]; wellCount: number; tickets: RigTicket[]; ticketCount: number; lineCount: number; latest: string; note: string; status: { tone: RigTone; label: string } };
+export type RigBoard = { rigs: RigCard[]; quietRigs: RigCard[]; unassigned: RigTicket[]; warehouse: RigTicket[]; pulledAt: string };
+export type AppWellView = { well: { id: string; name: string; lsd: string; status: string; operator: string; rig: string; firstReport: string; lastReport: string }; reports: { id: string; date: string; number: string }[] };
 export type OpenXpressWell = { appWell: AppWellOption | null; appTickets: { reportId: string; reportNumber?: string; index: string; date: string; rawTicket: string; kind: string; products: number; warehouse: boolean; description: string; lines?: { name: string; qty: number; unit: string }[] }[]; tickets: (XpressTicket & { inApp?: string })[]; match: { matched: number; missing: number; waiting: number }; reads: { well: number; reports: number; reportCount: number }; unavailable?: boolean; note?: string; appDataAsOf?: string; syncStatus?: string };
-export const inventoryBotXpressBoard = () => invoke<undefined, XpressBoard>("inventoryBotXpressBoard");
+export const inventoryBotXpressBoard = () => invoke<undefined, RigBoard>("inventoryBotXpressBoard");
 export const inventoryBotMimBoard = () => invoke<undefined, XpressBoard>("inventoryBotMimBoard");
 export const inventoryBotMoveTicket = (data: { ticketId: string; cardId?: string; source?: "xpress" | "mim"; create?: { name: string; operator?: string; lsd?: string; rig?: string } }) => invoke<typeof data, { ok: boolean; cardId: string }>("inventoryBotMoveTicket", data);
 export const inventoryBotLinkAppWell = (data: { cardId: string; appWellId: string; appWellName?: string; source?: "xpress" | "mim" }) => invoke<typeof data, { ok: boolean }>("inventoryBotLinkAppWell", data);
@@ -87,6 +94,9 @@ export const inventoryBotOpenXpressWell = (cardId: string) => invoke<{ cardId: s
 export const inventoryBotOpenMimWell = (cardId: string) => invoke<{ cardId: string }, OpenXpressWell>("inventoryBotOpenMimWell", { cardId });
 export const inventoryBotRequestWellRefresh = (wellId: string) => invoke<{ wellId: string }, { ok: boolean }>("inventoryBotRequestWellRefresh", { wellId });
 export const inventoryBotGrokSort = () => invoke<undefined, { suggestions: { ticketId: string; cardId: string; confidence: string; reason: string }[]; accepted: number }>("inventoryBotGrokSort");
+export const inventoryBotSaveCorrection = (data: { type: "merge" | "wellRig" | "ticketRig"; rigKey: string; into?: string; wellId?: string; ticketId?: string; note?: string }) => invoke<typeof data, { ok: boolean; id: string }>("inventoryBotSaveCorrection", data);
+export const inventoryBotUndoCorrection = (data: { id?: string; ids?: string[] }) => invoke<typeof data, { ok: boolean }>("inventoryBotUndoCorrection", data);
+export const inventoryBotOpenAppWell = (wellId: string) => invoke<{ wellId: string }, AppWellView>("inventoryBotOpenAppWell", { wellId });
 export const voiceChatToken = () => invoke<undefined, { token: string; expiresAt: number | null }>("voiceChatToken");
 
 export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);

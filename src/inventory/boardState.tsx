@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { inventoryBotLinkAppWell, inventoryBotMimBoard, inventoryBotMoveTicket, inventoryBotOpenMimWell, inventoryBotOpenXpressWell, inventoryBotXpressBoard, messageOf, type OpenXpressWell, type XpressBoard } from "../core/api";
+import { inventoryBotLinkAppWell, inventoryBotMimBoard, inventoryBotMoveTicket, inventoryBotOpenMimWell, messageOf, type OpenXpressWell, type XpressBoard } from "../core/api";
 import { previewInventory } from "../auth/preview";
 
 export type BoardSource = "xpress" | "mim";
@@ -20,12 +20,12 @@ const BoardContext = createContext<BoardState | null>(null);
 
 export function BoardProvider({ source, children }: { source: BoardSource; children: ReactNode }) {
   const previewData = previewInventory();
-  const sample = source === "mim" ? previewData?.mim : previewData?.xpress;
-  const [board, setBoard] = useState<XpressBoard | null>(sample ?? null);
+  const sample = source === "mim" ? previewData?.mim ?? null : null;
+  const [board, setBoard] = useState<XpressBoard | null>(sample);
   const [error, setError] = useState("");
-  const home = source === "mim" ? "/inventory-bot/mim" : "/inventory-bot";
-  const load = source === "mim" ? inventoryBotMimBoard : inventoryBotXpressBoard;
-  const openWell = source === "mim" ? inventoryBotOpenMimWell : inventoryBotOpenXpressWell;
+  const home = "/inventory-bot/mim";
+  const load = inventoryBotMimBoard;
+  const openWell = inventoryBotOpenMimWell;
 
   async function reload() {
     if (sample) return;
@@ -38,10 +38,9 @@ export function BoardProvider({ source, children }: { source: BoardSource; child
   }
 
   useEffect(() => {
-    if (sample) return;
-    const fetchBoard = source === "mim" ? inventoryBotMimBoard : inventoryBotXpressBoard;
+    if (sample || source !== "mim") return;
     let active = true;
-    fetchBoard().then((result) => {
+    inventoryBotMimBoard().then((result) => {
       if (!active) return;
       setBoard(result);
       setError("");
