@@ -6,6 +6,19 @@ export const EMAIL_FROM = "UniqEnergy Website <website@uniquem.ca>";
 export const EMAIL_TO = "rambodr@uniquem.ca";
 // Replies to invites come to the UniqEnergy inbox; inquiry replies go to the visitor.
 export const EMAIL_REPLY_TO = EMAIL_TO;
+// Public website enquiry notifications only. Invite mail does not use this list.
+export const WEBSITE_INQUIRY_NOTIFY = "rambodr@uniquem.ca,hrad@uniquem.ca";
+const RECIPIENT = /^\S+@\S+\.\S+$/;
+
+/** Splits the public-website enquiry recipient list. Order is kept and duplicates are dropped. */
+export function inquiryNotifyRecipients(value = WEBSITE_INQUIRY_NOTIFY) {
+  const raw = Array.isArray(value) ? value.join(",") : String(value ?? "");
+  const recipients = [...new Set(raw.split(",").map((part) => part.trim().toLowerCase()).filter(Boolean))];
+  if (recipients.length === 0 || recipients.some((address) => !RECIPIENT.test(address))) {
+    throw new Error("Website enquiry notifications need at least one valid recipient.");
+  }
+  return recipients;
+}
 export const SIGN_IN_URL = "https://uniqenergy.com/signin";
 
 export function formatMountainTimestamp(value = new Date()) {
@@ -39,12 +52,12 @@ export function formatInquiryEmail(inquiry) {
   ].filter(Boolean).join("\n");
 }
 
-export function buildInquiryEmail(inquiry, to = EMAIL_TO) {
+export function buildInquiryEmail(inquiry, to = WEBSITE_INQUIRY_NOTIFY) {
   // A unique, dated subject per submission so mail clients never thread leads together.
   const stamp = formatMountainTimestamp(inquiry.notificationTimestamp || new Date());
   const subject = `New UniqEnergy website inquiry${inquiry.productName ? ` (${inquiry.productName})` : ""} - ${stamp}`;
   // Reply goes straight to the visitor; phone-only leads reply to the inbox itself.
-  return { from: EMAIL_FROM, to: [to], reply_to: inquiry.email || EMAIL_REPLY_TO, subject, text: formatInquiryEmail(inquiry) };
+  return { from: EMAIL_FROM, to: inquiryNotifyRecipients(to), reply_to: inquiry.email || EMAIL_REPLY_TO, subject, text: formatInquiryEmail(inquiry) };
 }
 
 /** A failed Resend call. `transient` is true when trying again can help (network trouble, a timeout, 409 concurrent request, 429 or 5xx). */
@@ -105,7 +118,7 @@ async function sendEmail(message, apiKey, { idempotencyKey, retries = 0, fetchIm
  * Sends the notification. `inquiryId` makes the Resend idempotency key so a
  * retried call never sends a duplicate. Throws on any non-2xx response.
  */
-export function sendInquiryNotification(inquiry, apiKey, { inquiryId, to = EMAIL_TO, fetchImpl } = {}) {
+export function sendInquiryNotification(inquiry, apiKey, { inquiryId, to = WEBSITE_INQUIRY_NOTIFY, fetchImpl } = {}) {
   return sendEmail(buildInquiryEmail(inquiry, to), apiKey, { idempotencyKey: inquiryId ? `contact-inquiry/${inquiryId}` : undefined, fetchImpl });
 }
 

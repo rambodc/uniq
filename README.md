@@ -57,9 +57,9 @@ The browser cannot write Firestore. A signed-in person who can open Wells may re
 
 ## Email
 
-All application mail goes through Resend. The sender is `UniqEnergy Website <website@uniquem.ca>` (`EMAIL_FROM` in `functions/mailer.js`), the same verified uniquem.ca address Uniquem uses. Invite replies go to `rambodr@uniquem.ca`. Each new contact submission also notifies `rambodr@uniquem.ca`.
+All application mail goes through Resend. The sender is `UniqEnergy Website <website@uniquem.ca>` (`EMAIL_FROM` in `functions/mailer.js`), the same verified uniquem.ca address Uniquem uses. Invite replies go to `rambodr@uniquem.ca`. Each new public website enquiry notifies `rambodr@uniquem.ca` and `hrad@uniquem.ca`.
 
-`RESEND_API_KEY` is declared with `defineSecret` in `functions/core.js` and is already stored in Secret Manager for `uniqenergy-de71c`. Do not put that key in a dotenv file. The functions deploy binds the existing secret. The notification recipient is the non-secret parameter `CONTACT_NOTIFY_EMAIL`, committed in `functions/.env` as `rambodr@uniquem.ca` (the same value as the `defineString` default) so a non-interactive deploy does not prompt for it.
+`RESEND_API_KEY` is declared with `defineSecret` in `functions/core.js` and is already stored in Secret Manager for `uniqenergy-de71c`. Do not put that key in a dotenv file. The functions deploy binds the existing secret. The notification recipients are the non-secret parameter `CONTACT_NOTIFY_EMAIL`, committed in `functions/.env` as `rambodr@uniquem.ca,hrad@uniquem.ca` (the same value as the `defineString` default) so a non-interactive deploy does not prompt for it.
 
 Forgot-password mail is sent by Firebase Authentication, not Resend.
 
@@ -123,4 +123,4 @@ Do this in order. Do not deploy Hosting, Functions, or rules from a local shell.
 4. After that deploy is green, run the contact migration (dry run, then `--execute`).
 5. Run the wipe (dry run, then `--execute`). The wipe is what creates the first super admin and disconnects QuickBooks. Until it runs, old account records do not match the new user schema, so the workspace will not sign those accounts in. `contactInquiries` is kept and should already be migrated.
 
-The contact notification recipient is `rambodr@uniquem.ca`, committed in `functions/.env`.
+The public website enquiry notification recipients are `rambodr@uniquem.ca` and `hrad@uniquem.ca`, committed in `functions/.env`.

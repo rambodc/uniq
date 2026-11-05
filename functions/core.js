@@ -7,8 +7,8 @@ import { hasNames, profileView } from "./profile.js";
 
 /** Key for the Resend email API (inquiry notifications and user invites). Never logged. */
 export const resendApiKey = defineSecret("RESEND_API_KEY");
-/** Inbox that receives a notification for each new contact form submission. */
-export const contactNotifyEmail = defineString("CONTACT_NOTIFY_EMAIL", { default: "rambodr@uniquem.ca" });
+/** Inboxes notified for each new public website enquiry. Comma-separated. Invite mail is separate. */
+export const contactNotifyEmail = defineString("CONTACT_NOTIFY_EMAIL", { default: "rambodr@uniquem.ca,hrad@uniquem.ca" });
 export const db = getFirestore(getApps().length ? getApps()[0] : initializeApp());
 export const callable = { region: "us-central1", maxInstances: 2, cors: true, enforceAppCheck: globalThis.process?.env?.FUNCTIONS_EMULATOR !== "true" };
 
