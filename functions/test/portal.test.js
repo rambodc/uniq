@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { URL } from "node:url";
 import { resolveAccess, requireMiniApp, requireSuperAdmin } from "../core.js";
 import { INQUIRY_TYPES, publicInquiry, validateInquiry, visibleInquiries } from "../contact.js";
-import { EMAIL_FROM, buildInquiryEmail, sendInquiryNotification } from "../mailer.js";
+import { EMAIL_FROM, EMAIL_REPLY_TO, RESEND_ENDPOINT, WEBSITE_INQUIRY_NOTIFY, buildInquiryEmail, buildInviteEmail, inquiryNotifyRecipients, sendInquiryNotification, sendInviteEmail } from "../mailer.js";
 import { ASSIGNABLE_MINI_APP_IDS, EVERYONE_MINI_APP_IDS, MINI_APPS, MINI_APP_IDS, STAFF, SUPER_ADMIN, USER_TYPES, miniAppsFor } from "../miniApps.js";
 import { validateAvatar } from "../profile.js";
 import { assertActiveSuperAdminRemains, assertSelfChangeIsSafe, notYourself, validateAccess, validateUserFields } from "../users.js";
@@ -127,27 +127,77 @@ test("profile photos must be JPEG bytes from the app", () => {
   assert.throws(() => validateAvatar({ photo: png, thumb: png }), /JPEG/);
 });
 
+const resendOk = (id) => async (url, init) => ({ ok: true, status: 200, json: async () => ({ id }), headers: { get: () => null }, url, init });
+
 test("Resend uses the Uniquem sender and the RESEND_API_KEY secret", async () => {
   assert.equal(EMAIL_FROM, "UniqEnergy Website <website@uniquem.ca>");
   assert.match(read("../core.js"), /defineSecret\("RESEND_API_KEY"\)/);
-  assert.match(read("../core.js"), /CONTACT_NOTIFY_EMAIL/);
+  assert.match(read("../core.js"), /defineString\("CONTACT_NOTIFY_EMAIL", \{ default: "rambodr@uniquem\.ca,hrad@uniquem\.ca" \}\)/);
   const dotenv = read("../.env");
-  assert.match(dotenv, /^CONTACT_NOTIFY_EMAIL=rambodr@uniquem\.ca$/m);
+  assert.match(dotenv, /^CONTACT_NOTIFY_EMAIL=rambodr@uniquem\.ca,hrad@uniquem\.ca$/m);
+  assert.equal(WEBSITE_INQUIRY_NOTIFY, "rambodr@uniquem.ca,hrad@uniquem.ca");
   assert.doesNotMatch(dotenv, /RESEND_API_KEY\s*=/);
-  const message = buildInquiryEmail({ inquiryType: "operations", name: "A", email: "a@example.com", message: "Hello", notificationTimestamp: "2026-11-02T18:00:00Z" }, "rambodr@uniquem.ca");
+  const message = buildInquiryEmail({ inquiryType: "operations", name: "A", email: "a@example.com", message: "Hello", notificationTimestamp: "2026-11-02T18:00:00Z" });
   assert.equal(message.from, EMAIL_FROM);
-  assert.deepEqual(message.to, ["rambodr@uniquem.ca"]);
+  assert.deepEqual(message.to, ["rambodr@uniquem.ca", "hrad@uniquem.ca"]);
+  assert.equal(message.reply_to, "a@example.com");
   assert.match(message.text, /Type: operations/);
   const calls = [];
   const result = await sendInquiryNotification({ inquiryType: "general", name: "A", email: "a@example.com", message: "Hello", notificationTimestamp: "2026-11-02T18:00:00Z" }, "secret", {
     inquiryId: "inq1",
-    to: "rambodr@uniquem.ca",
-    fetchImpl: async (url, init) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({ id: "re_1" }), headers: { get: () => null } }; },
+    to: WEBSITE_INQUIRY_NOTIFY,
+    fetchImpl: async (url, init) => { calls.push({ url, init }); return resendOk("re_1")(url, init); },
   });
   assert.equal(result.id, "re_1");
+  assert.equal(calls[0].url, RESEND_ENDPOINT);
+  assert.deepEqual(JSON.parse(calls[0].init.body).to, ["rambodr@uniquem.ca", "hrad@uniquem.ca"]);
   assert.equal(JSON.parse(calls[0].init.body).from, EMAIL_FROM);
   assert.equal(calls[0].init.headers["Idempotency-Key"], "contact-inquiry/inq1");
   assert.doesNotMatch(JSON.stringify(calls[0].init.body), /secret/);
+});
+
+test("public website enquiries notify both inboxes and other mail stays unchanged", async () => {
+  assert.deepEqual(inquiryNotifyRecipients(" rambodr@uniquem.ca, hrad@uniquem.ca, hrad@uniquem.ca "), ["rambodr@uniquem.ca", "hrad@uniquem.ca"]);
+  assert.throws(() => inquiryNotifyRecipients("not-an-email"), /valid recipient/);
+  const recipients = ["rambodr@uniquem.ca", "hrad@uniquem.ca"];
+  for (const inquiryType of INQUIRY_TYPES) {
+    const inquiry = { inquiryType, name: "A", email: "visitor@example.com", productName: inquiryType === "product" ? "Elixir" : "", message: "Hello from the website", notificationTimestamp: "2026-11-02T18:00:00Z" };
+    const message = buildInquiryEmail(inquiry, read("../.env").match(/^CONTACT_NOTIFY_EMAIL=(.+)$/m)[1]);
+    assert.deepEqual(message.to, recipients, inquiryType);
+    assert.equal(message.reply_to, "visitor@example.com");
+    const calls = [];
+    await sendInquiryNotification(inquiry, "secret", {
+      inquiryId: `inq-${inquiryType}`,
+      to: read("../.env").match(/^CONTACT_NOTIFY_EMAIL=(.+)$/m)[1],
+      fetchImpl: async (url, init) => { calls.push(JSON.parse(init.body)); return resendOk("re_inq")(url, init); },
+    });
+    assert.deepEqual(calls[0].to, recipients);
+    assert.equal(calls.length, 1);
+  }
+  const phoneOnly = buildInquiryEmail({ inquiryType: "operations", name: "A", message: "Please call.", notificationTimestamp: "2026-11-02T18:00:00Z" });
+  assert.deepEqual(phoneOnly.to, recipients);
+  assert.equal(phoneOnly.reply_to, EMAIL_REPLY_TO);
+  assert.equal(EMAIL_REPLY_TO, "rambodr@uniquem.ca");
+
+  const invite = buildInviteEmail({ to: "nina@example.com", firstName: "Nina", invitedBy: "boss@uniquem.ca", link: "https://uniqenergy.example/reset" });
+  assert.deepEqual(invite.to, ["nina@example.com"]);
+  assert.equal(invite.reply_to, "rambodr@uniquem.ca");
+  assert.doesNotMatch(JSON.stringify(invite), /hrad@uniquem\.ca/);
+  const inviteCalls = [];
+  await sendInviteEmail({ to: "nina@example.com", firstName: "Nina", invitedBy: "boss@uniquem.ca", link: "https://uniqenergy.example/reset" }, "secret", {
+    idempotencyKey: "user-invite/u1/k1",
+    fetchImpl: async (url, init) => { inviteCalls.push(JSON.parse(init.body)); return resendOk("re_invite")(url, init); },
+  });
+  assert.deepEqual(inviteCalls[0].to, ["nina@example.com"]);
+  assert.equal(inviteCalls[0].reply_to, "rambodr@uniquem.ca");
+  assert.doesNotMatch(JSON.stringify(inviteCalls[0]), /hrad@uniquem\.ca/);
+
+  const index = read("../index.js");
+  assert.equal([...index.matchAll(/sendInquiryNotification\(/g)].length, 1);
+  assert.match(index, /to: contactNotifyEmail\.value\(\)/);
+  for (const file of ["../inventory-functions.js", "../users-functions.js", "../voice-functions.js", "../profile-functions.js", "../invite.js"]) {
+    assert.doesNotMatch(read(file), /hrad@uniquem\.ca|WEBSITE_INQUIRY_NOTIFY|sendInquiryNotification/);
+  }
 });
 
 test("every callable except the public inquiry and getAccess is guarded, and removed apps are gone", () => {
