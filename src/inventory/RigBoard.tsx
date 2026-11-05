@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { RigCard } from "../core/api";
 import { InventoryTabs } from "./InvXpressPage";
-import { dot, InventoryFrame, pretty, TicketPdf } from "./parts";
+import { dot, InventoryFrame, PageLoader, pretty, TicketPdf } from "./parts";
 import { MoreMenu, rowsOf, useRigBoard } from "./rigData";
 
 function haystack(rig: RigCard) {
@@ -37,12 +37,13 @@ export default function RigBoard() {
 
   return <InventoryFrame title="Inventory Bot" eyebrow="Xpress">
     <InventoryTabs />
+    {error && <p className="xb-note" role="alert">{error}</p>}
+    {!board && !error && <PageLoader>Loading rigs…</PageLoader>}
+    {board && <>
     <div className="xb-bar">
-      <p className="xb-since">Xpress — app tickets since {since} · {board?.rigs.length || 0} rigs</p>
+      <p className="xb-since">Xpress — app tickets since {since} · {board.rigs.length} rigs</p>
       <input className="xb-search" aria-label="Search rig or ticket number" placeholder="Search rig or ticket #…" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
-    {error && <p className="xb-note" role="alert">{error}</p>}
-    {!board && !error ? <p className="xb-note">Loading rigs…</p> : <>
       <div className="xb-xref-grid">
         {rigs.map((rig) => <RigCardView key={rig.key} rig={rig} />)}
       </div>

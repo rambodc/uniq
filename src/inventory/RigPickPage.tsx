@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { inventoryBotSaveCorrection, messageOf } from "../core/api";
-import { InventoryFrame, pretty } from "./parts";
+import { InventoryFrame, PageLoader, pretty } from "./parts";
 import { findRig, findRow, useRigBoard } from "./rigData";
 
 export default function RigPickPage({ mode }: { mode: "merge" | "move" | "pair" }) {
@@ -65,6 +65,7 @@ export default function RigPickPage({ mode }: { mode: "merge" | "move" | "pair" 
   return <InventoryFrame title={title} eyebrow="" backTo={back}>
     {error && <p className="xb-note" role="alert">{error}</p>}
     {note && <p className="xb-note" role="alert">{note}</p>}
+    {!board && !error && <PageLoader>Loading rigs…</PageLoader>}
     {board && mode === "merge" && source && <section className="xb-section">
       <div className="xb-shead"><h2>Merge into {source.name}</h2><p>Wells and tickets from the rigs you pick show on this card.</p></div>
       <div className="xb-lines">

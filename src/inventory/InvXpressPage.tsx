@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { ChevronDown, ChevronRight, Layers, Truck } from "lucide-react";
-import { InventoryFrame } from "./parts";
+import { InventoryFrame, PageLoader } from "./parts";
 import { invXpressError, loadInvXpress, previewInvXpress, type InvPackRow, type InvWellRow, type InvXpressResult } from "./invXpress";
 
 function qty(value: number) {
@@ -306,7 +306,7 @@ export default function InvXpressPage({ view = "count" }: { view?: "count" | "we
   return <InventoryFrame title="Inventory Bot" eyebrow="Xpress">
     <InventoryTabs />
     {error && <p className="xb-note" role="alert">{error}</p>}
-    {!data && !error && <p className="xb-note">Loading the chemical count…</p>}
+    {!data && !error && <PageLoader>Loading the chemical count…</PageLoader>}
     {data && (view === "wells" ? <WellsView data={data} /> : <CountView data={data} />)}
   </InventoryFrame>;
 }

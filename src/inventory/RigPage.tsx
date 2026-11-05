@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { inventoryBotSaveCorrection, inventoryBotUndoCorrection, messageOf, type XrefProduct, type XrefRow, type XrefSuggestion } from "../core/api";
-import { InventoryFrame, pretty, TicketPdf } from "./parts";
+import { InventoryFrame, PageLoader, pretty, TicketPdf } from "./parts";
 import { findRig, MoreMenu, useRigBoard } from "./rigData";
 
 function rowMenu(rigKey: string, row: XrefRow, preview: boolean, reload: () => Promise<void>, setNote: (value: string) => void) {
@@ -128,7 +128,7 @@ export default function RigPage() {
   return <InventoryFrame title={rig?.name || "Rig"} eyebrow="" backTo="/inventory-bot/tickets">
     {error && <p className="xb-note" role="alert">{error}</p>}
     {note && <p className="xb-note" role="alert">{note}</p>}
-    {!board && !error && <p className="xb-note">Loading rig…</p>}
+    {!board && !error && <PageLoader>Loading rig…</PageLoader>}
     {board && !rig && <p className="xb-note">This rig is not on the board.</p>}
     {rig && <>
       <div className="xb-righead">
