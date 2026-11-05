@@ -34,6 +34,14 @@ export function Rig() {
   </svg>;
 }
 
+/** Centered in the panel, under the tabs. The page header stays usable. */
+export function PageLoader({ children }: { children: string }) {
+  return <div className="xb-load" role="status" aria-live="polite">
+    <div className="xb-spin" aria-hidden="true" />
+    <p>{children}</p>
+  </div>;
+}
+
 export function InventoryFrame({ title, eyebrow = "Inventory Bot", backTo = "/dashboard", pulledAt, source, children }: { title: string; eyebrow?: string; backTo?: string; pulledAt?: string; source?: "xpress" | "mim"; children: ReactNode }) {
   return <PageShell title={title} eyebrow={eyebrow} appId="inventoryBot" back backTo={backTo}>
     <div className="xb">

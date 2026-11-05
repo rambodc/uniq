@@ -270,3 +270,8 @@
 .ix-left-row p{margin:0;color:#fcd9a0;font-size:12.5px}
 .ix-left-row > span{color:var(--mut);font-size:12px;text-align:right}
 @media(max-width:980px){.ix-cards,.ix-stats,.ix-split,.ix-left-row{grid-template-columns:1fr}.ix-wrow{grid-template-columns:22px 1fr}.ix-wrow.head{display:none}.ix-asof{flex-direction:column;align-items:flex-start}}
+.xb-load{min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
+.xb-spin{width:36px;height:36px;border-radius:50%;border:3px solid #22345a;border-top-color:var(--teal);animation:xb-spin .8s linear infinite}
+.xb-load p{margin:0;color:var(--mut);font-size:14px;font-weight:600}
+@keyframes xb-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.xb-spin{animation:none}}
