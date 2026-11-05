@@ -24,7 +24,7 @@ Access is checked on the server with `requireMiniApp(request, "<id>")` or `requi
 
 ## Firestore schema
 
-The browser cannot write Firestore. A signed-in person who can open Wells may read `wellsApp` only. `users`, the contact inbox, and `inventoryBot` stay closed to the browser. Inventory Bot's document shapes, including what the external collector must write, are in [docs/inventory-bot.md](docs/inventory-bot.md).
+The browser cannot write Firestore. A signed-in person who can open Wells may read `wellsApp` only. Inventory Bot staff may read the published Inventory Xpress count (`inventoryBot/main/meta/invXpress`). `users`, the contact inbox, and the rest of `inventoryBot` stay closed to the browser. Inventory Bot's document shapes, including what the external collector must write, are in [docs/inventory-bot.md](docs/inventory-bot.md).
 
 ### `users/{uid}`
 

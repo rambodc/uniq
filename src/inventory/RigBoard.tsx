@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { RigCard } from "../core/api";
+import { InventoryTabs } from "./InvXpressPage";
 import { dot, InventoryFrame, pretty, TicketPdf } from "./parts";
 import { MoreMenu, rowsOf, useRigBoard } from "./rigData";
 
@@ -35,6 +36,7 @@ export default function RigBoard() {
   const since = board?.since ? new Date(`${board.since}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Oct 1";
 
   return <InventoryFrame title="Inventory Bot" eyebrow="Xpress">
+    <InventoryTabs />
     <div className="xb-bar">
       <p className="xb-since">Xpress — app tickets since {since} · {board?.rigs.length || 0} rigs</p>
       <input className="xb-search" aria-label="Search rig or ticket number" placeholder="Search rig or ticket #…" value={query} onChange={(event) => setQuery(event.target.value)} />

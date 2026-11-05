@@ -14,7 +14,7 @@ export default function RigPickPage({ mode }: { mode: "merge" | "move" | "pair" 
   const pairHit = board && mode === "pair" ? findRow(board, params.rowId || "") : null;
   const ticketId = mode === "move" ? params.ticketId || "" : "";
   const ticketRig = board && ticketId ? board.rigs.find((rig) => rig.needs.some((row) => row.ticketId === ticketId) || rig.pairs.some((row) => row.ticketId === ticketId)) || null : null;
-  const back = source ? `/inventory-bot/rig/${encodeURIComponent(source.key)}` : pairHit?.rig ? `/inventory-bot/rig/${encodeURIComponent(pairHit.rig.key)}` : ticketRig ? `/inventory-bot/rig/${encodeURIComponent(ticketRig.key)}` : "/inventory-bot";
+  const back = source ? `/inventory-bot/rig/${encodeURIComponent(source.key)}` : pairHit?.rig ? `/inventory-bot/rig/${encodeURIComponent(pairHit.rig.key)}` : ticketRig ? `/inventory-bot/rig/${encodeURIComponent(ticketRig.key)}` : "/inventory-bot/tickets";
   const rigChoices = (board?.rigs || []).filter((rig) => rig.key !== (source?.key || ticketRig?.key));
   const pairChoices = pairHit?.rig && pairHit.row.side === "app"
     ? pairHit.rig.needs.filter((row) => row.side === "xpress")

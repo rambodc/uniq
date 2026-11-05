@@ -1,4 +1,6 @@
 import type { OpenXpressWell, RigBoard, XpressBoard, XpressTicket, XrefRow } from "../core/api";
+import sample from "./invXpressSample.json";
+import type { InvXpressResult } from "./invXpress";
 
 const line = (name: string, qty: number, unit: string): XpressTicket["lines"][number] => ({ name, qty, unit, price: 0 });
 const ticket = (fields: Partial<XpressTicket> & Pick<XpressTicket, "id" | "number" | "date">): XpressTicket => ({
@@ -61,7 +63,7 @@ export const rigPreview: RigBoard = {
   ],
 };
 
-export const inventoryPreview: { xpress: XpressBoard; mim: XpressBoard; rigs: RigBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell> } = {
+export const inventoryPreview: { xpress: XpressBoard; mim: XpressBoard; rigs: RigBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell>; invXpress: InvXpressResult } = {
   rigs: rigPreview,
   xpress: {
     pulledAt: "2026-11-03T16:01:00.000Z",
@@ -158,6 +160,7 @@ export const inventoryPreview: { xpress: XpressBoard; mim: XpressBoard; rigs: Ri
     ],
     warehouseOnly: 0,
   },
+  invXpress: sample as InvXpressResult,
   openWells: {
     "auto-bonanza-11": {
       appWell: { id: "bantry", name: "Cardinal 103 HZ Bantry", lsd: "103/08-12-018-13W4", lsdNorm: "8-12-18-13W4", rig: "11", operator: "Cardinal Energy", status: "active" },
