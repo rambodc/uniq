@@ -7,7 +7,7 @@ import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { buildInvXpress, isActiveInventoryWell, packInvXpress } from "../inventoryBot/invXpress.js";
 
-const dryRun = process.argv.includes("--dry-run");
+const dryRun = globalThis.process.argv.includes("--dry-run");
 initializeApp({ credential: applicationDefault(), projectId: "uniqenergy-de71c" });
 const db = getFirestore();
 const root = db.collection("inventoryBot").doc("main");
@@ -65,7 +65,7 @@ if (result.splits.length) globalThis.console.log(`Kept ${result.splits.length} r
 
 if (dryRun) {
   globalThis.console.log("Dry run: nothing written.");
-  process.exit(0);
+  globalThis.process.exit(0);
 }
 
 const headerRef = root.collection("meta").doc("invXpress");
