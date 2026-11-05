@@ -125,7 +125,7 @@ export default function RigPage() {
     ...(rig.merged ? [{ label: "Unmerge", onClick: () => { void unmerge(); } }] : []),
   ] : [];
 
-  return <InventoryFrame title={rig?.name || "Rig"} eyebrow="" backTo="/inventory-bot">
+  return <InventoryFrame title={rig?.name || "Rig"} eyebrow="" backTo="/inventory-bot/tickets">
     {error && <p className="xb-note" role="alert">{error}</p>}
     {note && <p className="xb-note" role="alert">{note}</p>}
     {!board && !error && <p className="xb-note">Loading rig…</p>}

@@ -20,6 +20,26 @@ service cloud.firestore {
       allow read: if canReadWells();
       allow write: if false;
     }
+    // Inventory Xpress is a published count. Staff with the inventory bot, and super admins, can read it. Browsers still cannot write it, and the rest of inventoryBot stays closed.
+    function canReadInventoryBot() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && wellsUser().disabled != true
+        && wellsUser().email == request.auth.token.email.lower()
+        && wellsUser().firstName is string
+        && wellsUser().lastName is string
+        && (wellsUser().type == "super_admin" || (wellsUser().miniApps is list && wellsUser().miniApps.hasAny(["inventoryBot"])));
+    }
+    match /inventoryBot/main/meta/invXpress {
+      allow read: if canReadInventoryBot();
+      allow write: if false;
+    }
+    match /inventoryBot/main/meta/invXpress/parts/{partId} {
+      allow read: if canReadInventoryBot();
+      allow write: if false;
+    }
     // Everything else stays closed. Callables enforce requireMiniApp / requireSuperAdmin.
     match /{document=**} {
       allow read, write: if false;

@@ -2,13 +2,111 @@
 
 Inventory Bot is a private mini app (`inventoryBot`, route `/inventory-bot`). Super admins always have it. Staff have it only when `users/{uid}.miniApps` includes `inventoryBot`.
 
-The Xpress screen is a rig board that cross-references Xpress tickets with the app lines copied on `appWells/{wellId}/reports/{reportId}` (`received` and `returned`, each with the ticket the mud man typed, a kind, a date, and products). A rig is still the app rig number plus the operator. Each card shows matched, only app, and only Xpress. Xpress tickets are kept from October 1 and app lines from September 1, and anything older than 60 days is dropped, including a well completed more than 60 days ago. A typed number is matched to the Xpress number (`BRKS-DT-000538` and `BRKS-000538` are the same, and a `CREDITTICKET` prefix is ignored). On the same rig, a one-digit typo with the same products is matched and marked typo fixed. A placeholder or an unresolved typo stays under “No ticket # yet”. An app line dated before October 1 that carries an Xpress number but does not match a loaded Xpress ticket is left out of every list and count. Numbers without an Xpress prefix (`NK`, `TBAR`, `WBFS`, `BRKS`) are hidden. Transfers are expected app-only. Xpress tickets that land on no rig sit in one collapsed list. The MIM tab is hidden. `inventoryBotRecomputeXref` runs the same match for the box script after the daily load, and opening the board runs it too. Results are stored on `rigBoard/{rigNumber}` and on the ticket as `xrefState` and `xrefReason`. Each unmatched app line and only-Xpress ticket also carries up to two `suggestions` on that rig document: other unmatched tickets on the same rig within three days, ranked by product overlap. They are not paired automatically.
+The first tab, Inventory Xpress, is the chemical count described below. The rig board is the Xpress Tickets tab. It cross-references Xpress tickets with the app lines copied on `appWells/{wellId}/reports/{reportId}` (`received` and `returned`, each with the ticket the mud man typed, a kind, a date, and products). A rig is still the app rig number plus the operator. Each card shows matched, only app, and only Xpress. Xpress tickets are kept from October 1 and app lines from September 1, and anything older than 60 days is dropped, including a well completed more than 60 days ago. A typed number is matched to the Xpress number (`BRKS-DT-000538` and `BRKS-000538` are the same, and a `CREDITTICKET` prefix is ignored). On the same rig, a one-digit typo with the same products is matched and marked typo fixed. A placeholder or an unresolved typo stays under “No ticket # yet”. An app line dated before October 1 that carries an Xpress number but does not match a loaded Xpress ticket is left out of every list and count. Numbers without an Xpress prefix (`NK`, `TBAR`, `WBFS`, `BRKS`) are hidden. Transfers are expected app-only. Xpress tickets that land on no rig sit in one collapsed list. The MIM tab is hidden. `inventoryBotRecomputeXref` runs the same match for the box script after the daily load, and opening the board runs it too. Results are stored on `rigBoard/{rigNumber}` and on the ticket as `xrefState` and `xrefReason`. Each unmatched app line and only-Xpress ticket also carries up to two `suggestions` on that rig document: other unmatched tickets on the same rig within three days, ranked by product overlap. They are not paired automatically.
 
 Staff corrections live in `inventoryBot/main/corrections` and are applied before those rules. The ⋯ menu on the rig header can merge another rig (Same rig as…) or unmerge. A ticket row can pair the two sides manually or unpair them, and an Xpress ticket can be moved to a rig. Those documents survive the daily sync. App well documents are not edited. Browsers cannot write the correction documents.
 
 The MIM tab on the rig board is marked Off and is not a link. The previous well-card board remains at `/inventory-bot/mim`, grouped from `source: "mim"` tickets by normalized LSD and rig. Tickets with neither, and placeholder rig labels with no LSD, go to Unassigned on that board. Warehouse receipts (`MR`) and stock transfers (`ST`) are left off it. A manual move there is stored on `placements/{ticketId}` and wins over that grouping. `xpressCards/{id}` stores a created card and the app-well link for that older board. `appWells/{wellId}` is a slim directory (name, LSD, rig, contractor, operator, status) for mirror wells whose ids start in the last three months. A box job copies slim app wells into `appWells/{wellId}` and the latest reports into `appWells/{wellId}/reports/{reportId}`. Cloud Functions do not read the mirror. Opening a linked card reads that well and its latest 30 copied reports from Firestore. `meta/appReportSync` records whether the copy is `ok`, `stale`, or `error`. Refresh writes `refreshRequests/{wellId}` for the box job. Test wells (`isTest` or a name containing "test") are left out of suggestions and search. An unlinked card says why: more than one app well shares the LSD, the location is close but not the same (including a W4 versus W0 meridian typo, with a rig match ranked first), or no app well was found. At most three candidates are listed, and a shared operator is used only when nothing is close. A card with two or three candidates reads each candidate's slim reports once and stores the result. A well whose reports cite one of the card's warehouse tickets is ranked first, and the card links to it when it is the only one that does. Ties stay alphabetical. A Di-Corp `CC-Rig` label is not the drilling rig. Candidates are listed on the card before Grok is asked. Opening the MIM board asks Grok once per still-unlinked card that has not been asked before. The Xpress rig board does not ask Grok. Let Grok check leftovers does that same once-only pass, and it also places unassigned tickets that have no saved suggestion. Created cards and app-well links for that tab are stored on `mimCards/{id}`, not `xpressCards`. `TT` trucking tickets show each charge (service, quantity, billing method, total) on the well page and the move page. MIM tickets are `hasPdf: false` until a file is uploaded at `inventoryBot/tickets/mim/{ticketNumber}.pdf`, which then uses the same click-to-open path. Stock snapshots such as `2026-11-04_mim_*` stay in Firestore for the two warehouses, UNIQENERGY / PR PREMIUM and ALCHEM. They are not drawn on the board. The check trigger, the old list and chat callables, and the copied wells, app tickets, issues, rig inventory, ticket status, review items, flags, and chats are retired. Collectors still write Xpress and MIM tickets and warehouse stock. `functions/scripts/remove-old-inventory-data.mjs` deletes the retired collections.
 
-Browsers cannot read Firestore. Ticket PDFs under `inventoryBot/tickets/**` are the one Storage read, for signed-in Inventory Bot staff, and the client uses the same App Check setup as the other Firebase calls. Every other screen goes through a callable.
+Browsers cannot read Firestore, except the published Inventory Xpress count (`inventoryBot/main/meta/invXpress` and `inventoryBot/main/meta/invXpress/parts/{n}`). Signed-in Inventory Bot staff, and super admins, can read those documents. They cannot write them. Ticket PDFs under `inventoryBot/tickets/**` are the one Storage read, for the same staff, and the client uses the same App Check setup as the other Firebase calls. Every other screen goes through a callable.
+
+## Inventory Xpress
+
+A unit count of chemical on hand. No prices. MIM is ignored. 40 kg Barite and 25 kg Barite stay on separate rows. Pack `1 L` (Mineral Oil, EZ Slide L, and the other litre products) is listed under “Litre products (not in unit total)” and is not added to the unit headlines.
+
+The count is not computed in the browser. `functions/inventoryBot/invXpress.js` is a pure function. The box runner reads Firestore and writes the result:
+
+```bash
+cd functions && node scripts/inv-xpress.mjs
+```
+
+It uses Application Default Credentials for `uniqenergy-de71c`, the same auth as `functions/scripts/compact-zero-stock.mjs`. Run it again any time; it replaces the result. `node scripts/inv-xpress.mjs --dry-run` prints the summary and does not write.
+
+Inputs, all already in Firestore:
+
+| Read | Use |
+| --- | --- |
+| `stock`, source `xpress` only | Latest snapshot per warehouse. In stock = committed + available (on hand when neither field was written). In transit is shown and not counted. |
+| `appWells` and `appWells/{id}/reports` | Wells whose status starts with `active`, including `active-pause`. A name containing “test”, or `isTest`, is dropped. |
+| `products` | Exact normalised name, code, or id. No fuzzy pairing. |
+| `meta/invXpressLinks` | Optional manual map. `{ "xpress": { "WAREHOUSE NAME": "productId" }, "app": { "App spelling": "productId" } }`. A value may be a product id or a canonical product name. |
+| `meta/appReportSync` | Copied onto the result as `syncStatus` and `reportsSyncedAt`. |
+
+Packaging and fees are dropped: empty drums and totes, pallets, MSDS books, shrink and stretch wrap, C-U charges, Envirobags, tote or pallet recycling, and ATP tests. A pack note such as `40/PALLET` does not match.
+
+Active wells are counted per rig group. The group total is Xpress deliveries to those wells, plus transfers in from outside the group, minus returns to Xpress, minus transfers out of the group. Transfers whose id appears on two wells inside the group cancel, so product used on an older pad well still counts. Each product line is floored at 0. The group total is shown on the newest well. Older wells that look finished stay in a collapsed list with a reason (`Product moved to …` or `Rig moved to …`) and are not added a second time.
+
+Wells on different operators that share a rig number and overlap in report dates stay separate groups unless a transfer links them. Horizon 55 and Precision 55 are not the same rig. A transfer to a well outside the active set counts as moved out.
+
+### Result
+
+`inventoryBot/main/meta/invXpress`. When the JSON would pass 700 KB it is split, `chunks` is the part count, and `products`, `wells`, and `groups` move to `inventoryBot/main/meta/invXpress/parts/{index}`. The header always keeps `summary`.
+
+```json
+{
+  "version": 1,
+  "computedAt": "2026-11-05T15:20:00.000Z",
+  "stockDate": "2026-11-05",
+  "stockAsOf": "2026-11-05T15:15:00.000Z",
+  "reportsSyncedAt": "2026-11-05T15:13:00.000Z",
+  "syncStatus": "ok",
+  "chunks": 0,
+  "summary": {
+    "warehouses": { "units": 0, "committed": 0, "available": 0, "inTransit": 0, "productCount": 0, "warehouseCount": 0 },
+    "wells": { "units": 0, "delivered": 0, "transferredIn": 0, "returned": 0, "movedOut": 0, "productCount": 0, "wellCount": 0, "active": 0, "paused": 0, "groups": 0, "finished": 0, "noReports": 0 },
+    "total": { "units": 0, "productCount": 0 },
+    "litres": { "warehouseUnits": 0, "wellUnits": 0, "total": 0, "productCount": 0 }
+  },
+  "warehouses": [{ "code": "CANNK", "name": "Cannk" }],
+  "products": [{
+    "key": "app_barite|40 kg",
+    "name": "Barite",
+    "pack": "40 kg",
+    "litre": false,
+    "linked": true,
+    "link": "name",
+    "productId": "app_barite",
+    "warehouses": 0,
+    "wells": 0,
+    "total": 0,
+    "committed": 0,
+    "available": 0,
+    "inTransit": 0,
+    "xpressNames": ["BARITE"],
+    "byWarehouse": [{ "code": "CANNK", "name": "Cannk", "units": 0 }],
+    "byWell": [{ "id": "well", "name": "Meota P4", "rig": "Horizon 55", "units": 0 }]
+  }],
+  "groups": [{ "id": "horizon|55|strathcona", "rig": "Horizon 55", "operator": "Strathcona", "currentWellId": "well", "wellIds": ["well"], "delivered": 0, "transferredIn": 0, "returned": 0, "movedOut": 0, "counted": 0 }],
+  "wells": [{
+    "id": "well",
+    "name": "Meota P4",
+    "rig": "Horizon 55",
+    "operator": "Strathcona",
+    "status": "active",
+    "paused": false,
+    "firstReport": "2026-10-29",
+    "lastReport": "2026-11-05",
+    "noReports": false,
+    "role": "current",
+    "groupId": "horizon|55|strathcona",
+    "reason": "",
+    "includedIn": "",
+    "alongside": [],
+    "delivered": 0,
+    "transferredIn": 0,
+    "returned": 0,
+    "movedOut": 0,
+    "counted": 0,
+    "sentIn": 0,
+    "productCount": 0,
+    "products": [{ "key": "app_barite|40 kg", "name": "Barite", "pack": "40 kg", "litre": false, "delivered": 0, "transferredIn": 0, "returned": 0, "movedOut": 0, "counted": 0, "left": null }]
+  }],
+  "unlinked": [{ "name": "MYSTERY POLYMER 25KG", "pack": "25 kg", "units": 0 }],
+  "splits": [{ "rig": "7", "operators": ["CNRL", "Cardinal"], "reason": "Different operators share this rig number on overlapping dates, and no transfer links them." }]
+}
+```
+
+`role` is `current` (the newest well of the rig, which carries the group count), `finished` (likely finished, included in that count), or `alongside` (still active on the rig, also included). `left` is the quantity still on that well’s latest copied report when the report has a remaining list, otherwise `null`. `link` is `name`, `code`, `id`, `override`, or `none`. Unit totals exclude litre rows. `unlinked` is the Xpress names on the latest snapshot that did not match a product.
 
 The morning collector runs outside this repo, with the Admin SDK and owner credentials. It writes tickets and stock. It does not start a check run.
 
