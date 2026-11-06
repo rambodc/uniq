@@ -90,13 +90,19 @@ export function parsePack(unit, name = "") {
     const amount = Number(match[1]);
     const family = familyOf(match[2]);
     if (amount > 0 && family) {
-      return { label: `${formatAmount(amount)} ${family}`, litre: family === "L" && amount === 1, amount, family };
+      return normalizePail({ label: `${formatAmount(amount)} ${family}`, litre: family === "L" && amount === 1, amount, family });
     }
   }
   const bare = String(unit || "").trim().toLowerCase();
   if (["l", "lt", "ltr", "litre", "liter", "litres", "liters"].includes(bare)) return { label: "1 L", litre: true, amount: 1, family: "L" };
   const word = String(unit || "").trim();
   return { label: word || "unit", litre: false, amount: 0, family: "" };
+}
+
+/** An Xpress 18 L pail is the same pack as 19 L. The count is still one pail, not 18 litres. */
+function normalizePail(pack) {
+  if (pack.family === "L" && pack.amount === 18) return { label: "19 L", litre: false, amount: 19, family: "L" };
+  return pack;
 }
 
 function stripPack(name) {

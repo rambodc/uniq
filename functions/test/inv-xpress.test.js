@@ -37,6 +37,11 @@ test("in stock is committed plus available, and packaging is not a chemical", ()
   assert.equal(parsePack("", "BARITE (25 KG)").label, "25 kg");
   assert.equal(parsePack("1 L").litre, true);
   assert.equal(parsePack("19 L").litre, false);
+  assert.equal(parsePack("18 L").label, "19 L");
+  assert.equal(parsePack("18 L").litre, false);
+  assert.equal(parsePack("18 kg").label, "18 kg");
+  assert.equal(parsePack("20 L").label, "20 L");
+  assert.equal(parsePack("18.93 L").label, "18.93 L");
 });
 
 test("warehouse count ignores transit, MIM, packaging, and keeps pack sizes apart", () => {
@@ -219,6 +224,56 @@ test("active-pause counts, a transfer out of the active set is removed, and dupl
   assert.equal(result.summary.wells.noReports, 1);
   assert.equal(result.products.find((row) => row.name === "Barite").wells, 15);
   assert.equal(result.summary.wells.movedOut, 5);
+});
+
+test("an exact 18 L pail joins the 19 L row of the same product", () => {
+  const result = buildInvXpress({
+    products: [
+      { id: "app_g15", name: "UniCide G15", appNames: ["UniCide G15"], xpressNames: ["UNICIDE G15 (18 L)", "UNICIDE G15 (19 L)"] },
+      { id: "app_break", name: "UniBreak 1", appNames: ["UniBreak 1"], xpressNames: ["UNIBREAK 1 (18 L)"] },
+      { id: "app_barite", name: "Barite", appNames: ["Barite"], xpressNames: ["BARITE"] },
+      oil,
+    ],
+    stock: [stock([
+      { name: "UNICIDE G15 (18 L)", unit: "18 L", committed: 15, available: 105, inTransit: 4 },
+      { name: "UNICIDE G15 (19 L)", unit: "19 L", committed: 5, available: 35, inTransit: 0 },
+      { name: "UNIBREAK 1 (18 L)", unit: "18 L", committed: 3, available: 9, inTransit: 0 },
+      { name: "BARITE", unit: "18 kg", committed: 0, available: 7, inTransit: 0 },
+      { name: "MINERAL OIL", unit: "1 L", committed: 0, available: 6, inTransit: 0 },
+      { name: "UNICIDE G15", unit: "20 L", committed: 0, available: 2, inTransit: 0 },
+    ])],
+    wells: [well({ id: "w", name: "Kent", lastReportDate: "2026-11-01" })],
+    reports: [{
+      id: "r", wellId: "w", date: "2026-11-01",
+      received: [line("received", "NK-1", "2026-11-01", [["UniCide G15", 30, "18 L"], ["UniCide G15", 10, "19 L"], ["UniBreak 1", 8, "18 L"], ["Mineral Oil", 20, "1 L"]])],
+      returned: [],
+    }],
+  });
+  const g15 = result.products.filter((row) => row.name === "UniCide G15");
+  const pail = g15.find((row) => row.pack === "19 L");
+  assert.equal(g15.some((row) => row.pack === "18 L"), false);
+  assert.equal(pail.warehouses, 160);
+  assert.equal(pail.wells, 40);
+  assert.equal(pail.total, 200);
+  assert.equal(pail.committed, 20);
+  assert.equal(pail.inTransit, 4);
+  assert.deepEqual(pail.xpressNames, ["UNICIDE G15 (18 L)", "UNICIDE G15 (19 L)"]);
+  const unibreak = result.products.find((row) => row.name === "UniBreak 1");
+  assert.equal(unibreak.pack, "19 L");
+  assert.equal(unibreak.warehouses, 12);
+  assert.equal(unibreak.wells, 8);
+  assert.notEqual(unibreak.key, pail.key);
+  assert.equal(result.products.find((row) => row.name === "Barite").pack, "18 kg");
+  assert.equal(result.products.find((row) => row.name === "UniCide G15" && row.pack === "20 L").warehouses, 2);
+  const mineral = result.products.find((row) => row.name === "Mineral Oil");
+  assert.equal(mineral.pack, "1 L");
+  assert.equal(mineral.litre, true);
+  const unitLines = 160 + 12 + 7 + 2;
+  const unitWells = 40 + 8;
+  assert.equal(result.summary.warehouses.units, unitLines);
+  assert.equal(result.summary.wells.units, unitWells);
+  assert.equal(result.summary.total.units, unitLines + unitWells);
+  assert.equal(result.summary.litres.total, 26);
 });
 
 test("packed documents round-trip under the size limit", () => {
