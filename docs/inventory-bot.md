@@ -12,7 +12,7 @@ Browsers cannot read Firestore, except the published Inventory Xpress count (`in
 
 ## Inventory Xpress
 
-A unit count of chemical on hand. No prices. MIM is ignored. 40 kg Barite and 25 kg Barite stay on separate rows. Pack `1 L` (Mineral Oil, EZ Slide L, and the other litre products) is listed under “Litre products (not in unit total)” and is not added to the unit headlines.
+A unit count of chemical on hand. No prices. MIM is ignored. 40 kg Barite and 25 kg Barite stay on separate rows. An exact 18 L pail is counted as a 19 L pail of the same product: the pail counts add, they are not converted into litres, and a different product stays on its own row. 18 kg, 20 L, 1000 L, and 1 L are unchanged. Pack `1 L` (Mineral Oil, EZ Slide L, and the other litre products) is listed under “Litre products (not in unit total)” and is not added to the unit headlines. Stock and report documents are not rewritten. After this code is on the machine that runs the count, refresh the published result with `cd functions && node scripts/inv-xpress.mjs` so the live page shows the merged 19 L rows.
 
 The count is not computed in the browser. `functions/inventoryBot/invXpress.js` is a pure function. The box runner reads Firestore and writes the result:
 

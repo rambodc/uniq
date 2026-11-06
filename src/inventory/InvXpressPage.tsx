@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { ChevronDown, ChevronRight, Layers, Truck } from "lucide-react";
 import { InventoryFrame, PageLoader } from "./parts";
@@ -83,11 +83,38 @@ function AsOf({ data }: { data: InvXpressResult }) {
   </div>;
 }
 
+type SortKey = "name" | "warehouses" | "wells" | "total" | "committed";
+type SortDir = "asc" | "desc";
+
+function compareRows(a: InvPackRow, b: InvPackRow, key: SortKey, dir: SortDir) {
+  const sign = dir === "asc" ? 1 : -1;
+  if (key === "name") {
+    const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.pack.localeCompare(b.pack, undefined, { numeric: true });
+    return byName * sign;
+  }
+  const delta = (a[key] || 0) - (b[key] || 0);
+  if (delta !== 0) return delta * sign;
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.pack.localeCompare(b.pack, undefined, { numeric: true });
+}
+
+function SortHeader({ label, sortKey, sort, onSort }: { label: ReactNode; sortKey: SortKey; sort: { key: SortKey; dir: SortDir }; onSort: (key: SortKey) => void }) {
+  const active = sort.key === sortKey;
+  return <th aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+    <button type="button" onClick={() => onSort(sortKey)}>{label}{active && <span className="ix-sort-arrow" aria-hidden="true">{sort.dir === "asc" ? "↑" : "↓"}</span>}</button>
+  </th>;
+}
+
+function nextSort(current: { key: SortKey; dir: SortDir }, key: SortKey) {
+  if (current.key !== key) return { key, dir: key === "name" ? "asc" as const : "desc" as const };
+  return { key, dir: current.dir === "asc" ? "desc" as const : "asc" as const };
+}
+
 function CountView({ data }: { data: InvXpressResult }) {
   const units = data.products.filter((row) => !row.litre);
   const litres = data.products.filter((row) => row.litre);
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<"all" | "both" | "warehouses" | "wells">("all");
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "total", dir: "desc" });
   const [open, setOpen] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [namesOpen, setNamesOpen] = useState(false);
@@ -100,7 +127,9 @@ function CountView({ data }: { data: InvXpressResult }) {
     if (chip === "wells") return row.wells > 0 && row.warehouses <= 0;
     return true;
   }), [units, needle, chip]);
-  const shown = showAll || needle ? filtered : filtered.slice(0, 12);
+  const ordered = useMemo(() => filtered.slice().sort((a, b) => compareRows(a, b, sort.key, sort.dir)), [filtered, sort]);
+  const shown = showAll || needle ? ordered : ordered.slice(0, 12);
+  const showCommitted = chip === "warehouses";
   const both = units.filter((row) => row.warehouses > 0 && row.wells > 0).length;
   const onlyWh = units.filter((row) => row.warehouses > 0 && row.wells <= 0).length;
   const onlyWells = units.filter((row) => row.wells > 0 && row.warehouses <= 0).length;
@@ -134,17 +163,23 @@ function CountView({ data }: { data: InvXpressResult }) {
     </div>
     <p className="ix-note"><InfoIcon /> Counted at a well = Xpress deliveries to that rig’s active wells + transfers in from outside the rig − returns to Xpress − transfers out to other rigs. Usage is not subtracted. Transfers between wells on the same rig cancel. A product line below zero is shown as zero.</p>
     <div className="ix-bar">
-      <div><h2>By product</h2><p>Units in each product’s pack size. Biggest count first.</p></div>
+      <div><h2>By product</h2><p>Units in each product’s pack size. Click a column title to sort.</p></div>
       <input className="xb-search" aria-label="Search product" placeholder="Search product…" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
     <div className="ix-chips" role="group" aria-label="Filter products">
-      {([["all", "All", units.length], ["both", "In both", both], ["warehouses", "Only in warehouses", onlyWh], ["wells", "Only at wells", onlyWells]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => setChip(id)}>{label}<span>{count}</span></button>)}
+      {([["all", "All", units.length], ["both", "In Warehouse & Wells", both], ["warehouses", "Only in warehouses", onlyWh], ["wells", "Only at wells", onlyWells]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => { setChip(id); if (id !== "warehouses" && sort.key === "committed") setSort({ key: "total", dir: "desc" }); }}>{label}<span>{count}</span></button>)}
     </div>
     <div className="ix-scroll">
       <table className="ix-table">
-        <thead><tr><th>Product</th><th><span className="ix-hi"><WarehouseIcon /> Warehouses</span></th><th><span className="ix-hi"><DerrickIcon /> Active wells</span></th><th><span className="ix-hi"><StackIcon /> Total</span></th></tr></thead>
+        <thead><tr>
+          <SortHeader label="Product" sortKey="name" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+          <SortHeader label={<span className="ix-hi"><WarehouseIcon /> Warehouses</span>} sortKey="warehouses" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+          {showCommitted && <SortHeader label="Committed" sortKey="committed" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />}
+          <SortHeader label={<span className="ix-hi"><DerrickIcon /> Active wells</span>} sortKey="wells" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+          <SortHeader label={<span className="ix-hi"><StackIcon /> Total</span>} sortKey="total" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+        </tr></thead>
         <tbody>
-          {shown.map((row) => <ProductRows key={row.key} row={row} open={open === row.key} wellsOpen={Boolean(wellsOpen[row.key])} onToggle={() => setOpen((value) => value === row.key ? "" : row.key)} onWells={() => setWellsOpen((value) => ({ ...value, [row.key]: !value[row.key] }))} />)}
+          {shown.map((row) => <ProductRows key={row.key} row={row} open={open === row.key} showCommitted={showCommitted} wellsOpen={Boolean(wellsOpen[row.key])} onToggle={() => setOpen((value) => value === row.key ? "" : row.key)} onWells={() => setWellsOpen((value) => ({ ...value, [row.key]: !value[row.key] }))} />)}
         </tbody>
       </table>
     </div>
@@ -161,16 +196,17 @@ function CountView({ data }: { data: InvXpressResult }) {
   </>;
 }
 
-function ProductRows({ row, open, wellsOpen, onToggle, onWells }: { row: InvPackRow; open: boolean; wellsOpen: boolean; onToggle: () => void; onWells: () => void }) {
+function ProductRows({ row, open, wellsOpen, showCommitted = false, onToggle, onWells }: { row: InvPackRow; open: boolean; wellsOpen: boolean; showCommitted?: boolean; onToggle: () => void; onWells: () => void }) {
   const wells = wellsOpen ? row.byWell : row.byWell.slice(0, 5);
   return <>
     <tr className={open ? "open" : ""}>
       <td><button type="button" className="ix-name" aria-expanded={open} onClick={onToggle}>{open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />} {row.name} <span className="ix-pack">{row.pack}</span></button></td>
       <td><b>{qty(row.warehouses)}</b></td>
+      {showCommitted && <td><b>{qty(row.committed)}</b></td>}
       <td><b>{qty(row.wells)}</b></td>
       <td className="tot"><b>{qty(row.total)}</b></td>
     </tr>
-    {open && <tr className="ix-detail"><td colSpan={4}><div className="ix-split">
+    {open && <tr className="ix-detail"><td colSpan={showCommitted ? 5 : 4}><div className="ix-split">
       <div>
         <h4><WarehouseIcon /> In Xpress warehouses · {qty(row.warehouses)}</h4>
         {row.byWarehouse.map((house) => <div key={house.code} className="ix-li"><span>{house.code}</span><b>{qty(house.units)}</b></div>)}
@@ -192,14 +228,21 @@ function ProductRows({ row, open, wellsOpen, onToggle, onWells }: { row: InvPack
 function LitreTable({ rows }: { rows: InvPackRow[] }) {
   const [open, setOpen] = useState("");
   const [wellsOpen, setWellsOpen] = useState<Record<string, boolean>>({});
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "total", dir: "desc" });
+  const ordered = useMemo(() => rows.slice().sort((a, b) => compareRows(a, b, sort.key, sort.dir)), [rows, sort]);
   return <section className="ix-litre">
     <h2>Litre products (not in unit total)</h2>
     <p>Pack 1 L stays on its own lines. These litres are not added to the unit headlines above.</p>
     <div className="ix-scroll">
       <table className="ix-table">
-        <thead><tr><th>Product</th><th><span className="ix-hi"><WarehouseIcon /> Warehouses</span></th><th><span className="ix-hi"><DerrickIcon /> Active wells</span></th><th><span className="ix-hi"><StackIcon /> Litres</span></th></tr></thead>
+        <thead><tr>
+          <SortHeader label="Product" sortKey="name" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+          <SortHeader label={<span className="ix-hi"><WarehouseIcon /> Warehouses</span>} sortKey="warehouses" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+          <SortHeader label={<span className="ix-hi"><DerrickIcon /> Active wells</span>} sortKey="wells" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+          <SortHeader label={<span className="ix-hi"><StackIcon /> Litres</span>} sortKey="total" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
+        </tr></thead>
         <tbody>
-          {rows.map((row) => <ProductRows key={row.key} row={row} open={open === row.key} wellsOpen={Boolean(wellsOpen[row.key])} onToggle={() => setOpen((value) => value === row.key ? "" : row.key)} onWells={() => setWellsOpen((value) => ({ ...value, [row.key]: !value[row.key] }))} />)}
+          {ordered.map((row) => <ProductRows key={row.key} row={row} open={open === row.key} wellsOpen={Boolean(wellsOpen[row.key])} onToggle={() => setOpen((value) => value === row.key ? "" : row.key)} onWells={() => setWellsOpen((value) => ({ ...value, [row.key]: !value[row.key] }))} />)}
         </tbody>
       </table>
     </div>

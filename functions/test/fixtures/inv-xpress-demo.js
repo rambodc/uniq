@@ -15,6 +15,10 @@ const catalog = [
   ["Mineral Oil", "1 L"],
   ["EZ Slide L", "1 L"],
 ].map(([name]) => ({ id: `app_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, name, appNames: [name], xpressNames: [name.toUpperCase()] }));
+catalog.push(
+  { id: "app_unicide_g15", name: "UniCide G15", appNames: ["UniCide G15"], xpressNames: ["UNICIDE G15 (18 L)", "UNICIDE G15 (19 L)"] },
+  { id: "app_unibreak_1", name: "UniBreak 1", appNames: ["UniBreak 1"], xpressNames: ["UNIBREAK 1 (18 L)"] },
+);
 
 const warehouses = [
   ["CANNK", "Cannk"],
@@ -46,6 +50,9 @@ const stockPlan = [
   ["NUT SHELL M", "22.68 kg", 760, 8],
   ["2K7", "1 kg", 1892, 6],
   ["MINERAL OIL", "1 L", 40, 0],
+  ["UNICIDE G15 (18 L)", "18 L", 120, 15],
+  ["UNICIDE G15 (19 L)", "19 L", 40, 5],
+  ["UNIBREAK 1 (18 L)", "18 L", 12, 3],
   ["MYSTERY POLYMER 25KG", "25 kg", 220, 4],
   ["FOAM STICK SPECIAL", "1 kg", 86, 0],
   ["Empty Drums", "unit", 400, 0],
