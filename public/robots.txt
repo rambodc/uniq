@@ -7,6 +7,8 @@ Disallow: /inventory-bot
 Disallow: /wells
 Disallow: /users
 Disallow: /profile
+Disallow: /private
+Disallow: /private.html
 Disallow: /portal
 Disallow: /apps/
 Disallow: /member

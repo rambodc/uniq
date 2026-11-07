@@ -1,7 +1,11 @@
-import routeData from "./seo-routes.json";
+import { publicProducts } from "./products.ts";
+import routeData from "./seo-routes.json" with { type: "json" };
+import { servicePoints } from "./servicePoints.ts";
+import { buildStructuredData, type SeoFaq, type SeoRouteInput } from "./structuredData.ts";
 
 export const SITE = {
   name: "UniqEnergy Solutions",
+  legalName: "UniqEnergy Solutions Inc.",
   origin: "https://uniqenergy.com",
   locale: "en_CA",
   language: "en-CA",
@@ -11,12 +15,8 @@ export const SITE = {
   address: { streetAddress: "Suite 1900, 635 – 8th Avenue SW", addressLocality: "Calgary", addressRegion: "AB", postalCode: "T2P 3M3", addressCountry: "CA" },
 } as const;
 
-export type SeoFaq = { question: string; answer: string };
-export type SeoRoute = {
-  path: string; title: string; description: string; h1: string;
-  pageType: "WebPage" | "AboutPage" | "ContactPage" | "CollectionPage" | "Product";
-  image: string; modified: string; breadcrumbs: [string, string][]; faqs?: SeoFaq[];
-};
+export type { SeoFaq };
+export type SeoRoute = SeoRouteInput;
 export const seoRoutes = routeData as SeoRoute[];
 export const seoByPath = new Map(seoRoutes.map((route) => [route.path, route]));
 export function faqsFor(route?: SeoRoute): SeoFaq[] | undefined {
@@ -25,22 +25,15 @@ export function faqsFor(route?: SeoRoute): SeoFaq[] | undefined {
   if (route.pageType !== "Product") return undefined;
   return [
     { question: `What is ${route.h1.replace(/^\w/, (letter) => letter.toUpperCase())}?`, answer: route.description },
-    { question: `How should ${route.h1.split(" ")[0]} be selected and used?`, answer: "Product selection, compatibility, concentration and field use should be reviewed by a qualified drilling-fluids engineer using current well data and operating requirements." },
+    { question: `How should ${route.h1} be selected and used?`, answer: "Product selection, compatibility, concentration and field use should be reviewed by a qualified drilling-fluids engineer using current well data and operating requirements." },
   ];
 }
 
-const absolute = (path: string) => `${SITE.origin}${path}`;
 export function structuredData(route: SeoRoute) {
-  const organization = { "@type": "Organization", "@id": `${SITE.origin}/#organization`, name: SITE.name, url: SITE.origin, logo: absolute(SITE.logo), email: SITE.email, telephone: SITE.telephone, address: { "@type": "PostalAddress", ...SITE.address } };
-  const website = { "@type": "WebSite", "@id": `${SITE.origin}/#website`, url: SITE.origin, name: SITE.name, inLanguage: SITE.language, publisher: { "@id": organization["@id"] } };
-  const entity: Record<string, unknown> = { "@type": route.pageType, "@id": `${absolute(route.path)}/#webpage`, url: absolute(route.path), name: route.title, description: route.description, inLanguage: SITE.language, isPartOf: { "@id": website["@id"] }, about: { "@id": organization["@id"] }, primaryImageOfPage: { "@type": "ImageObject", url: absolute(route.image) }, dateModified: route.modified };
-  if (route.pageType === "Product") Object.assign(entity, { name: route.h1, image: absolute(route.image), brand: { "@type": "Brand", name: SITE.name }, manufacturer: { "@id": organization["@id"] }, category: "Drilling fluid additive" });
-  const graph: Record<string, unknown>[] = [organization, website, entity];
-  if (route.breadcrumbs.length) graph.push({ "@type": "BreadcrumbList", itemListElement: [["Home", "/"] as [string,string], ...route.breadcrumbs].map(([name, path], index) => ({ "@type": "ListItem", position: index + 1, name, item: absolute(path) })) });
-  const faqs = faqsFor(route);
-  if (faqs?.length) graph.push({ "@type": "FAQPage", mainEntity: faqs.map((faq) => ({ "@type": "Question", name: faq.question, acceptedAnswer: { "@type": "Answer", text: faq.answer } })) });
-  return { "@context": "https://schema.org", "@graph": graph };
+  return buildStructuredData({ site: SITE, route, products: publicProducts, servicePoints, faqs: faqsFor(route) });
 }
+
+const absolute = (path: string) => `${SITE.origin}${path}`;
 
 function ensureMeta(selector: string, attrs: Record<string, string>) {
   let element = document.head.querySelector<HTMLMetaElement>(selector);
