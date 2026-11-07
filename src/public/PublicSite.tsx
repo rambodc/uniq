@@ -12,8 +12,25 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { useNavigate } from "react-router-dom";
 import { functions } from "../core/firebase";
+import {
+  aboutPillars,
+  aboutSummary,
+  capabilityFacts,
+  catalogueLead,
+  contactLead,
+  exploreSystemsLabel,
+  headings,
+  homeLead,
+  locationsIntro,
+  locationsLinkLabel,
+  locationsSummary,
+  safetySummary,
+  systemsParagraphs,
+  systemsSummary,
+} from "./pageCopy";
 import { findPublicProduct, publicProductPaths, publicProducts, type PublicProduct } from "./products";
 import { applySeo, faqsFor, seoByPath, type SeoFaq } from "./seo";
+import { mapDirectionsUrl, mapEmbedUrl, servicePoints } from "./servicePoints";
 const TechnologyJourney = lazy(() => import("./scenes/TechnologyJourney"));
 const HomeWellScene = lazy(() => import("./scenes/HomeWellScene"));
 const ContactSignalScene = lazy(() => import("./scenes/ContactSignalScene"));
@@ -36,12 +53,11 @@ const publicPages: PublicPage[] = [
     path: "/about-us",
     nav: "About Us",
     eyebrow: "The UniqEnergy advantage",
-    title: "Built to move with",
-    accent: "the operation.",
+    title: headings.about.lead,
+    accent: headings.about.rest,
     description:
       "Discover the five strengths UniqEnergy brings together around the wellbore: responsive support, connected technology, specialty chemistry, experienced people, and Western Canadian reach.",
-    summary:
-      "Responsive support, connected field intelligence, specialized chemistry, experienced people, and Western Canadian reach—working as one system around the wellbore.",
+    summary: aboutSummary,
     detail:
       "Five distinct capabilities come together as one accountable operating partner.",
     image: "/images/field-engineers.jpg",
@@ -51,12 +67,11 @@ const publicPages: PublicPage[] = [
     path: "/drilling-fluid-systems",
     nav: "Fluid Systems",
     eyebrow: "Purpose-built fluid systems",
-    title: "Performance in",
-    accent: "every blend.",
+    title: headings.systems.lead,
+    accent: headings.systems.rest,
     description:
       "Explore UniqEnergy drilling fluid systems engineered for demanding field conditions and project economics.",
-    summary:
-      "Focused chemistry and field-ready thinking for demanding drilling conditions.",
+    summary: systemsSummary,
     detail:
       "Our portfolio includes LUREX anti-accretion technology and the temperature-stable, clay-free Uniq-RM oil-based system, supported by customized program development.",
     image: "/images/systems-3d.png",
@@ -81,12 +96,11 @@ const publicPages: PublicPage[] = [
     path: "/health-safety",
     nav: "Health & Safety",
     eyebrow: "Everyone owns safety",
-    title: "Safe work is how",
-    accent: "the work gets done.",
+    title: headings.safety.lead,
+    accent: headings.safety.rest,
     description:
       "Learn how UniqEnergy supports safe work through shared responsibility, prepared people, practical risk awareness, and continuous HSE improvement.",
-    summary:
-      "Policies, training, communication, and personal ownership connect safety across the office, facility, field, and client operation.",
+    summary: safetySummary,
     detail:
       "Our HSE program is reviewed and improved to strengthen risk awareness and operating practices, supported by a valid COR certification.",
     image: "/images/safety-3d.png",
@@ -96,12 +110,11 @@ const publicPages: PublicPage[] = [
     path: "/locations",
     nav: "Locations",
     eyebrow: "Western Canadian reach",
-    title: "Support positioned",
-    accent: "closer to the work.",
+    title: headings.locations.lead,
+    accent: headings.locations.rest,
     description:
       "Find UniqEnergy service locations across Alberta, British Columbia, and Saskatchewan, with direct phone numbers and Google Maps directions.",
-    summary:
-      "A connected network of service points positioned across Western Canada.",
+    summary: locationsSummary,
     detail:
       "Choose a location to view it on the map, call directly, or open turn-by-turn directions.",
     image: "/images/locations-western-canada.webp",
@@ -111,8 +124,8 @@ const publicPages: PublicPage[] = [
     path: "/contact-us",
     nav: "Contact Us",
     eyebrow: "Start a conversation",
-    title: "Let’s engineer a",
-    accent: "better outcome.",
+    title: headings.contact.lead,
+    accent: headings.contact.rest,
     description:
       "Contact UniqEnergy in Calgary to discuss drilling fluid systems, technical challenges, and field support.",
     summary:
@@ -125,12 +138,7 @@ const publicPages: PublicPage[] = [
 ];
 const publicPaths = new Set(publicPages.map((page) => page.path));
 const allPublicPaths = new Set([...publicPaths, ...publicProductPaths]);
-const facts = [
-  ["50,000 L", "Daily blend capacity"],
-  ["50+", "Custom products"],
-  ["21", "Patents granted & pending"],
-  ["45,000 ft²", "SE Calgary facility"],
-] as const;
+const facts = capabilityFacts;
 const validPath = (value: string) =>
   value === "/" ||
   allPublicPaths.has(value)
@@ -183,6 +191,7 @@ function RouteLink({
       className={className}
       href={to}
       onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         navigate(to);
       }}
@@ -242,23 +251,24 @@ function Header({
   const primary = publicPages;
   return (
     <header className="site-header">
-      <button
-        className="brand-button"
-        onClick={() => go("/")}
-        aria-label="UniqEnergy home"
-      >
+      <a className="brand-button" href="/" aria-label="UniqEnergy home" onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); go("/"); }}>
         <Logo />
-      </button>
+      </a>
       <nav className="nav-pill" aria-label="Primary navigation">
-        {primary.map((item) => (
-          <button
-            key={item.path}
-            className={path === item.path || (item.path === "/drilling-fluid-systems" && publicProductPaths.has(path)) ? "active" : ""}
-            onClick={() => go(item.path)}
-          >
-            {item.nav}
-          </button>
-        ))}
+        {primary.map((item) => {
+          const active = path === item.path || (item.path === "/drilling-fluid-systems" && publicProductPaths.has(path));
+          return (
+            <a
+              key={item.path}
+              href={item.path}
+              className={active ? "active" : ""}
+              aria-current={active ? "page" : undefined}
+              onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); go(item.path); }}
+            >
+              {item.nav}
+            </a>
+          );
+        })}
       </nav>
       <button className="header-cta" onClick={onFluidLab}>
         <span>UniqAccount</span>
@@ -294,13 +304,14 @@ function Header({
               </button>
             </div>
             <nav aria-label="Mobile navigation">
-              <motion.button onClick={() => go("/")}>
+              <motion.a href="/" onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); go("/"); }}>
                 <span>01</span>Home<b>↗</b>
-              </motion.button>
+              </motion.a>
               {publicPages.map((item, index) => (
-                <motion.button
+                <motion.a
                   key={item.path}
-                  onClick={() => go(item.path)}
+                  href={item.path}
+                  onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); go(item.path); }}
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.035 }}
@@ -308,7 +319,7 @@ function Header({
                   <span>{String(index + 2).padStart(2, "0")}</span>
                   {item.nav}
                   <b>↗</b>
-                </motion.button>
+                </motion.a>
               ))}
             </nav>
           </motion.div>
@@ -332,11 +343,11 @@ function Hero() {
       >
         <span className="eyebrow">The future of fluid performance</span>
         <h1>
-          <em>Engineer the fluid.</em>
+          <em>{headings.home.lead}</em>
           <br />
-          Advance the wellbore.
+          {headings.home.rest}
         </h1>
-        <p>Customized drilling fluid systems, specialty additives, technical expertise, and responsive field support for demanding North American wellbores.</p>
+        <p>{homeLead}</p>
       </motion.div>
       <div className="hero-proof">
         <small>Verified capability</small>
@@ -386,7 +397,7 @@ function Home({ navigate }: { navigate: (path: string) => void }) {
                 navigate={navigate}
                 className="text-link"
               >
-                Explore {item.nav.toLowerCase()} <b>↗</b>
+                {item.path === "/drilling-fluid-systems" ? exploreSystemsLabel : `Explore ${item.nav.toLowerCase()}`} <b>↗</b>
               </RouteLink>
             </div>
           </Reveal>
@@ -442,54 +453,14 @@ function PageHeading({ page }: { page: PublicPage }) {
 
 function AboutPage({ navigate }: { navigate: (path: string) => void }) {
   const page = publicPages[0];
-  const pillars = [
-    {
-      number: "01",
-      eyebrow: "Responsiveness & dedicated support",
-      title: "Support without the runaround.",
-      copy: "Direct access to technical people keeps questions close to the people who can act on them. Fewer communication layers help field response, product coordination, and technical support move with the operation.",
-      image: "/images/field-engineers.jpg",
-      alt: "Two field engineers reviewing operating information beside drilling equipment",
-      proofs: ["Direct technical access", "Rapid field response", "Coordinated mobilization"],
-    },
-    {
-      number: "02",
-      eyebrow: "Connected field intelligence",
-      title: "Connected information. Faster decisions.",
-      copy: "Mobile applications and shared field reporting give office specialists and clients current visibility into the work. Better context supports clearer communication and more confident fluid decisions.",
-      image: "/images/about-field-connected.webp",
-      alt: "Field engineer using a rugged mobile device at a Western Canadian drilling rig",
-      proofs: ["Mobile field reporting", "Current operational visibility", "Field, office, and client alignment"],
-      workflow: true,
-    },
-    {
-      number: "03",
-      eyebrow: "Specialty chemistry & custom products",
-      title: "Chemistry shaped by the well.",
-      copy: "Customized fluid programs bring laboratory thinking and field feedback together around actual operating conditions, technical requirements, and project economics.",
-      image: "/images/about-lab-connected.webp",
-      alt: "Laboratory specialist evaluating a drilling fluid sample beside technical equipment",
-      proofs: ["50+ custom products", "LUREX and Uniq-RM", "21 patents granted or pending"],
-    },
-    {
-      number: "04",
-      eyebrow: "Field expertise & people first",
-      title: "Experience where it matters.",
-      copy: "Experienced field engineers bring practical Western Canadian knowledge to the wellsite. Continuous learning, proactive troubleshooting, and close office collaboration keep sound technical judgment near the work.",
-      image: "/images/about-team-connected.webp",
-      alt: "Field and office specialists reviewing current operational information together",
-      proofs: ["Experienced field engineers", "Continuous technical learning", "Proactive problem solving"],
-    },
-    {
-      number: "05",
-      eyebrow: "Regional capacity & reach",
-      title: "Built in Calgary. Ready across Western Canada.",
-      copy: "Our southeast Calgary blending base and access to traditional mud-storage warehouses across Western Canada support dependable supply for operations across the region.",
-      image: "/images/western-canada.jpg",
-      alt: "Western Canadian drilling operation set against the Rocky Mountains",
-      proofs: ["45,000 ft² Calgary facility", "50,000 L daily blend capacity", "Western Canadian warehouse access"],
-    },
-  ];
+  const aboutMedia = {
+    "01": { image: "/images/field-engineers.jpg", alt: "Two field engineers reviewing operating information beside drilling equipment", proofs: ["Direct technical access", "Rapid field response", "Coordinated mobilization"] },
+    "02": { image: "/images/about-field-connected.webp", alt: "Field engineer using a rugged mobile device at a Western Canadian drilling rig", proofs: ["Mobile field reporting", "Current operational visibility", "Field, office, and client alignment"], workflow: true },
+    "03": { image: "/images/about-lab-connected.webp", alt: "Laboratory specialist evaluating a drilling fluid sample beside technical equipment", proofs: ["50+ custom products", "LUREX and Uniq-RM", "21 patents granted or pending"] },
+    "04": { image: "/images/about-team-connected.webp", alt: "Field and office specialists reviewing current operational information together", proofs: ["Experienced field engineers", "Continuous technical learning", "Proactive problem solving"] },
+    "05": { image: "/images/western-canada.jpg", alt: "Western Canadian drilling operation set against the Rocky Mountains", proofs: ["45,000 ft² Calgary facility", "50,000 L daily blend capacity", "Western Canadian warehouse access"] },
+  } as const;
+  const pillars = aboutPillars.map((pillar) => ({ ...pillar, ...aboutMedia[pillar.number] }));
   return (
     <main id="main" className="standalone-page about-page">
       <Breadcrumbs path="/about-us" navigate={navigate} />
@@ -520,8 +491,8 @@ function AboutPage({ navigate }: { navigate: (path: string) => void }) {
           <section className={`about-pillar section-wide ${index % 2 ? "about-pillar-reverse" : ""}`} key={pillar.number}>
             <Reveal className="about-pillar-visual"><img src={pillar.image} alt={pillar.alt} loading="lazy" decoding="async" /><span>{pillar.number}</span></Reveal>
             <Reveal className="about-pillar-copy">
-              <span className="eyebrow">{pillar.eyebrow}</span><h2>{pillar.title}</h2><p>{pillar.copy}</p>
-              {pillar.workflow && <div className="about-mini-workflow" aria-label="Field to office to client workflow"><b>Field</b><i /><b>Office</b><i /><b>Client</b></div>}
+              <span className="eyebrow">{pillar.eyebrow}</span><h2>{pillar.title}</h2><p>{pillar.copy}{pillar.number === "05" && <> See <RouteLink to="/locations" navigate={navigate}>{locationsLinkLabel}</RouteLink>.</>}</p>
+              {"workflow" in pillar && pillar.workflow && <div className="about-mini-workflow" aria-label="Field to office to client workflow"><b>Field</b><i /><b>Office</b><i /><b>Client</b></div>}
               <div className="about-proof-list">{pillar.proofs.map((proof) => <span key={proof}>{proof}</span>)}</div>
             </Reveal>
           </section>
@@ -551,7 +522,14 @@ function SystemsPage({ navigate }: { navigate: (path: string) => void }) {
       </section>
       <section className="systems-intro section-wide">
         <Reveal><span className="page-label">Chemical portfolio</span><h2>Specialty chemistry,<br/><em>shaped around the well.</em></h2></Reveal>
-        <Reveal><p>UniqEnergy develops and supplies water-based and oil-based drilling-fluid chemistry for the formation conditions, well geometry, operating priorities, and economics of each program. The portfolio supports rheology, filtration, lubricity, lost-circulation control, microbial control, suspension, and hole cleaning.</p><p>Product selection is supported by practical laboratory thinking and responsive field expertise. A qualified drilling-fluids engineer should review current well data before any product or treatment is used in the field.</p></Reveal>
+        <Reveal>
+          {systemsParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+          <p>
+            {catalogueLead}{" "}
+            {publicProducts.map((product, index) => <span key={product.slug}>{index > 0 ? "; " : ""}<RouteLink to={product.path} navigate={navigate}>{product.name}</RouteLink> ({product.category.toLowerCase()})</span>)}
+            .
+          </p>
+        </Reveal>
       </section>
       <Faqs items={seoByPath.get("/drilling-fluid-systems")?.faqs} />
       <section className="product-catalogue section-wide" aria-labelledby="product-catalogue-title">
@@ -798,8 +776,8 @@ function ContactPage({ navigate }: { navigate: (path: string) => void }) {
         <motion.div className="contact-hero-copy" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
           <div className="page-label">Contact Us</div>
           <span className="eyebrow">Start a conversation</span>
-          <h1>Bring us the challenge.<br /><em>Let’s connect the next step.</em></h1>
-          <p>Talk with our Calgary team about an operation, a fluid program, a technical question, or working with UniqEnergy.</p>
+          <h1>{headings.contact.lead}<br /><em>{headings.contact.rest}</em></h1>
+          <p>{contactLead}</p>
           <button className="button-primary" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth" })}>Start an inquiry <b aria-hidden="true">↘</b></button>
         </motion.div>
       </section>
@@ -841,33 +819,6 @@ function ContactPage({ navigate }: { navigate: (path: string) => void }) {
   );
 }
 
-type PublicLocation = {
-  id: string;
-  city: string;
-  address: string[];
-  phones: { display: string; dial: string }[];
-};
-
-const locations: PublicLocation[] = [
-  { id: "blackfalds", city: "Blackfalds", address: ["4300 South Street", "Blackfalds, AB T0M 0J0"], phones: [{ display: "403-885-5151", dial: "+14038855151" }] },
-  { id: "elk-point", city: "Elk Point", address: ["4505 57 Avenue", "Elk Point, AB T0A 1A0"], phones: [{ display: "780-724-2040", dial: "+17807242040" }, { display: "780-210-0158", dial: "+17802100158" }] },
-  { id: "fort-st-john", city: "Fort St. John", address: ["10223 116 Street", "Fort St. John, BC V1J 4M6"], phones: [{ display: "250-785-4222", dial: "+12507854222" }] },
-  { id: "grande-prairie-38", city: "Grande Prairie", address: ["9716 38 Avenue", "Grande Prairie, AB T8V 4Z1"], phones: [{ display: "780-814-6045", dial: "+17808146045" }] },
-  { id: "nisku", city: "Nisku", address: ["507 14 Avenue", "Nisku, AB T9E 7M8"], phones: [{ display: "780-955-5553", dial: "+17809555553" }] },
-  { id: "blackfoot", city: "Blackfoot", address: ["27 Production Avenue", "Blackfoot, AB"], phones: [{ display: "780-808-3845", dial: "+17808083845" }] },
-  { id: "rosetown", city: "Rosetown", address: ["110 Saskatchewan Drive", "Rosetown, SK S0L 2V0"], phones: [{ display: "306-882-1234", dial: "+13068821234" }] },
-  { id: "brooks", city: "Brooks", address: ["143040 Township Road 191", "SE-9-19-14-W4, Box 686", "Brooks, AB T1R 1B6"], phones: [{ display: "403-362-4071", dial: "+14033624071" }] },
-  { id: "grande-prairie-county", city: "Grande Prairie", address: ["#102-57, 721071 Range Road 53", "County of Grande Prairie No. 1, AB T8X 0N4"], phones: [{ display: "250-616-8592", dial: "+12506168592" }] },
-  { id: "weyburn", city: "Weyburn", address: ["29 Queen Street West", "Weyburn, SK S4H 2L3"], phones: [{ display: "306-861-0860", dial: "+13068610860" }] },
-  { id: "calgary", city: "Calgary", address: ["7115 48 Street SE", "Calgary, AB T2C 5A4"], phones: [{ display: "403-262-2004", dial: "+14032622004" }] },
-];
-
-const locationQuery = (location: PublicLocation) => location.address.join(", ");
-const mapEmbedUrl = (location: PublicLocation) =>
-  `https://maps.google.com/maps?q=${encodeURIComponent(locationQuery(location))}&z=14&output=embed`;
-const mapDirectionsUrl = (location: PublicLocation) =>
-  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationQuery(location))}`;
-
 function LocationsPage({ navigate }: { navigate: (path: string) => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const reduce = useReducedMotion();
@@ -880,7 +831,7 @@ function LocationsPage({ navigate }: { navigate: (path: string) => void }) {
         <motion.div className="locations-hero-copy" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
           <div className="page-label">Locations</div>
           <span className="eyebrow">Western Canadian reach</span>
-          <h1>Closer to the field.<br /><em>Ready for what’s next.</em></h1>
+          <h1>{headings.locations.lead}<br /><em>{headings.locations.rest}</em></h1>
           <p>Choose a location to view it on the map, connect by phone, or open directions in Google Maps.</p>
           <button className="button-primary" onClick={() => document.getElementById("location-directory")?.scrollIntoView({ behavior: "smooth" })}>Find a location <b aria-hidden="true">↘</b></button>
         </motion.div>
@@ -892,12 +843,12 @@ function LocationsPage({ navigate }: { navigate: (path: string) => void }) {
           <span className="eyebrow">Where to find us</span>
           <h2>Regional access.<br /><em>Direct connections.</em></h2>
         </Reveal>
-        <Reveal><p>Our network spans key operating centres across Alberta, British Columbia, and Saskatchewan. Select any address for a closer map view, then call or get directions.</p></Reveal>
+        <Reveal><p>{locationsIntro}</p></Reveal>
       </section>
 
       <section className="locations-directory section-wide" id="location-directory">
         <div className="location-list" aria-label="Location directory">
-          {locations.map((location, index) => {
+          {servicePoints.map((location, index) => {
             const active = location.id === selectedId;
             const panelId = `location-map-${location.id}`;
             return (
@@ -978,7 +929,7 @@ function Footer({
               {item.nav}
             </RouteLink>
           ))}
-          <button onClick={() => { navigate("/contact-us"); requestAnimationFrame(() => document.getElementById("careers")?.scrollIntoView()); }}>Careers</button>
+          <RouteLink to="/contact-us#careers" navigate={navigate}>Careers</RouteLink>
           <button onClick={onFluidLab}>UniqAccount</button>
         </div>
         <div>
@@ -1018,9 +969,12 @@ export default function App() {
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
   }, []);
   useEffect(() => {
-    if (path === "/" || allPublicPaths.has(path)) {
-      requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
-    }
+    const id = location.hash.replace(/^#/, "");
+    requestAnimationFrame(() => {
+      const target = id ? document.getElementById(id) : null;
+      if (target) target.scrollIntoView();
+      else if (path === "/" || allPublicPaths.has(path)) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
   }, [path]);
   useEffect(() => {
     const update = () => {
@@ -1036,22 +990,16 @@ export default function App() {
   const navigate = useCallback((target: string) => {
     const url = new URL(target, location.origin);
     const normalized = validPath(url.pathname);
-    history.pushState({}, "", normalized + url.search);
+    const same = pathRef.current === normalized;
+    history.pushState({}, "", normalized + url.search + url.hash);
     pathRef.current = normalized;
     setPath(normalized);
-    window.scrollTo(0, 0);
+    if (same && url.hash) requestAnimationFrame(() => document.getElementById(url.hash.slice(1))?.scrollIntoView());
   }, []);
   const lab = useCallback(() => portalNavigate("/signin"), [portalNavigate]);
   useEffect(() => {
     const route = seoByPath.get(path);
     if (route) applySeo(route);
-  }, [path]);
-  useEffect(() => {
-    const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
-    if (!viewport) return;
-    viewport.content = path === "/contact-us"
-      ? "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
-      : "width=device-width, initial-scale=1.0";
   }, [path]);
   return (
     <>

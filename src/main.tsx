@@ -11,7 +11,7 @@ if (isPrivatePage(location.pathname)) {
   if (!robots) { robots = document.createElement("meta"); robots.name = "robots"; document.head.append(robots); }
   robots.content = "noindex, nofollow";
 }
-// Build-time HTML is a complete crawler snapshot. The interactive application
-// deliberately replaces it once JavaScript is available.
+// Build-time HTML is the same public copy for every user agent. JavaScript
+// replaces it with the interactive page for every user agent.
 root.replaceChildren();
 createRoot(root).render(<StrictMode><BrowserRouter><App /></BrowserRouter></StrictMode>);
