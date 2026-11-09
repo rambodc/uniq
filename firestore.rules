@@ -40,6 +40,14 @@ service cloud.firestore {
       allow read: if canReadInventoryBot();
       allow write: if false;
     }
+    match /inventoryBot/main/meta/productUsage {
+      allow read: if canReadInventoryBot();
+      allow write: if false;
+    }
+    match /inventoryBot/main/meta/productUsage/parts/{partId} {
+      allow read: if canReadInventoryBot();
+      allow write: if false;
+    }
     // Everything else stays closed. Callables enforce requireMiniApp / requireSuperAdmin.
     match /{document=**} {
       allow read, write: if false;

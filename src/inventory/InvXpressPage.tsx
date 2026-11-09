@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronRight, Layers, Truck } from "lucide-react";
+import { Activity, ChevronDown, ChevronRight, Layers, Truck } from "lucide-react";
 import { InventoryFrame, PageLoader } from "./parts";
 import { invXpressError, loadInvXpress, previewInvXpress, type InvPackRow, type InvWellRow, type InvXpressResult } from "./invXpress";
 
@@ -27,11 +27,13 @@ function shortDay(value: string) {
 
 export function InventoryTabs() {
   const { pathname } = useLocation();
-  const tickets = pathname.startsWith("/inventory-bot/tickets") || pathname.startsWith("/inventory-bot/rig") || pathname.startsWith("/inventory-bot/move-ticket");
-  const xpress = !tickets;
+  const usage = pathname.startsWith("/inventory-bot/usage");
+  const tickets = !usage && (pathname.startsWith("/inventory-bot/tickets") || pathname.startsWith("/inventory-bot/rig") || pathname.startsWith("/inventory-bot/move-ticket"));
+  const xpress = !usage && !tickets;
   return <div className="xb-tabs ix-tabs" role="tablist">
     <NavLink to="/inventory-bot" role="tab" aria-selected={xpress} className={() => `xb-tab${xpress ? " on" : ""}`}><Layers size={16} aria-hidden="true" /> Inventory Xpress</NavLink>
     <NavLink to="/inventory-bot/tickets" role="tab" aria-selected={tickets} className={() => `xb-tab${tickets ? " on" : ""}`}><Truck size={16} aria-hidden="true" /> Xpress Tickets</NavLink>
+    <NavLink to="/inventory-bot/usage" role="tab" aria-selected={usage} className={() => `xb-tab${usage ? " on" : ""}`}><Activity size={16} aria-hidden="true" /> Product Usage</NavLink>
   </div>;
 }
 

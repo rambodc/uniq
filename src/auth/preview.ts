@@ -1,7 +1,8 @@
 import type { Inquiry, OpenXpressWell, RigBoard, UserRecord, XpressBoard } from "../core/api";
 import type { InvXpressResult } from "../inventory/invXpress";
+import type { ProductUsageResult } from "../inventory/productUsage";
 
-export type InventoryPreviewData = { xpress?: XpressBoard; mim?: XpressBoard; rigs?: RigBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell>; invXpress?: InvXpressResult };
+export type InventoryPreviewData = { xpress?: XpressBoard; mim?: XpressBoard; rigs?: RigBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell>; invXpress?: InvXpressResult; productUsage?: ProductUsageResult };
 
 /** Dev-only fixtures for local screenshots. Production builds drop this branch. */
 export function previewActive() {
