@@ -140,6 +140,8 @@ function ListView({ data }: { data: ProductUsageResult }) {
     return { ordered: units.filter(keep).sort(bySort), litreRows: litres.filter(keep).sort(bySort) };
   }, [units, litres, needle, chip, uniquemOnly, sort]);
   const partial = data.partial ? `${monthName(data.months[data.months.length - 1] || "")} is partial` : "The latest month is complete";
+  const history = data.historyStart && data.historyStart > data.months[0];
+  const coverage = (data.coverage || []).filter((row) => !history || row.month >= (data.historyStart || ""));
   const counts = {
     all: units.length,
     order: units.filter((row) => row.status === "order").length,
@@ -153,6 +155,8 @@ function ListView({ data }: { data: ProductUsageResult }) {
       <div><b>{updatedLabel(data.generatedAt)}</b> · past 12 months · {partial} · {data.summary.reports.toLocaleString("en-US")} daily reports · {data.summary.wells.toLocaleString("en-US")} wells</div>
       <div>Units only · litres are listed below</div>
     </div>
+    {history && <p className="ix-note">History starts {monthName(data.historyStart || "")}. Earlier months are blank because the mirror has no reports yet, not because usage was zero.</p>}
+    {coverage.length > 0 && <p className="pu-cover">{coverage.map((row) => `${monthName(row.month)} ${row.reports.toLocaleString("en-US")} reports · ${row.wells.toLocaleString("en-US")} wells`).join(" · ")}</p>}
     <div className="pu-cards">
       <section className="pu-card order"><span>Order now</span><b>{counts.order}</b><small>Under 30 days of cover</small></section>
       <section className="pu-card soon"><span>Order soon</span><b>{counts.soon}</b><small>30 to 59 days of cover</small></section>
@@ -177,16 +181,23 @@ function ListView({ data }: { data: ProductUsageResult }) {
   </>;
 }
 
-function UsageChart({ row, months, partial }: { row: UsageRow; months: string[]; partial: boolean }) {
+function UsageChart({ row, months, partial, historyStart }: { row: UsageRow; months: string[]; partial: boolean; historyStart?: string }) {
   const width = 680;
   const height = 240;
   const pad = { l: 44, r: 12, t: 18, b: 36 };
-  const max = Math.max(1, ...row.months);
+  const point = (value: number | null, month: string) => (historyStart && month < historyStart ? null : value);
+  const known = row.months.filter((value, index): value is number => point(value, months[index] || "") != null);
+  const max = Math.max(1, ...known);
   const innerW = width - pad.l - pad.r;
   const innerH = height - pad.t - pad.b;
   const x = (index: number) => pad.l + (row.months.length <= 1 ? innerW / 2 : (index / (row.months.length - 1)) * innerW);
   const y = (value: number) => pad.t + innerH - (value / max) * innerH;
-  const path = row.months.map((value, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(1)} ${y(value).toFixed(1)}`).join(" ");
+  const path = row.months.reduce((state, value, index) => {
+    const shown = point(value, months[index] || "");
+    if (shown == null) return { commands: state.commands, drawing: false };
+    const command = `${state.drawing ? "L" : "M"}${x(index).toFixed(1)} ${y(shown).toFixed(1)}`;
+    return { commands: state.commands + command, drawing: true };
+  }, { commands: "", drawing: false }).commands;
   const ticks = [0, Math.round(max / 2), max];
   return <svg className="pu-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Monthly usage of ${row.name}, ${row.months.length} months`}>
     {ticks.map((tick) => <g key={tick}><line x1={pad.l} x2={width - pad.r} y1={y(tick)} y2={y(tick)} /><text x={pad.l - 8} y={y(tick) + 4} textAnchor="end">{qty(tick)}</text></g>)}
@@ -195,7 +206,7 @@ function UsageChart({ row, months, partial }: { row: UsageRow; months: string[];
       const last = index === row.months.length - 1;
       const label = `${monthName(months[index] || "").slice(0, 3)}${last && partial ? "*" : ""}`;
       return <g key={months[index] || index}>
-        <circle className={last && partial ? "partial" : undefined} cx={x(index)} cy={y(value)} r={last && partial ? 5 : 3.5} />
+        {point(value, months[index] || "") != null && <circle className={last && partial ? "partial" : undefined} cx={x(index)} cy={y(point(value, months[index] || "") as number)} r={last && partial ? 5 : 3.5} />}
         <text x={x(index)} y={height - 10} textAnchor="middle">{label}</text>
       </g>;
     })}
@@ -223,18 +234,22 @@ function DetailView({ data, productKey }: { data: ProductUsageResult; productKey
       <section><span>12-month total</span><b>{qty(row.total)}</b><small>Average {qty(row.average)} / month</small></section>
     </div>
     <h3 className="pu-h">Monthly usage</h3>
-    <UsageChart row={row} months={data.months} partial={data.partial} />
+    <UsageChart row={row} months={data.months} partial={data.partial} historyStart={data.historyStart} />
     <div className="ix-scroll">
       <table className="ix-table pu-months">
         <thead><tr><th>Month</th><th>Used</th></tr></thead>
         <tbody>
-          {data.months.map((month, index) => <tr key={month}><td>{monthName(month)}{index === last && data.partial ? " (partial)" : ""}</td><td><b>{qty(row.months[index] || 0)}</b></td></tr>)}
-          <tr className="pu-total"><td>12-month total</td><td><b>{qty(row.total)}</b></td></tr>
+          {data.months.map((month, index) => {
+            const value = row.months[index];
+            const blank = Boolean(data.historyStart && month < data.historyStart) || value == null;
+            return <tr key={month}><td>{monthName(month)}{index === last && data.partial ? " (partial)" : ""}{data.historyStart && month < data.historyStart ? " · no history" : ""}</td><td><b>{blank ? "—" : qty(value || 0)}</b></td></tr>;
+          })}
+          <tr className="pu-total"><td>{data.historyStart && data.historyStart > data.months[0] ? "Total on record" : "12-month total"}</td><td><b>{qty(row.total)}</b></td></tr>
           <tr><td>Monthly average</td><td><b>{qty(row.average)}</b></td></tr>
         </tbody>
       </table>
     </div>
-    <p className="ix-note">{data.method} On hand is the Inventory Xpress count{data.stockDate ? ` as of ${data.stockDate}` : ""}. The current month is included as recorded, and the average divides the 12-month total by 12.</p>
+    <p className="ix-note">{data.method} On hand is the Inventory Xpress count{data.stockDate ? ` as of ${data.stockDate}` : ""}. The average uses only months on record. Months before the first report in the mirror are left blank.</p>
   </>;
 }
 

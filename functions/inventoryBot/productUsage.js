@@ -375,3 +375,23 @@ export function assembleProductUsage(header, parts = []) {
   const ordered = parts.slice().sort((a, b) => (a.index || 0) - (b.index || 0));
   return { ...header, chunks: 0, products: ordered.flatMap((part) => part.products || []) };
 }
+
+/** A chart month with no listed reports is blank, not zero. The average uses only months on record. */
+export function applyHistory(result, historyStart, coverage = []) {
+  const listed = new Map((coverage || []).map((row) => [row.month, Number(row.listed) || 0]));
+  const useCoverage = listed.size > 0;
+  const firstCovered = (result.months || []).find((month) => (listed.get(month) || 0) > 0) || "";
+  const start = firstCovered || historyStart || result.months[0] || "";
+  const products = (result.products || []).map((row) => {
+    const months = row.months.map((value, index) => {
+      const month = result.months[index];
+      if (useCoverage && listed.get(month) === 0) return null;
+      if (!useCoverage && start && month < start) return null;
+      return value;
+    });
+    const counted = months.filter((value) => value != null);
+    const total = roundQty(counted.reduce((sum, value) => sum + value, 0));
+    return { ...row, months, total, average: counted.length ? roundQty(total / counted.length) : 0 };
+  });
+  return { ...result, products, historyStart: start, coverage };
+}

@@ -15,7 +15,7 @@ export type UsageRow = {
   uniquemLabel: string;
   productId: string;
   onHand: number;
-  months: number[];
+  months: (number | null)[];
   total: number;
   average: number;
   forecast30: number;
@@ -30,6 +30,8 @@ export type ProductUsageResult = {
   asOf: string;
   partial: boolean;
   months: string[];
+  historyStart?: string;
+  coverage?: { month: string; listed: number; reports: number; wells: number }[];
   method: string;
   stockDate: string;
   stockAsOf: string;
