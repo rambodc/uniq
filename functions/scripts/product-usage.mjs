@@ -1,18 +1,21 @@
 /** Publish monthly product usage to inventoryBot/main/meta/productUsage.
  * Run from functions/: node scripts/product-usage.mjs
  * Sundays at 8:00 America/Edmonton. The scheduler lives outside this repo.
- * Uses Application Default Credentials for uniqenergy-de71c, same as inv-xpress.mjs.
+ * Firestore uses Application Default Credentials for uniqenergy-de71c, same as inv-xpress.mjs.
+ * The mirror does not accept that ADC token. It uses a Bearer token from
+ * `gcloud auth print-access-token $MIRROR_ACCOUNT` (default rambodr@uniquem.ca), same as the inventory sync.
  * Idempotent: writing again replaces the result. Add --dry-run to print the summary and skip the write.
- * Reads are targeted and read-only. Daily `used` quantities come from the Firestore copy of
- * mud-man reports (wellsApp well collections, then inventoryBot appWells). The Realtime
- * Database mirror is not opened. App documents are not modified. No AI.
+ * Usage comes from the read-only Realtime Database mirror (shallow well and report lists,
+ * then one inventory/used read per report). wellsApp olderWells is read first and those
+ * reports are not read again. Nothing is written to the mirror or to app documents. No AI.
  */
 import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { isTestWell } from "../inventoryBot/copiedReports.js";
 import { dayKey } from "../inventoryBot/engine.js";
 import { assembleInvXpress } from "../inventoryBot/invXpress.js";
-import { buildProductUsage, packProductUsage, reportIdDate, reportInWindow, usageWindow, usedLines, usedLinesFromReport } from "../inventoryBot/productUsage.js";
+import { collectMirrorLines, createCoverage, gcloudAccessToken, MIRROR_URL, mirrorAccount } from "../inventoryBot/mirrorUsage.js";
+import { applyHistory, buildProductUsage, packProductUsage, reportIdDate, reportInWindow, usageWindow, usedLines, usedLinesFromReport } from "../inventoryBot/productUsage.js";
 
 const dryRun = globalThis.process.argv.includes("--dry-run");
 initializeApp({ credential: applicationDefault(), projectId: "uniqenergy-de71c" });
@@ -64,9 +67,20 @@ async function usedForReport(reportRef) {
   return { date, lines: usedLinesFromReport(data) };
 }
 
-async function readWell(well, wellRef, source, state) {
+async function readWell(well, wellRef, state) {
   const refs = await wellRef.collection("reports").listDocuments();
-  const picked = refs.filter((ref) => reportInWindow(ref.id, window));
+  const picked = [];
+  for (const ref of refs) {
+    const date = reportIdDate(ref.id);
+    if (date) state.coverage.noteEarliest(date);
+    if (!reportInWindow(ref.id, window)) continue;
+    const signature = `${well.id}/${ref.id}`;
+    if (!state.seenListed.has(signature)) {
+      state.seenListed.add(signature);
+      state.coverage.noteListed(date || ref.id);
+    }
+    picked.push(ref);
+  }
   await pool(picked, 6, async (reportRef) => {
     const found = await usedForReport(reportRef);
     if (!found) return;
@@ -77,20 +91,45 @@ async function readWell(well, wellRef, source, state) {
     state.seen.add(signature);
     state.reports += 1;
     state.usedWells.add(well.id);
-    if (source === "app") state.activeReports += 1;
-    else state.olderReports += 1;
+    state.olderReports += 1;
+    state.coverage.noteUsed(found.date, well.id);
     for (const line of positive) {
       state.lines.push({ wellId: well.id, reportId: reportRef.id, date: found.date, name: line.name, unit: line.unit, code: line.code, productId: line.productId, qty: line.qty });
     }
   });
 }
 
-async function scanWells(wells, refFor, source, state) {
+async function scanWells(wells, refFor, state) {
   const open = wells.filter((well) => well?.id && !isTestWell(well) && overlaps(well));
   state.scanned += open.length;
   await pool(open, 5, async (well) => {
-    await readWell(well, refFor(well), source, state);
+    await readWell(well, refFor(well), state);
   });
+}
+
+const account = mirrorAccount();
+let mirrorToken = { value: "", exp: 0 };
+async function mirrorAccessToken(force) {
+  if (!force && mirrorToken.value && Date.now() < mirrorToken.exp) return mirrorToken.value;
+  const value = await gcloudAccessToken(account);
+  mirrorToken = { value, exp: Date.now() + 45 * 60 * 1000 };
+  return value;
+}
+
+async function mirrorGet(path, options = {}, retried = false) {
+  const token = await mirrorAccessToken(retried);
+  const url = new globalThis.URL(`${MIRROR_URL}/${path}.json`);
+  if (options.shallow) url.searchParams.set("shallow", "true");
+  const response = await globalThis.fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401 && !retried) {
+    mirrorToken = { value: "", exp: 0 };
+    return mirrorGet(path, options, true);
+  }
+  if (response.status === 401 || response.status === 403) throw new Error(`Mirror read denied (${response.status}) for ${path}. Sign in on the box with gcloud auth login ${account}, or set MIRROR_ACCOUNT.`);
+  if (!response.ok) throw new Error(`Mirror ${response.status} for ${path}`);
+  const text = await response.text();
+  if (!text || text === "null") return null;
+  return JSON.parse(text);
 }
 
 async function olderFromMeta() {
@@ -132,28 +171,28 @@ async function loadStock() {
   return { products: assembled.products || [], stockDate: data.stockDate || "", stockAsOf: data.stockAsOf || "" };
 }
 
-const state = { seen: new Set(), lines: [], reports: 0, olderReports: 0, activeReports: 0, scanned: 0, usedWells: new Set(), collections: [] };
+const state = { seen: new Set(), seenListed: new Set(), lines: [], reports: 0, olderReports: 0, mirrorReports: 0, scanned: 0, usedWells: new Set(), collections: ["olderWells", "mirror"], coverage: createCoverage(window.months) };
 
-const [olderWells, extras, appSnap, stock, productSnap, linkSnap] = await Promise.all([
+const [olderWells, extras, stock, productSnap, linkSnap] = await Promise.all([
   olderFromMeta(),
   extraWellGroups(),
-  root.collection("appWells").select("name", "status", "isTest", "lastReportDate", "firstReportDate").get(),
   loadStock(),
   root.collection("products").get(),
   root.collection("meta").doc("invXpressLinks").get(),
 ]);
 
-state.collections.push("olderWells");
-await scanWells(olderWells, (well) => db.collection("wellsApp").doc("main").collection("olderWells").doc(well.id), "older", state);
+await scanWells(olderWells, (well) => db.collection("wellsApp").doc("main").collection("olderWells").doc(well.id), state);
 for (const group of extras) {
   state.collections.push(group.name);
-  await scanWells(group.wells, group.refFor, "older", state);
+  await scanWells(group.wells, group.refFor, state);
 }
-const appWells = appSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-state.collections.push("appWells");
-await scanWells(appWells, (well) => root.collection("appWells").doc(well.id), "app", state);
+const mirror = await collectMirrorLines({ get: mirrorGet, window, seen: state.seen, seenListed: state.seenListed, coverage: state.coverage, pool });
+state.lines.push(...mirror.lines);
+const mirrorReportIds = new Set(mirror.lines.map((line) => `${line.wellId}/${line.reportId}`));
+for (const line of mirror.lines) state.usedWells.add(line.wellId);
+state.reports += mirrorReportIds.size;
 
-const result = buildProductUsage({
+const built = buildProductUsage({
   lines: state.lines,
   products: productSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
   links: linkSnap.data() || {},
@@ -165,18 +204,26 @@ const result = buildProductUsage({
   reports: state.reports,
   wells: state.usedWells.size,
 });
+const result = applyHistory(built, state.coverage.historyStart(), state.coverage.snapshot());
 result.sources = {
   collections: state.collections,
   scannedWells: state.scanned,
   olderReports: state.olderReports,
-  activeReports: state.activeReports,
+  mirrorReports: new Set(mirror.lines.map((line) => `${line.wellId}/${line.reportId}`)).size,
+  mirrorWells: mirror.wells,
+  mirrorReads: mirror.reads,
   readStart: window.readStart,
   readEnd: window.readEnd,
 };
 
 const summary = result.summary;
+const coverageLine = result.coverage.map((row) => `${row.month} ${row.reports} reports / ${row.wells} wells`).join(" · ");
 globalThis.console.log(`Window ${window.months[0]} through ${window.months[11]}${window.partial ? " (current month partial)" : ""} · read ${window.readStart} to ${window.readEnd}`);
-globalThis.console.log(`Reports ${state.reports} with usage (${state.olderReports} from well history, ${state.activeReports} from active-well copies) · ${state.usedWells.size} wells · ${state.lines.length} used lines · ${state.scanned} wells scanned`);
+globalThis.console.log(`Coverage ${coverageLine}`);
+if (result.historyStart > result.months[0]) globalThis.console.log(`History starts ${result.historyStart}. Earlier months are blank, not zero.`);
+globalThis.console.log(`Reports ${state.reports} with usage (${state.olderReports} from well history, ${result.sources.mirrorReports} from the mirror) · ${state.usedWells.size} wells · ${state.lines.length} used lines`);
+globalThis.console.log(`Mirror auth gcloud auth print-access-token ${account}`);
+globalThis.console.log(`Mirror reads: ${mirror.reads.wells} well list + ${mirror.reads.reportLists} report lists + ${mirror.reads.used} used docs · skipped ${mirror.reads.skippedDuplicate} already in the well archive · ${mirror.wells} wells listed · ${mirror.reads.skippedWells} wells outside the window`);
 globalThis.console.log(`Unit products ${summary.productCount} · order now ${summary.orderNow} · order soon ${summary.orderSoon} · healthy ${summary.healthy} · overstock ${summary.overstock} · no usage ${summary.noUsage} · Uniquem ${summary.uniquem} · litre products ${summary.litreCount}`);
 if (result.uniquemMatched.length) {
   globalThis.console.log("Uniquem products marked:");

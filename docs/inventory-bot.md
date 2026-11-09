@@ -112,7 +112,7 @@ The morning collector runs outside this repo, with the Admin SDK and owner crede
 
 ## Product Usage
 
-Monthly usage from the mud-man daily reports, for the past 12 calendar months in America/Edmonton. The current month is partial until its last day. Quantities are the `used` field on each report (`wellsApp` well history `reports/{id}/inventory/used`, then `appWells` copies for wells still drilling). Received, returned, and remaining lines are not usage. 18 L and 19 L pails are one pack. Pack `1 L` stays in the litre list. Prices are not stored. On hand is the Inventory Xpress product total (warehouses plus active wells) for the same product and pack. Uniquem products are marked from the editable list in `functions/inventoryBot/uniquem.js`.
+Monthly usage from the mud-man daily reports, for the past 12 calendar months in America/Edmonton. The current month is partial until its last day. Quantities are the `used` field. The read-only mirror at `https://uniqenergymirror.firebaseio.com` is the source: one shallow list of `data/wellReports`, one shallow list of report ids per well, then one `data/wellReports/{wellId}/{reportId}/inventory/used` read for each report inside the window. `wellsApp` older-well history is read first and those reports are not fetched again. The synced `appWells` copy has received and returned only, so it is not a usage source. Price fields are dropped as soon as a used node is read. 18 L and 19 L pails are one pack. Pack `1 L` stays in the litre list. On hand is the Inventory Xpress product total (warehouses plus active wells) for the same product and pack. Uniquem products are marked from the editable list in `functions/inventoryBot/uniquem.js`. If the earliest report on the mirror is after the first chart month, that month is `historyStart` and earlier months are blank instead of zero.
 
 The page reads only the published document. Refresh it on the machine that has Application Default Credentials. It is meant to run once a week, Sundays at 8:00 America/Edmonton. This repo does not register that schedule.
 
@@ -120,11 +120,11 @@ The page reads only the published document. Refresh it on the machine that has A
 cd functions && node scripts/product-usage.mjs
 ```
 
-`node scripts/product-usage.mjs --dry-run` prints the summary and the Uniquem names that matched, and does not write. The run is read-only toward the app copy. It does not open the Realtime Database mirror.
+`node scripts/product-usage.mjs --dry-run` prints the summary, one coverage line of reports and wells per month, and the Uniquem names that matched, and does not write. Firestore still uses Application Default Credentials. The mirror does not. It sends `Authorization: Bearer` from `gcloud auth print-access-token rambodr@uniquem.ca`, the same account as the inventory sync. Set `MIRROR_ACCOUNT` to use a different account. Nothing is written to the mirror. Wells whose id date is after the window, or more than 180 days before it, are not report-listed.
 
 Days of cover use a 60/40 blend. Sixty percent is the daily rate from the last 60 days. Forty percent is the daily rate from the same upcoming calendar dates last year, so a winter or breakup month still shows up. The 30-day and 60-day forecasts use that blend on each horizon. Cover is on-hand quantity divided by the 60-day blended daily rate, rounded down. Under 30 days is order now, 30 to 59 is order soon, 60 to 180 is healthy, and more than 180 is overstock. A product with stock and no usage in the read window is marked no usage, separate from overstock.
 
-`inventoryBot/main/meta/productUsage` keeps `generatedAt`, `months`, `partial`, `method`, `summary`, `products`, and `uniquemMatched`. Each product has `months` (12 numbers), `total`, `average`, `onHand`, `forecast30`, `forecast60`, `days`, `status`, `container` (`pail`, `drum`, `tote`, `bag`, or empty), and `uniquem`. Past 700 KB, `chunks` is the part count and `products` move to `parts/{index}`.
+`inventoryBot/main/meta/productUsage` keeps `generatedAt`, `months`, `partial`, `historyStart`, `coverage` (`month`, `listed`, `reports`, `wells`), `method`, `summary`, `products`, and `uniquemMatched`. Each product has `months` (12 numbers, or null before `historyStart`), `total`, `average`, `onHand`, `forecast30`, `forecast60`, `days`, `status`, `container` (`pail`, `drum`, `tote`, `bag`, or empty), and `uniquem`. Past 700 KB, `chunks` is the part count and `products` move to `parts/{index}`.
 
 ## Paths
 

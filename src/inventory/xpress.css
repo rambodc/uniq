@@ -299,6 +299,7 @@
 .pu-status.over{background:#818cf822;color:#c7d2fe}
 .pu-status.idle{background:#64748b33;color:#cbd5e1}
 .pu-caption{margin:8px 0 0;color:var(--mut);font-size:12px}
+.pu-cover{margin:0 0 14px;color:var(--mut);font-size:12.5px;line-height:1.55}
 .pu-detail-head{display:flex;align-items:flex-start;gap:12px;margin:4px 0 14px}
 .pu-detail-head h2{margin:0;font-size:26px}
 .pu-detail-head p{margin:4px 0 0;color:var(--mut);font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
