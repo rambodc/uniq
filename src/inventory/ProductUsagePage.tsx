@@ -24,8 +24,14 @@ function monthName(key: string) {
   return `${name} '${String(year).slice(2)}`;
 }
 
-const STATUS_LABEL: Record<UsageStatus, string> = { order: "Order now", soon: "Order soon", ok: "Healthy", over: "Overstock", idle: "No usage" };
-const STATUS_RANK: Record<UsageStatus, number> = { order: 0, soon: 1, ok: 2, over: 3, idle: 4 };
+const STATUS_LABEL: Record<UsageStatus, string> = { order: "Order now", soon: "Order soon", ok: "Healthy", over: "Overstock", unstocked: "Not stocked in Xpress", idle: "No usage" };
+const STATUS_RANK: Record<UsageStatus, number> = { order: 0, soon: 1, ok: 2, over: 3, unstocked: 4, idle: 5 };
+
+/** A published row from before this status still says order now when nothing is on hand. */
+function present(row: UsageRow): UsageRow {
+  if (row.onHand > 0 || row.status === "idle" || row.status === "unstocked") return row;
+  return { ...row, status: "unstocked", days: null };
+}
 
 function Status({ status }: { status: UsageStatus }) {
   return <span className={`pu-status ${status}`}>{STATUS_LABEL[status]}</span>;
@@ -122,8 +128,8 @@ function UsageTable({ rows, sort, onSort, partialLabel }: { rows: UsageRow[]; so
 }
 
 function ListView({ data }: { data: ProductUsageResult }) {
-  const units = data.products.filter((row) => !row.litre);
-  const litres = data.products.filter((row) => row.litre);
+  const units = data.products.filter((row) => !row.litre).map(present);
+  const litres = data.products.filter((row) => row.litre).map(present);
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<"all" | UsageStatus>("all");
   const [uniquemOnly, setUniquemOnly] = useState(false);
@@ -148,6 +154,7 @@ function ListView({ data }: { data: ProductUsageResult }) {
     soon: units.filter((row) => row.status === "soon").length,
     ok: units.filter((row) => row.status === "ok").length,
     over: units.filter((row) => row.status === "over").length,
+    unstocked: units.filter((row) => row.status === "unstocked").length,
     idle: units.filter((row) => row.status === "idle").length,
   };
   return <>
@@ -162,13 +169,14 @@ function ListView({ data }: { data: ProductUsageResult }) {
       <section className="pu-card soon"><span>Order soon</span><b>{counts.soon}</b><small>30 to 59 days of cover</small></section>
       <section className="pu-card ok"><span>Healthy</span><b>{counts.ok}</b><small>60 to 180 days of cover</small></section>
       <section className="pu-card over"><span>Overstock</span><b>{counts.over}</b><small>More than 6 months on hand</small></section>
+      <section className="pu-card unstocked"><span>Not stocked</span><b>{counts.unstocked}</b><small>Usage, nothing in Xpress</small></section>
     </div>
     <div className="ix-bar">
       <div><h2>By product</h2><p>On hand is the Inventory Xpress total, warehouses plus active wells. Click a column title to sort. Click a product for the monthly chart.</p></div>
       <input className="xb-search" aria-label="Search product" placeholder="Search product…" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
     <div className="ix-chips" role="group" aria-label="Filter products">
-      {([["all", "All", counts.all], ["order", "Order now", counts.order], ["soon", "Order soon", counts.soon], ["ok", "Healthy", counts.ok], ["over", "Overstock", counts.over], ["idle", "No usage", counts.idle]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => setChip(id)}>{label}<span>{count}</span></button>)}
+      {([["all", "All", counts.all], ["order", "Order now", counts.order], ["soon", "Order soon", counts.soon], ["ok", "Healthy", counts.ok], ["over", "Overstock", counts.over], ["unstocked", "Not stocked in Xpress", counts.unstocked], ["idle", "No usage", counts.idle]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => setChip(id)}>{label}<span>{count}</span></button>)}
       <button type="button" className={`ix-chip pu-uniq${uniquemOnly ? " on" : ""}`} aria-pressed={uniquemOnly} onClick={() => setUniquemOnly((value) => !value)}>Uniquem only<span>{units.filter((row) => row.uniquem).length}</span></button>
     </div>
     <UsageTable rows={ordered} sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} partialLabel={`${partial}. No prices are shown.`} />
@@ -214,7 +222,8 @@ function UsageChart({ row, months, partial, historyStart }: { row: UsageRow; mon
 }
 
 function DetailView({ data, productKey }: { data: ProductUsageResult; productKey: string }) {
-  const row = data.products.find((item) => item.key === productKey);
+  const found = data.products.find((item) => item.key === productKey);
+  const row = found ? present(found) : undefined;
   if (!row) return <p className="ix-note">That product is not in the latest usage count.</p>;
   const last = data.months.length - 1;
   return <>

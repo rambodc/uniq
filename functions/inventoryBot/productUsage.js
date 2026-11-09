@@ -27,7 +27,7 @@ export const COVER_ORDER_DAYS = 30;
 export const COVER_SOON_DAYS = 60;
 export const COVER_OVER_DAYS = 180;
 
-const STATUS_RANK = { order: 0, soon: 1, ok: 2, over: 3, idle: 4 };
+const STATUS_RANK = { order: 0, soon: 1, ok: 2, over: 3, unstocked: 4, idle: 5 };
 
 export function addDays(iso, days) {
   const [year, month, day] = String(iso).split("-").map(Number);
@@ -189,7 +189,8 @@ function groupKey(identity, uniquem) {
 
 function coverFor(onHand, daily, readQty) {
   if (!(readQty > 0)) return { status: "idle", days: null };
-  if (!(daily > 0)) return { status: onHand > 0 ? "over" : "ok", days: null };
+  if (!(onHand > 0)) return { status: "unstocked", days: null };
+  if (!(daily > 0)) return { status: "over", days: null };
   const days = Math.floor(onHand / daily);
   if (days < COVER_ORDER_DAYS) return { status: "order", days };
   if (days < COVER_SOON_DAYS) return { status: "soon", days };
@@ -318,7 +319,7 @@ export function buildProductUsage(input) {
     asOf: window.today,
     partial: window.partial,
     months: window.months,
-    method: "Days of cover use a 60/40 blend of the last 60 days and the same upcoming dates last year. Under 30 days is order now, 30 to 59 is order soon, 60 to 180 is healthy, and more than 180 is overstock. No usage in the read window is marked on its own.",
+    method: "Days of cover use a 60/40 blend of the last 60 days and the same upcoming dates last year. Under 30 days on hand is order now, 30 to 59 is order soon, 60 to 180 is healthy, and more than 180 is overstock. Usage with nothing on hand in Inventory Xpress is not stocked in Xpress. No usage in the read window is marked on its own.",
     stockDate: input?.stockDate || "",
     stockAsOf: input?.stockAsOf || "",
     chunks: 0,
@@ -332,6 +333,7 @@ export function buildProductUsage(input) {
       orderSoon: count(units, "soon"),
       healthy: count(units, "ok"),
       overstock: count(units, "over"),
+      notStocked: count(units, "unstocked"),
       noUsage: count(units, "idle"),
       uniquem: units.filter((row) => row.uniquem).length,
     },

@@ -122,6 +122,33 @@ test("cover bands are order, soon, healthy, overstock, and no usage", () => {
   assert.equal(bands.summary.healthy, 1);
   assert.equal(bands.summary.overstock, 1);
   assert.equal(bands.summary.noUsage, 1);
+  assert.equal(bands.summary.notStocked, 0);
+});
+
+test("usage with no Xpress stock is not an order", () => {
+  const result = buildProductUsage({
+    now: NOW,
+    lines: [
+      line("2026-10-01", "Heavy Brine", 40, "1 m3"),
+      line("2026-10-02", "CaCl2 Kill Brine", 8, "20 L"),
+      line("2026-10-01", "Elixir", 60, "19 L"),
+      line("2025-11-15", "Elixir", 30, "19 L"),
+    ],
+    stock: [
+      { key: "name:elixir|19 L", name: "Elixir", pack: "19 L", total: 10 },
+      { key: "name:cacl2 kill brine|20 L", name: "CaCl2 Kill Brine", pack: "20 L", total: 0 },
+    ],
+  });
+  const status = (name) => result.products.find((row) => row.name === name);
+  assert.equal(status("Heavy Brine").status, "unstocked");
+  assert.equal(status("Heavy Brine").onHand, 0);
+  assert.equal(status("Heavy Brine").days, null);
+  assert.equal(status("Heavy Brine").total > 0, true);
+  assert.equal(status("CaCl2 Kill Brine").status, "unstocked");
+  assert.equal(status("Elixir").status, "order");
+  assert.equal(result.summary.orderNow, 1);
+  assert.equal(result.summary.orderSoon, 0);
+  assert.equal(result.summary.notStocked, 2);
 });
 
 test("Uniq-PAC LV and UniPAC LVD share a row and a badge, and HV stays separate", () => {

@@ -3,7 +3,7 @@ import { db } from "../core/firebase";
 import { previewInventory } from "../auth/preview";
 import sample from "./productUsageSample.json";
 
-export type UsageStatus = "order" | "soon" | "ok" | "over" | "idle";
+export type UsageStatus = "order" | "soon" | "ok" | "over" | "unstocked" | "idle";
 
 export type UsageRow = {
   key: string;
@@ -46,6 +46,7 @@ export type ProductUsageResult = {
     orderSoon: number;
     healthy: number;
     overstock: number;
+    notStocked?: number;
     noUsage: number;
     uniquem: number;
   };
