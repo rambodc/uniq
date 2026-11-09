@@ -1,18 +1,20 @@
 /** Publish monthly product usage to inventoryBot/main/meta/productUsage.
  * Run from functions/: node scripts/product-usage.mjs
  * Sundays at 8:00 America/Edmonton. The scheduler lives outside this repo.
- * Uses Application Default Credentials for uniqenergy-de71c, same as inv-xpress.mjs.
+ * Firestore uses Application Default Credentials for uniqenergy-de71c, same as inv-xpress.mjs.
+ * The mirror does not accept that ADC token. It uses a Bearer token from
+ * `gcloud auth print-access-token $MIRROR_ACCOUNT` (default rambodr@uniquem.ca), same as the inventory sync.
  * Idempotent: writing again replaces the result. Add --dry-run to print the summary and skip the write.
  * Usage comes from the read-only Realtime Database mirror (shallow well and report lists,
  * then one inventory/used read per report). wellsApp olderWells is read first and those
  * reports are not read again. Nothing is written to the mirror or to app documents. No AI.
  */
-import { applicationDefault, getApp, initializeApp } from "firebase-admin/app";
+import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { isTestWell } from "../inventoryBot/copiedReports.js";
 import { dayKey } from "../inventoryBot/engine.js";
 import { assembleInvXpress } from "../inventoryBot/invXpress.js";
-import { collectMirrorLines, createCoverage, MIRROR_URL } from "../inventoryBot/mirrorUsage.js";
+import { collectMirrorLines, createCoverage, gcloudAccessToken, MIRROR_URL, mirrorAccount } from "../inventoryBot/mirrorUsage.js";
 import { applyHistory, buildProductUsage, packProductUsage, reportIdDate, reportInWindow, usageWindow, usedLines, usedLinesFromReport } from "../inventoryBot/productUsage.js";
 
 const dryRun = globalThis.process.argv.includes("--dry-run");
@@ -105,21 +107,25 @@ async function scanWells(wells, refFor, state) {
   });
 }
 
+const account = mirrorAccount();
 let mirrorToken = { value: "", exp: 0 };
-async function mirrorAccessToken() {
-  if (mirrorToken.value && Date.now() < mirrorToken.exp - 60_000) return mirrorToken.value;
-  const token = await getApp().options.credential.getAccessToken();
-  mirrorToken = { value: token.access_token, exp: Date.now() + (Number(token.expires_in) || 3000) * 1000 };
-  return mirrorToken.value;
+async function mirrorAccessToken(force) {
+  if (!force && mirrorToken.value && Date.now() < mirrorToken.exp) return mirrorToken.value;
+  const value = await gcloudAccessToken(account);
+  mirrorToken = { value, exp: Date.now() + 45 * 60 * 1000 };
+  return value;
 }
 
-async function mirrorGet(path, options = {}) {
-  const token = await mirrorAccessToken();
+async function mirrorGet(path, options = {}, retried = false) {
+  const token = await mirrorAccessToken(retried);
   const url = new globalThis.URL(`${MIRROR_URL}/${path}.json`);
-  url.searchParams.set("access_token", token);
   if (options.shallow) url.searchParams.set("shallow", "true");
-  const response = await globalThis.fetch(url);
-  if (response.status === 401 || response.status === 403) throw new Error(`Mirror read denied (${response.status}) for ${path}. The box ADC must be allowed to read ${MIRROR_URL}.`);
+  const response = await globalThis.fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 401 && !retried) {
+    mirrorToken = { value: "", exp: 0 };
+    return mirrorGet(path, options, true);
+  }
+  if (response.status === 401 || response.status === 403) throw new Error(`Mirror read denied (${response.status}) for ${path}. Sign in on the box with gcloud auth login ${account}, or set MIRROR_ACCOUNT.`);
   if (!response.ok) throw new Error(`Mirror ${response.status} for ${path}`);
   const text = await response.text();
   if (!text || text === "null") return null;
@@ -216,7 +222,8 @@ globalThis.console.log(`Window ${window.months[0]} through ${window.months[11]}$
 globalThis.console.log(`Coverage ${coverageLine}`);
 if (result.historyStart > result.months[0]) globalThis.console.log(`History starts ${result.historyStart}. Earlier months are blank, not zero.`);
 globalThis.console.log(`Reports ${state.reports} with usage (${state.olderReports} from well history, ${result.sources.mirrorReports} from the mirror) · ${state.usedWells.size} wells · ${state.lines.length} used lines`);
-globalThis.console.log(`Mirror reads: ${mirror.reads.wells} well list + ${mirror.reads.reportLists} report lists + ${mirror.reads.used} used docs · skipped ${mirror.reads.skippedDuplicate} already in the well archive · ${mirror.wells} wells listed`);
+globalThis.console.log(`Mirror auth gcloud auth print-access-token ${account}`);
+globalThis.console.log(`Mirror reads: ${mirror.reads.wells} well list + ${mirror.reads.reportLists} report lists + ${mirror.reads.used} used docs · skipped ${mirror.reads.skippedDuplicate} already in the well archive · ${mirror.wells} wells listed · ${mirror.reads.skippedWells} wells outside the window`);
 globalThis.console.log(`Unit products ${summary.productCount} · order now ${summary.orderNow} · order soon ${summary.orderSoon} · healthy ${summary.healthy} · overstock ${summary.overstock} · no usage ${summary.noUsage} · Uniquem ${summary.uniquem} · litre products ${summary.litreCount}`);
 if (result.uniquemMatched.length) {
   globalThis.console.log("Uniquem products marked:");

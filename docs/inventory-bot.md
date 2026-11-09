@@ -120,7 +120,7 @@ The page reads only the published document. Refresh it on the machine that has A
 cd functions && node scripts/product-usage.mjs
 ```
 
-`node scripts/product-usage.mjs --dry-run` prints the summary, one coverage line of reports and wells per month, and the Uniquem names that matched, and does not write. The mirror is read with the same Application Default Credentials. Nothing is written to it.
+`node scripts/product-usage.mjs --dry-run` prints the summary, one coverage line of reports and wells per month, and the Uniquem names that matched, and does not write. Firestore still uses Application Default Credentials. The mirror does not. It sends `Authorization: Bearer` from `gcloud auth print-access-token rambodr@uniquem.ca`, the same account as the inventory sync. Set `MIRROR_ACCOUNT` to use a different account. Nothing is written to the mirror. Wells whose id date is after the window, or more than 180 days before it, are not report-listed.
 
 Days of cover use a 60/40 blend. Sixty percent is the daily rate from the last 60 days. Forty percent is the daily rate from the same upcoming calendar dates last year, so a winter or breakup month still shows up. The 30-day and 60-day forecasts use that blend on each horizon. Cover is on-hand quantity divided by the 60-day blended daily rate, rounded down. Under 30 days is order now, 30 to 59 is order soon, 60 to 180 is healthy, and more than 180 is overstock. A product with stock and no usage in the read window is marked no usage, separate from overstock.
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectMirrorLines, createCoverage, stripPrices, wellOverlapsMirror } from "../inventoryBot/mirrorUsage.js";
+import { collectMirrorLines, createCoverage, gcloudAccessToken, mirrorAccount, MIRROR_ACCOUNT, pacedPool, stripPrices, wellOverlapsMirror } from "../inventoryBot/mirrorUsage.js";
 import { applyHistory, buildProductUsage, containerOf, reportInWindow, usageWindow, usedLines, usedLinesFromReport } from "../inventoryBot/productUsage.js";
 import { matchUniquem, productStem } from "../inventoryBot/uniquem.js";
 
@@ -222,24 +222,26 @@ async function pool(items, limit, fn) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
 }
 
-test("the mirror reader shallow-lists wells and skips archive duplicates and price", async () => {
+test("the mirror reader lists only wells that can overlap the window and skips archive duplicates", async () => {
   const window = usageWindow(new Date(NOW));
   assert.equal(wellOverlapsMirror("2026-12-01_future", window), false);
-  assert.equal(wellOverlapsMirror("2024-01-01_old", window), true);
+  assert.equal(wellOverlapsMirror("2024-01-01_old", window), false);
+  assert.equal(wellOverlapsMirror("2026-08-01_well", window), true);
+  assert.equal(wellOverlapsMirror("2025-11-01_edge", window), true);
   const calls = [];
   const get = async (path, options = {}) => {
     calls.push(`${options.shallow ? "shallow " : ""}${path}`);
     if (path === "data/wellReports") return { "2026-08-01_well": true, "2026-12-01_future": true, "2024-01-01_old": true, "2026-09-01_test": true };
     if (path.endsWith("2026-08-01_well")) return { "2026-08-02_kept": true, "2026-07-01_new": true, "2025-01-01_early": true };
-    if (path.endsWith("2024-01-01_old")) return { "2024-02-01_past": true };
     if (path.endsWith("inventory/used")) return { 0: { productname: "Elixir", unit: "19 L", used: 2, price: 90 } };
     return null;
   };
   const coverage = createCoverage(window.months);
   const seen = new Set(["2026-08-01_well/2026-08-02_kept"]);
-  const found = await collectMirrorLines({ get, window, seen, seenListed: new Set(["2026-08-01_well/2026-08-02_kept"]), coverage, pool });
+  const found = await collectMirrorLines({ get, window, seen, seenListed: new Set(["2026-08-01_well/2026-08-02_kept"]), coverage, pool, pace: false });
   assert.equal(found.reads.wells, 1);
-  assert.equal(found.reads.reportLists, 2);
+  assert.equal(found.reads.reportLists, 1);
+  assert.equal(found.reads.skippedWells, 2);
   assert.equal(found.reads.used, 1);
   assert.equal(found.reads.skippedDuplicate, 1);
   assert.equal(found.lines.length, 1);
@@ -247,10 +249,27 @@ test("the mirror reader shallow-lists wells and skips archive duplicates and pri
   assert.equal(found.lines[0].qty, 2);
   assert.equal(JSON.stringify(found.lines).includes("price"), false);
   assert.equal(calls.some((call) => call.includes("2026-12-01_future")), false);
+  assert.equal(calls.some((call) => call.includes("2024-01-01_old")), false);
   assert.equal(calls.some((call) => call.includes("2026-08-02_kept/inventory/used")), false);
   assert.equal(calls.some((call) => call.includes("2025-01-01_early/inventory/used")), false);
-  assert.equal(coverage.historyStart(), "2024-02");
+  assert.equal(coverage.historyStart(), "2025-01");
   const july = coverage.snapshot().find((row) => row.month === "2026-07");
   assert.equal(july.reports, 1);
   assert.equal(july.wells, 1);
+});
+
+test("mirror auth is the gcloud user token, with MIRROR_ACCOUNT as the override", async () => {
+  assert.equal(MIRROR_ACCOUNT, "rambodr@uniquem.ca");
+  assert.equal(mirrorAccount({}), "rambodr@uniquem.ca");
+  assert.equal(mirrorAccount({ MIRROR_ACCOUNT: " other@uniquem.ca " }), "other@uniquem.ca");
+  const calls = [];
+  const token = await gcloudAccessToken("rambodr@uniquem.ca", async (command, args) => {
+    calls.push([command, ...args]);
+    return { stdout: "ya29.token\n" };
+  });
+  assert.equal(token, "ya29.token");
+  assert.deepEqual(calls, [["gcloud", "auth", "print-access-token", "rambodr@uniquem.ca"]]);
+  const seen = [];
+  await pacedPool([1, 2, 3], { concurrency: 2, perSecond: 1000 }, async (item) => { seen.push(item); });
+  assert.deepEqual(seen.sort(), [1, 2, 3]);
 });

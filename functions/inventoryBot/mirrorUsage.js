@@ -1,20 +1,51 @@
 /** Targeted reads of the mud-man mirror. No Firebase import.
  * The mirror is https://uniqenergymirror.firebaseio.com, path data/wellReports/{wellId}/{reportId}/inventory/used.
+ * Auth matches the inventory sync: a Bearer token from `gcloud auth print-access-token <account>`.
  * Callers pass a get() that must use shallow=true for well and report lists and must not write.
  */
 
-import { reportIdDate, usedLines } from "./productUsage.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { addDays, reportIdDate, usedLines } from "./productUsage.js";
 
 export const MIRROR_URL = "https://uniqenergymirror.firebaseio.com";
 export const MIRROR_WELLS = "data/wellReports";
+/** Same account the inventory sync uses. Override with the MIRROR_ACCOUNT env var. */
+export const MIRROR_ACCOUNT = "rambodr@uniquem.ca";
+/** Well ids are creation timestamps. A well started this many days before the window can still have a report inside it. Older ids are skipped without a report list. */
+export const WELL_LEAD_DAYS = 180;
+
+const execFileAsync = promisify(execFile);
 
 const PRICE_KEYS = new Set(["price", "unitPrice", "unitprice", "usedCost", "usedcost"]);
 
-/** A well id dated after the window cannot have a report inside it. Undated ids are kept. */
-export function wellOverlapsMirror(wellId, window) {
+export function mirrorAccount(env = globalThis.process?.env) {
+  const override = env?.MIRROR_ACCOUNT;
+  const account = override == null || String(override).trim() === "" ? MIRROR_ACCOUNT : String(override).trim();
+  return account;
+}
+
+/** Bearer token for the mirror. Firestore keeps using ADC; this does not. */
+export async function gcloudAccessToken(account, execFileImpl = execFileAsync) {
+  let stdout = "";
+  try {
+    const result = await execFileImpl("gcloud", ["auth", "print-access-token", account]);
+    stdout = result?.stdout ?? "";
+  } catch (error) {
+    const detail = error?.stderr ? String(error.stderr).trim() : error?.message;
+    throw new Error(`gcloud auth print-access-token ${account} failed. ${detail || ""}`.trim());
+  }
+  const token = String(stdout).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).pop() || "";
+  if (!token) throw new Error(`gcloud auth print-access-token ${account} returned an empty token.`);
+  return token;
+}
+
+/** A well id is a creation timestamp. Reports cannot predate it, and a well started long before the window is not listed. Undated ids are kept. */
+export function wellOverlapsMirror(wellId, window, leadDays = WELL_LEAD_DAYS) {
   const date = reportIdDate(wellId);
   if (!date) return true;
-  return date <= window.readEnd;
+  if (date > window.readEnd) return false;
+  return date >= addDays(window.readStart, -leadDays);
 }
 
 /** Copy the used node and drop price fields before anything else sees them. */
@@ -65,15 +96,38 @@ export function createCoverage(months) {
   };
 }
 
-/** Shallow-list every well, then one inventory/used read per in-window report that is not already counted. */
-export async function collectMirrorLines({ get, window, seen, seenListed, coverage, pool }) {
-  const reads = { wells: 0, reportLists: 0, used: 0, skippedDuplicate: 0 };
+/** At most `perSecond` starts, with at most `concurrency` requests in flight. */
+export async function pacedPool(items, { concurrency = 8, perSecond = 12 } = {}, fn) {
+  if (!items?.length) return;
+  const gap = Math.max(1, Math.ceil(1000 / perSecond));
+  let cursor = 0;
+  let nextStart = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      const startAt = nextStart;
+      nextStart += gap;
+      const wait = startAt - Date.now();
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      await fn(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+}
+
+/** Shallow-list wells that can overlap the window, then one inventory/used read per in-window report that is not already counted. */
+export async function collectMirrorLines({ get, window, seen, seenListed, coverage, pool, pace }) {
+  const reads = { wells: 0, reportLists: 0, used: 0, skippedDuplicate: 0, skippedWells: 0 };
   const lines = [];
   const root = await get(MIRROR_WELLS, { shallow: true });
   reads.wells = 1;
-  const wellIds = Object.keys(root || {}).filter((id) => wellOverlapsMirror(id, window) && !/(^|_)test(_|$)/i.test(id));
+  const candidates = Object.keys(root || {}).filter((id) => !/(^|_)test(_|$)/i.test(id));
+  const wellIds = candidates.filter((id) => wellOverlapsMirror(id, window));
+  reads.skippedWells = candidates.length - wellIds.length;
   const jobs = [];
-  await pool(wellIds, 12, async (wellId) => {
+  const run = pace === false ? pool : (items, _limit, fn) => pacedPool(items, { concurrency: 8, perSecond: 12, ...(pace || {}) }, fn);
+  await run(wellIds, 8, async (wellId) => {
     const reports = await get(`${MIRROR_WELLS}/${encodePath(wellId)}`, { shallow: true });
     reads.reportLists += 1;
     for (const reportId of Object.keys(reports || {})) {
@@ -95,7 +149,7 @@ export async function collectMirrorLines({ get, window, seen, seenListed, covera
       jobs.push({ wellId, reportId, date });
     }
   });
-  await pool(jobs, 16, async (job) => {
+  await run(jobs, 8, async (job) => {
     const signature = `${job.wellId}/${job.reportId}`;
     if (seen.has(signature)) {
       reads.skippedDuplicate += 1;
