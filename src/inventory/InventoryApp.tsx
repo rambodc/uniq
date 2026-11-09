@@ -1,6 +1,7 @@
 import { Outlet, Route, Routes } from "react-router-dom";
 import { BoardProvider, type BoardSource } from "./boardState";
 import InvXpressPage from "./InvXpressPage";
+import ProductUsagePage from "./ProductUsagePage";
 import MovePage from "./MovePage";
 import RigBoard from "./RigBoard";
 import RigPage from "./RigPage";
@@ -17,6 +18,8 @@ export default function InventoryApp() {
   return <Routes>
     <Route index element={<InvXpressPage />} />
     <Route path="wells" element={<InvXpressPage view="wells" />} />
+    <Route path="usage" element={<ProductUsagePage />} />
+    <Route path="usage/:productKey" element={<ProductUsagePage view="detail" />} />
     <Route path="tickets" element={<RigBoard />} />
     <Route path="rig/:rigKey/merge" element={<RigPickPage mode="merge" />} />
     <Route path="rig/:rigKey/pair/:rowId" element={<RigPickPage mode="pair" />} />

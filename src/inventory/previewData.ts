@@ -1,6 +1,7 @@
 import type { OpenXpressWell, RigBoard, XpressBoard, XpressTicket, XrefRow } from "../core/api";
 import sample from "./invXpressSample.json";
 import type { InvXpressResult } from "./invXpress";
+import { sampleProductUsage } from "./productUsage";
 
 const line = (name: string, qty: number, unit: string): XpressTicket["lines"][number] => ({ name, qty, unit, price: 0 });
 const ticket = (fields: Partial<XpressTicket> & Pick<XpressTicket, "id" | "number" | "date">): XpressTicket => ({
@@ -63,7 +64,8 @@ export const rigPreview: RigBoard = {
   ],
 };
 
-export const inventoryPreview: { xpress: XpressBoard; mim: XpressBoard; rigs: RigBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell>; invXpress: InvXpressResult } = {
+export const inventoryPreview: { xpress: XpressBoard; mim: XpressBoard; rigs: RigBoard; openWell?: OpenXpressWell; openWells?: Record<string, OpenXpressWell>; invXpress: InvXpressResult; productUsage: ReturnType<typeof sampleProductUsage> } = {
+  productUsage: sampleProductUsage(),
   rigs: rigPreview,
   xpress: {
     pulledAt: "2026-11-03T16:01:00.000Z",

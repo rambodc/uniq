@@ -69,6 +69,8 @@ test("Inventory Bot staff can read the Inventory Xpress count and nobody can wri
     await setDoc(doc(context.firestore(), "users/other"), { ...staffRecord, email: "other@uniqenergy.com", miniApps: ["contact"] });
     await setDoc(doc(context.firestore(), "inventoryBot/main/meta/invXpress"), { version: 1, chunks: 1 });
     await setDoc(doc(context.firestore(), "inventoryBot/main/meta/invXpress/parts/0"), { index: 0, products: [] });
+    await setDoc(doc(context.firestore(), "inventoryBot/main/meta/productUsage"), { version: 1, chunks: 1 });
+    await setDoc(doc(context.firestore(), "inventoryBot/main/meta/productUsage/parts/0"), { index: 0, products: [] });
   });
   const staff = environment.authenticatedContext("ann", { email: "ann@uniqenergy.com", email_verified: true });
   const boss = environment.authenticatedContext("boss", { email: "boss@uniqenergy.com", email_verified: true });
@@ -80,5 +82,11 @@ test("Inventory Bot staff can read the Inventory Xpress count and nobody can wri
   await assertFails(getDoc(doc(other.firestore(), "inventoryBot/main/meta/invXpress")));
   await assertFails(getDoc(doc(anon.firestore(), "inventoryBot/main/meta/invXpress")));
   await assertFails(setDoc(doc(staff.firestore(), "inventoryBot/main/meta/invXpress"), { version: 2 }));
+  await assertSucceeds(getDoc(doc(staff.firestore(), "inventoryBot/main/meta/productUsage")));
+  await assertSucceeds(getDoc(doc(staff.firestore(), "inventoryBot/main/meta/productUsage/parts/0")));
+  await assertSucceeds(getDoc(doc(boss.firestore(), "inventoryBot/main/meta/productUsage")));
+  await assertFails(getDoc(doc(other.firestore(), "inventoryBot/main/meta/productUsage")));
+  await assertFails(getDoc(doc(anon.firestore(), "inventoryBot/main/meta/productUsage")));
+  await assertFails(setDoc(doc(staff.firestore(), "inventoryBot/main/meta/productUsage"), { version: 2 }));
   await assertFails(getDoc(doc(staff.firestore(), "inventoryBot/main/tickets/xpress_NK-1")));
 });

@@ -198,6 +198,27 @@ function productLabel(resolved, raw) {
   return stripPack(raw) || String(raw || "Product");
 }
 
+/** Same name, code, and pack resolution Inventory Xpress uses, including 18 L → 19 L. */
+export function prepareCatalog(products, links) {
+  const catalog = indexCatalog(products);
+  return { catalog, links: linkIndex(links || {}, catalog) };
+}
+
+export function lineIdentity(prepared, raw, unit = "", code = "", productId = "") {
+  const pack = parsePack(unit, raw);
+  const resolved = resolveProduct(String(raw || ""), code, productId, prepared.catalog, prepared.links);
+  return {
+    key: productKey(resolved, raw, pack),
+    name: productLabel(resolved, raw),
+    pack: pack.label,
+    litre: Boolean(pack.litre),
+    amount: pack.amount,
+    family: pack.family,
+    productId: resolved.product?.id || "",
+    linked: Boolean(resolved.product),
+  };
+}
+
 function blankLine() {
   return { delivered: 0, transferredIn: 0, returned: 0, movedOut: 0 };
 }
