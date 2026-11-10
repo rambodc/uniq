@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { ContainerIcon } from "./containers";
 import { InventoryTabs } from "./InvXpressPage";
 import { InventoryFrame, PageLoader } from "./parts";
@@ -92,16 +92,16 @@ function SortHeader({ label, sortKey, sort, onSort, className = "" }: { label: R
   </th>;
 }
 
-function ProductName({ row }: { row: UsageRow }) {
-  return <Link className="ix-name pu-name" to={`/inventory-bot/usage/${encodeURIComponent(row.key)}`}>
+function ProductButton({ row, open, onToggle }: { row: UsageRow; open: boolean; onToggle: () => void }) {
+  return <button type="button" className="ix-name pu-name" aria-expanded={open} onClick={onToggle}>
+    {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
     <ContainerIcon type={row.container} />
     <span className="pu-title">{row.name} <span className="ix-pack">{row.pack}</span></span>
     {row.uniquem && <span className="pu-badge">Uniquem</span>}
-    <ChevronRight size={15} aria-hidden="true" />
-  </Link>;
+  </button>;
 }
 
-function UsageTable({ rows, sort, onSort, partialLabel }: { rows: UsageRow[]; sort: { key: SortKey; dir: SortDir }; onSort: (key: SortKey) => void; partialLabel: string }) {
+function UsageTable({ rows, sort, onSort, partialLabel, data, openKey, onToggle }: { rows: UsageRow[]; sort: { key: SortKey; dir: SortDir }; onSort: (key: SortKey) => void; partialLabel: string; data: ProductUsageResult; openKey: string; onToggle: (key: string) => void }) {
   return <div className="ix-scroll pu-scroll">
     <table className="ix-table pu-table">
       <thead><tr>
@@ -113,21 +113,27 @@ function UsageTable({ rows, sort, onSort, partialLabel }: { rows: UsageRow[]; so
         <SortHeader label="Status" sortKey="status" sort={sort} onSort={onSort} />
       </tr></thead>
       <tbody>
-        {rows.map((row) => <tr key={row.key}>
-          <td data-label="Product"><ProductName row={row} /></td>
-          <td data-label="12-month use"><b>{qty(row.total)}</b></td>
-          <td data-label="On hand"><b>{qty(row.onHand)}</b></td>
-          <td className="pu-opt" data-label="Next 30 days">{qty(row.forecast30)}</td>
-          <td data-label="Cover">{coverText(row.days)}</td>
-          <td data-label="Status"><Status status={row.status} /></td>
-        </tr>)}
+        {rows.map((row) => {
+          const open = openKey === row.key;
+          return <Fragment key={row.key}>
+            <tr className={open ? "open" : ""} id={open ? "pu-open" : undefined}>
+              <td data-label="Product"><ProductButton row={row} open={open} onToggle={() => onToggle(row.key)} /></td>
+              <td data-label="12-month use"><b>{qty(row.total)}</b></td>
+              <td data-label="On hand"><b>{qty(row.onHand)}</b></td>
+              <td className="pu-opt" data-label="Next 30 days">{qty(row.forecast30)}</td>
+              <td data-label="Cover">{coverText(row.days)}</td>
+              <td data-label="Status"><Status status={row.status} /></td>
+            </tr>
+            {open && <tr className="pu-expand"><td colSpan={6}><ProductPanel data={data} row={row} /></td></tr>}
+          </Fragment>;
+        })}
       </tbody>
     </table>
     <p className="pu-caption">{partialLabel}</p>
   </div>;
 }
 
-function ListView({ data }: { data: ProductUsageResult }) {
+function ListView({ data, openKey, onToggle }: { data: ProductUsageResult; openKey: string; onToggle: (key: string) => void }) {
   const units = data.products.filter((row) => !row.litre).map(present);
   const litres = data.products.filter((row) => row.litre).map(present);
   const [query, setQuery] = useState("");
@@ -172,19 +178,20 @@ function ListView({ data }: { data: ProductUsageResult }) {
       <section className="pu-card unstocked"><span>Not stocked</span><b>{counts.unstocked}</b><small>Usage, nothing in Xpress</small></section>
     </div>
     <div className="ix-bar">
-      <div><h2>By product</h2><p>On hand is the Inventory Xpress total, warehouses plus active wells. Click a column title to sort. Click a product for the monthly chart.</p></div>
+      <div><h2>By product</h2><p>On hand is the Inventory Xpress total, warehouses plus active wells. Click a column title to sort. Click a product to open its chart here, and click it again to close.</p></div>
       <input className="xb-search" aria-label="Search product" placeholder="Search product…" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
     <div className="ix-chips" role="group" aria-label="Filter products">
       {([["all", "All", counts.all], ["order", "Order now", counts.order], ["soon", "Order soon", counts.soon], ["ok", "Healthy", counts.ok], ["over", "Overstock", counts.over], ["unstocked", "Not stocked in Xpress", counts.unstocked], ["idle", "No usage", counts.idle]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => setChip(id)}>{label}<span>{count}</span></button>)}
       <button type="button" className={`ix-chip pu-uniq${uniquemOnly ? " on" : ""}`} aria-pressed={uniquemOnly} onClick={() => setUniquemOnly((value) => !value)}>Uniquem only<span>{units.filter((row) => row.uniquem).length}</span></button>
     </div>
-    <UsageTable rows={ordered} sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} partialLabel={`${partial}. No prices are shown.`} />
+    {openKey && !units.some((row) => row.key === openKey) && !litres.some((row) => row.key === openKey) && <p className="ix-note" role="status">That product is not in the latest usage count.</p>}
+    <UsageTable rows={ordered} sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} partialLabel={`${partial}. No prices are shown.`} data={data} openKey={openKey} onToggle={onToggle} />
     {!ordered.length && <p className="ix-note">No products match.</p>}
     {litreRows.length > 0 && <section className="ix-litre">
       <h2>Litre products (not in the unit counts)</h2>
       <p>Pack 1 L stays on its own lines. These litres are not added to the counts above.</p>
-      <UsageTable rows={litreRows} sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} partialLabel="Litres follow the same forecast as packs." />
+      <UsageTable rows={litreRows} sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} partialLabel="Litres follow the same forecast as packs." data={data} openKey={openKey} onToggle={onToggle} />
     </section>}
   </>;
 }
@@ -221,12 +228,9 @@ function UsageChart({ row, months, partial, historyStart }: { row: UsageRow; mon
   </svg>;
 }
 
-function DetailView({ data, productKey }: { data: ProductUsageResult; productKey: string }) {
-  const found = data.products.find((item) => item.key === productKey);
-  const row = found ? present(found) : undefined;
-  if (!row) return <p className="ix-note">That product is not in the latest usage count.</p>;
+function ProductPanel({ data, row }: { data: ProductUsageResult; row: UsageRow }) {
   const last = data.months.length - 1;
-  return <>
+  return <div className="pu-panel">
     <div className="pu-detail-head">
       <ContainerIcon type={row.container} />
       <div>
@@ -259,19 +263,27 @@ function DetailView({ data, productKey }: { data: ProductUsageResult; productKey
       </table>
     </div>
     <p className="ix-note">{data.method} On hand is the Inventory Xpress count{data.stockDate ? ` as of ${data.stockDate}` : ""}. The average uses only months on record. Months before the first report in the mirror are left blank.</p>
-  </>;
+  </div>;
 }
 
-export default function ProductUsagePage({ view = "list" }: { view?: "list" | "detail" }) {
+export default function ProductUsagePage() {
   const params = useParams();
+  const navigate = useNavigate();
   let productKey = params.productKey || "";
   try { productKey = decodeURIComponent(productKey); } catch { /* already decoded */ }
   const { data, error } = useUsage();
-  const detail = view === "detail";
-  return <InventoryFrame title="Inventory Bot" eyebrow="Xpress" backTo={detail ? "/inventory-bot/usage" : "/dashboard"}>
+  useEffect(() => {
+    if (!productKey) return;
+    document.getElementById("pu-open")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [productKey, data]);
+  const toggle = (key: string) => {
+    if (key === productKey) navigate("/inventory-bot/usage", { replace: true });
+    else navigate(`/inventory-bot/usage/${encodeURIComponent(key)}`, { replace: true });
+  };
+  return <InventoryFrame title="Inventory Bot" eyebrow="Xpress">
     <InventoryTabs />
     {error && <p className="xb-note" role="alert">{error}</p>}
     {!data && !error && <PageLoader>Loading product usage…</PageLoader>}
-    {data && (detail ? <DetailView data={data} productKey={productKey} /> : <ListView data={data} />)}
+    {data && <ListView data={data} openKey={productKey} onToggle={toggle} />}
   </InventoryFrame>;
 }

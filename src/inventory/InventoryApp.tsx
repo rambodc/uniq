@@ -18,8 +18,7 @@ export default function InventoryApp() {
   return <Routes>
     <Route index element={<InvXpressPage />} />
     <Route path="wells" element={<InvXpressPage view="wells" />} />
-    <Route path="usage" element={<ProductUsagePage />} />
-    <Route path="usage/:productKey" element={<ProductUsagePage view="detail" />} />
+    <Route path="usage/:productKey?" element={<ProductUsagePage />} />
     <Route path="tickets" element={<RigBoard />} />
     <Route path="rig/:rigKey/merge" element={<RigPickPage mode="merge" />} />
     <Route path="rig/:rigKey/pair/:rowId" element={<RigPickPage mode="pair" />} />

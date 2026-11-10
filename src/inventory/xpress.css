@@ -323,6 +323,19 @@
 .pu-months{max-width:420px}
 .pu-total td{border-top:1px solid var(--line)}
 .pu-table{min-width:720px}
+.pu-name{width:100%;background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit;text-align:left}
+.pu-table tr.open td{background:#132443;border-bottom:none}
+.pu-table tr.pu-expand td{text-align:left;background:#132443;padding:4px 14px 16px}
+.pu-panel{animation:pu-in .18s ease}
+.pu-panel .ix-table{display:table;width:100%;min-width:0}
+.pu-panel .ix-table thead{display:table-header-group}
+.pu-panel .ix-table tbody{display:table-row-group}
+.pu-panel .ix-table tr{display:table-row;padding:0;border:0}
+.pu-panel .ix-table td,.pu-panel .ix-table th{display:table-cell;text-align:right;background:transparent}
+.pu-panel .ix-table td:first-child,.pu-panel .ix-table th:first-child{text-align:left}
+.pu-table tr.pu-expand .pu-panel td::before,.pu-table tr.pu-expand .pu-panel th::before{content:none}
+@keyframes pu-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.pu-panel{animation:none}}
 @media(max-width:800px){
   .pu-cards,.pu-stats{grid-template-columns:1fr 1fr}
   .pu-detail-head{flex-wrap:wrap}
@@ -342,5 +355,8 @@
   .pu-table td:first-child::before{content:none}
   .pu-table td::before{content:attr(data-label);color:var(--mut);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
   .pu-table td.pu-opt{display:none}
+  .pu-table tr.pu-expand{padding:0 0 12px}
+  .pu-table tr.pu-expand td{display:block;text-align:left;padding:4px 2px 14px}
+  .pu-table tr.pu-expand td::before{content:none}
 }
 @media(max-width:520px){.pu-cards,.pu-stats{grid-template-columns:1fr}}
