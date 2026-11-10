@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { collectMirrorLines, createCoverage, gcloudAccessToken, mirrorAccount, MIRROR_ACCOUNT, pacedPool, stripPrices, wellOverlapsMirror } from "../inventoryBot/mirrorUsage.js";
 import { applyHistory, buildProductUsage, containerOf, reportInWindow, usageWindow, usedLines, usedLinesFromReport } from "../inventoryBot/productUsage.js";
-import { matchUniquem, productStem } from "../inventoryBot/uniquem.js";
+import { matchUniquem, productStem, UNIQUEM_PRODUCTS } from "../inventoryBot/uniquem.js";
 
 const NOW = "2026-11-09T18:00:00.000Z";
 
@@ -200,6 +200,11 @@ test("Uniquem matching ignores packaging and does not badge generic lines", () =
   assert.equal(matchUniquem("Elixir").id, "elixir");
   assert.equal(matchUniquem("EZ-Slide L").id, "ez-slide");
   assert.equal(matchUniquem("Barite"), null);
+  for (const name of ["Sodium Bicarbonate", "Sodium Bicarbonate (22.7 kg/bag)", "Sodium Bicarb", "Bicarb", "Bicarbonate", "Sodium", "soda bicarb 25kg", "Canola Oil", "Canola Oil (1000L/Tote)", "Canola", "canola-oil"]) {
+    assert.equal(matchUniquem(name), null, name);
+  }
+  assert.equal(matchUniquem("Sodium Chloride").id, "sodium-chloride");
+  assert.equal(UNIQUEM_PRODUCTS.some((item) => /canola|bicarb/i.test(`${item.id} ${item.label} ${item.names.join(" ")}`)), false);
   assert.equal(matchUniquem("Clay"), null);
   assert.equal(matchUniquem("Polymer"), null);
   assert.equal(matchUniquem("Polymer Base"), null);
