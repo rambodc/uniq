@@ -5,6 +5,7 @@ import { ContainerIcon } from "./containers";
 import { InventoryTabs } from "./InvXpressPage";
 import { InventoryFrame, PageLoader } from "./parts";
 import { loadProductUsage, previewProductUsage, productUsageError, type ProductUsageResult, type UsageRow, type UsageStatus } from "./productUsage";
+import { compareProductName } from "./productOrder";
 
 function qty(value: number) {
   return (Number(value) || 0).toLocaleString("en-US", { maximumFractionDigits: 1 });
@@ -67,7 +68,7 @@ type SortDir = "asc" | "desc";
 
 function compareRows(a: UsageRow, b: UsageRow, key: SortKey, dir: SortDir) {
   const sign = dir === "asc" ? 1 : -1;
-  const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.pack.localeCompare(b.pack, undefined, { numeric: true });
+  const byName = compareProductName(a.name, b.name, a.pack, b.pack);
   if (key === "name") return byName * sign;
   if (key === "status") {
     const delta = STATUS_RANK[a.status] - STATUS_RANK[b.status];
@@ -139,7 +140,7 @@ function ListView({ data, openKey, onToggle }: { data: ProductUsageResult; openK
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<"all" | UsageStatus>("all");
   const [uniquemOnly, setUniquemOnly] = useState(false);
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "status", dir: "asc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
   const needle = query.trim().toLowerCase();
   const { ordered, litreRows } = useMemo(() => {
     const keep = (row: UsageRow) => {

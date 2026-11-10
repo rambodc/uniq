@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { Activity, ChevronDown, ChevronRight, Layers, Truck } from "lucide-react";
 import { InventoryFrame, PageLoader } from "./parts";
 import { invXpressError, loadInvXpress, previewInvXpress, type InvPackRow, type InvWellRow, type InvXpressResult } from "./invXpress";
+import { compareProductName } from "./productOrder";
 
 function qty(value: number) {
   return (Number(value) || 0).toLocaleString("en-US", { maximumFractionDigits: 1 });
@@ -90,13 +91,11 @@ type SortDir = "asc" | "desc";
 
 function compareRows(a: InvPackRow, b: InvPackRow, key: SortKey, dir: SortDir) {
   const sign = dir === "asc" ? 1 : -1;
-  if (key === "name") {
-    const byName = a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.pack.localeCompare(b.pack, undefined, { numeric: true });
-    return byName * sign;
-  }
+  const byName = compareProductName(a.name, b.name, a.pack, b.pack);
+  if (key === "name") return byName * sign;
   const delta = (a[key] || 0) - (b[key] || 0);
   if (delta !== 0) return delta * sign;
-  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.pack.localeCompare(b.pack, undefined, { numeric: true });
+  return byName;
 }
 
 function SortHeader({ label, sortKey, sort, onSort }: { label: ReactNode; sortKey: SortKey; sort: { key: SortKey; dir: SortDir }; onSort: (key: SortKey) => void }) {
@@ -116,7 +115,7 @@ function CountView({ data }: { data: InvXpressResult }) {
   const litres = data.products.filter((row) => row.litre);
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState<"all" | "both" | "warehouses" | "wells">("all");
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "total", dir: "desc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
   const [open, setOpen] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [namesOpen, setNamesOpen] = useState(false);
@@ -169,7 +168,7 @@ function CountView({ data }: { data: InvXpressResult }) {
       <input className="xb-search" aria-label="Search product" placeholder="Search product…" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
     <div className="ix-chips" role="group" aria-label="Filter products">
-      {([["all", "All", units.length], ["both", "In Warehouse & Wells", both], ["warehouses", "Only in warehouses", onlyWh], ["wells", "Only at wells", onlyWells]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => { setChip(id); if (id !== "warehouses" && sort.key === "committed") setSort({ key: "total", dir: "desc" }); }}>{label}<span>{count}</span></button>)}
+      {([["all", "All", units.length], ["both", "In Warehouse & Wells", both], ["warehouses", "Only in warehouses", onlyWh], ["wells", "Only at wells", onlyWells]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => { setChip(id); if (id !== "warehouses" && sort.key === "committed") setSort({ key: "name", dir: "asc" }); }}>{label}<span>{count}</span></button>)}
     </div>
     <div className="ix-scroll">
       <table className="ix-table">
@@ -194,7 +193,7 @@ function CountView({ data }: { data: InvXpressResult }) {
       </button>
       <span>{namesOpen ? "Hide" : "Review"}</span>
     </div>
-    {namesOpen && <div className="ix-names">{data.unlinked.length ? data.unlinked.map((row) => <div key={`${row.name}-${row.pack}`}><span>{row.name}</span><b>{qty(row.units)}</b></div>) : <p>Every Xpress name on the latest snapshot matches an app product.</p>}</div>}
+    {namesOpen && <div className="ix-names">{data.unlinked.length ? data.unlinked.slice().sort((a, b) => compareProductName(a.name, b.name, a.pack, b.pack)).map((row) => <div key={`${row.name}-${row.pack}`}><span>{row.name}</span><b>{qty(row.units)}</b></div>) : <p>Every Xpress name on the latest snapshot matches an app product.</p>}</div>}
   </>;
 }
 
@@ -230,7 +229,7 @@ function ProductRows({ row, open, wellsOpen, showCommitted = false, onToggle, on
 function LitreTable({ rows }: { rows: InvPackRow[] }) {
   const [open, setOpen] = useState("");
   const [wellsOpen, setWellsOpen] = useState<Record<string, boolean>>({});
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "total", dir: "desc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
   const ordered = useMemo(() => rows.slice().sort((a, b) => compareRows(a, b, sort.key, sort.dir)), [rows, sort]);
   return <section className="ix-litre">
     <h2>Litre products (not in unit total)</h2>
@@ -315,7 +314,7 @@ function WellsView({ data }: { data: InvXpressResult }) {
 }
 
 function WellRows({ well, open, productsOpen, onToggle, onProducts }: { well: InvWellRow; open: boolean; productsOpen: boolean; onToggle: () => void; onProducts: () => void }) {
-  const unit = well.products.filter((row) => !row.litre);
+  const unit = well.products.filter((row) => !row.litre).slice().sort((a, b) => compareProductName(a.name, b.name, a.pack, b.pack));
   const shown = productsOpen ? unit : unit.slice(0, 8);
   const hasLeft = unit.some((row) => row.left != null);
   return <>
