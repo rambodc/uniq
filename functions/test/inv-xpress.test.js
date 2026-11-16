@@ -71,8 +71,12 @@ test("warehouse count ignores transit, MIM, packaging, and keeps pack sizes apar
   const forty = result.products.find((row) => row.name === "Barite" && row.pack === "40 kg");
   const twenty = result.products.find((row) => row.name === "Barite" && row.pack === "25 kg");
   assert.equal(forty.warehouses, 110);
+  assert.equal(forty.committed, 23);
+  assert.equal(forty.available, 87);
   assert.equal(forty.byWarehouse.find((row) => row.code === "CANNK").units, 100);
   assert.equal(twenty.warehouses, 10);
+  assert.equal(twenty.available, 9);
+  for (const row of result.products) assert.equal(row.available, Math.max(0, row.warehouses - row.committed));
   assert.equal(result.products.some((row) => /drum|pallet/i.test(row.name)), false);
   assert.equal(result.unlinked.length, 0);
 });
@@ -256,11 +260,13 @@ test("an exact 18 L pail joins the 19 L row of the same product", () => {
   assert.equal(pail.wells, 40);
   assert.equal(pail.total, 200);
   assert.equal(pail.committed, 20);
+  assert.equal(pail.available, 140);
   assert.equal(pail.inTransit, 4);
   assert.deepEqual(pail.xpressNames, ["UNICIDE G15 (18 L)", "UNICIDE G15 (19 L)"]);
   const unibreak = result.products.find((row) => row.name === "UniBreak 1");
   assert.equal(unibreak.pack, "19 L");
   assert.equal(unibreak.warehouses, 12);
+  assert.equal(unibreak.available, 9);
   assert.equal(unibreak.wells, 8);
   assert.notEqual(unibreak.key, pail.key);
   assert.equal(result.products.find((row) => row.name === "Barite").pack, "18 kg");

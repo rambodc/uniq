@@ -86,7 +86,7 @@ function AsOf({ data }: { data: InvXpressResult }) {
   </div>;
 }
 
-type SortKey = "name" | "warehouses" | "wells" | "total" | "committed";
+type SortKey = "name" | "warehouses" | "wells" | "total" | "committed" | "available";
 type SortDir = "asc" | "desc";
 
 function compareRows(a: InvPackRow, b: InvPackRow, key: SortKey, dir: SortDir) {
@@ -168,7 +168,7 @@ function CountView({ data }: { data: InvXpressResult }) {
       <input className="xb-search" aria-label="Search product" placeholder="Search product…" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
     <div className="ix-chips" role="group" aria-label="Filter products">
-      {([["all", "All", units.length], ["both", "In Warehouse & Wells", both], ["warehouses", "Only in warehouses", onlyWh], ["wells", "Only at wells", onlyWells]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => { setChip(id); if (id !== "warehouses" && sort.key === "committed") setSort({ key: "name", dir: "asc" }); }}>{label}<span>{count}</span></button>)}
+      {([["all", "All", units.length], ["both", "In Warehouse & Wells", both], ["warehouses", "Only in warehouses", onlyWh], ["wells", "Only at wells", onlyWells]] as const).map(([id, label, count]) => <button key={id} type="button" className={`ix-chip${chip === id ? " on" : ""}`} aria-pressed={chip === id} onClick={() => { setChip(id); if (id !== "warehouses" && (sort.key === "committed" || sort.key === "available")) setSort({ key: "name", dir: "asc" }); }}>{label}<span>{count}</span></button>)}
     </div>
     <div className="ix-scroll">
       <table className="ix-table">
@@ -176,6 +176,7 @@ function CountView({ data }: { data: InvXpressResult }) {
           <SortHeader label="Product" sortKey="name" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
           <SortHeader label={<span className="ix-hi"><WarehouseIcon /> Warehouses</span>} sortKey="warehouses" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
           {showCommitted && <SortHeader label="Committed" sortKey="committed" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />}
+          {showCommitted && <SortHeader label="Available" sortKey="available" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />}
           <SortHeader label={<span className="ix-hi"><DerrickIcon /> Active wells</span>} sortKey="wells" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
           <SortHeader label={<span className="ix-hi"><StackIcon /> Total</span>} sortKey="total" sort={sort} onSort={(key) => setSort((current) => nextSort(current, key))} />
         </tr></thead>
@@ -204,10 +205,11 @@ function ProductRows({ row, open, wellsOpen, showCommitted = false, onToggle, on
       <td><button type="button" className="ix-name" aria-expanded={open} onClick={onToggle}>{open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />} {row.name} <span className="ix-pack">{row.pack}</span></button></td>
       <td><b>{qty(row.warehouses)}</b></td>
       {showCommitted && <td><b>{qty(row.committed)}</b></td>}
+      {showCommitted && <td><b>{qty(row.available)}</b></td>}
       <td><b>{qty(row.wells)}</b></td>
       <td className="tot"><b>{qty(row.total)}</b></td>
     </tr>
-    {open && <tr className="ix-detail"><td colSpan={showCommitted ? 5 : 4}><div className="ix-split">
+    {open && <tr className="ix-detail"><td colSpan={showCommitted ? 6 : 4}><div className="ix-split">
       <div>
         <h4><WarehouseIcon /> In Xpress warehouses · {qty(row.warehouses)}</h4>
         {row.byWarehouse.map((house) => <div key={house.code} className="ix-li"><span>{house.code}</span><b>{qty(house.units)}</b></div>)}
