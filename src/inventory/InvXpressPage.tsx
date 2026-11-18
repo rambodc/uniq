@@ -124,7 +124,7 @@ function CountView({ data }: { data: InvXpressResult }) {
   const filtered = useMemo(() => units.filter((row) => {
     if (needle && !`${row.name} ${row.pack} ${row.xpressNames.join(" ")}`.toLowerCase().includes(needle)) return false;
     if (chip === "both") return row.warehouses > 0 && row.wells > 0;
-    if (chip === "warehouses") return row.warehouses > 0 && row.wells <= 0;
+    if (chip === "warehouses") return row.warehouses > 0;
     if (chip === "wells") return row.wells > 0 && row.warehouses <= 0;
     return true;
   }), [units, needle, chip]);
@@ -132,7 +132,7 @@ function CountView({ data }: { data: InvXpressResult }) {
   const shown = showAll || needle ? ordered : ordered.slice(0, 12);
   const showCommitted = chip === "warehouses";
   const both = units.filter((row) => row.warehouses > 0 && row.wells > 0).length;
-  const onlyWh = units.filter((row) => row.warehouses > 0 && row.wells <= 0).length;
+  const onlyWh = units.filter((row) => row.warehouses > 0).length;
   const onlyWells = units.filter((row) => row.wells > 0 && row.warehouses <= 0).length;
   const { warehouses: wh, wells, total } = data.summary;
 

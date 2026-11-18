@@ -88,11 +88,12 @@ describe("Only in warehouses available column", () => {
     expect(available).toBe(committed + 1);
 
     const rows = mainRows();
-    expect(rows[0][0]).toContain("FOAM STICK SPECIAL");
+    expect(rows[0][0]).toContain("2K7");
     const soap = rows.find((row) => row[0].includes("Soap Sticks"));
     const g15 = rows.find((row) => row[0].includes("UniCide G15"));
     const unibreak = rows.find((row) => row[0].includes("UniBreak 1"));
     expect(soap).toEqual(["Soap Sticks 0.5 kg", "1,859", "12", "1,847", "0", "1,859"]);
+    expect(g15).toEqual(["UniCide G15 19 L", "160", "20", "140", "48", "208"]);
     expect(g15?.[committed]).toBe("20");
     expect(g15?.[available]).toBe("140");
     expect(unibreak?.[committed]).toBe("3");
@@ -101,7 +102,7 @@ describe("Only in warehouses available column", () => {
     expect(host.textContent).not.toMatch(/\$/);
 
     click("Available");
-    expect(mainRows()[0][0]).toContain("Soap Sticks");
+    expect(mainRows()[0][0]).toContain("Barite");
     expect(mainHeaders().find((header) => header.startsWith("Available"))).toContain("↓");
     click("Available");
     expect(mainRows()[0][0]).toContain("UniBreak 1");
