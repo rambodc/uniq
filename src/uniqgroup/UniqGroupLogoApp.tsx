@@ -7,6 +7,10 @@ import "./uniqgroup.css";
 /** Orbit phase (seconds) for the still frame shown when motion is reduced: every logo is clear of the mark. */
 const STILL_T = 7.1;
 
+/** Order the companies are listed in (caption and keyboard links); the orbit keeps its own order. */
+const LIST_ORDER = ["uniqenergy", "uniquem", "kemko", "alchem"] as const;
+const LISTED = LIST_ORDER.map((id) => GROUP_LOGOS.find((logo) => logo.id === id)!);
+
 function canRenderWebGL() { try { const c = document.createElement("canvas"); return Boolean(c.getContext("webgl2") || c.getContext("webgl")); } catch { return false; } }
 
 /** Full-screen deep-space view; the only chrome is a small floating Back button. */
@@ -35,12 +39,12 @@ export default function UniqGroupLogoApp() {
     return () => { disposed = true; cleanup(); };
   }, [webgl]);
   return <div className="ug-page" ref={stage}>
-    {webgl ? <canvas ref={canvas} className={ready ? "ug-canvas is-ready" : "ug-canvas"} aria-label="The UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit. Drag to turn the view; click a company logo to open its website." role="img" />
+    {webgl ? <canvas ref={canvas} className={ready ? "ug-canvas is-ready" : "ug-canvas"} aria-label="The UniqEnergy globe with UniqEnergy, Uniquem, Kemko and Alchem in orbit. Drag to turn the view; click a company logo to open its website." role="img" />
       : <img className="ug-still" src={CENTRE_LOGO_URL} alt="UniqEnergy" />}
     <Link className="ug-back" to="/dashboard" aria-label="Back to the dashboard"><ArrowLeft size={18} aria-hidden="true" /><span>Back</span></Link>
     <nav className="ug-sites" aria-label="Uniq Group companies">
-      {GROUP_LOGOS.map((logo) => <a key={logo.id} href={logo.site} target="_blank" rel="noopener noreferrer">{logo.name}</a>)}
+      {LISTED.map((logo) => <a key={logo.id} href={logo.site} target="_blank" rel="noopener noreferrer">{logo.name}</a>)}
     </nav>
-    <div className="ug-caption" aria-hidden="true"><b>UNIQ GROUP</b><span>ALCHEM · UNIQUEM · UNIQENERGY · KEMKO</span></div>
+    <div className="ug-caption" aria-hidden="true"><b>UNIQ GROUP</b><span>UNIQENERGY · UNIQUEM · KEMKO · ALCHEM</span></div>
   </div>;
 }
