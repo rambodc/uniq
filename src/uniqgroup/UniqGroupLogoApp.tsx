@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { CENTRE_LOGO_URL } from "./groupScene";
+import { CENTRE_LOGO_URL, GROUP_LOGOS } from "./groupScene";
 import "./uniqgroup.css";
 
 /** Orbit phase (seconds) for the still frame shown when motion is reduced: every logo is clear of the mark. */
@@ -35,9 +35,12 @@ export default function UniqGroupLogoApp() {
     return () => { disposed = true; cleanup(); };
   }, [webgl]);
   return <div className="ug-page" ref={stage}>
-    {webgl ? <canvas ref={canvas} className={ready ? "ug-canvas is-ready" : "ug-canvas"} aria-label="The UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit" role="img" />
+    {webgl ? <canvas ref={canvas} className={ready ? "ug-canvas is-ready" : "ug-canvas"} aria-label="The UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit. Drag to turn the view; click a company logo to open its website." role="img" />
       : <img className="ug-still" src={CENTRE_LOGO_URL} alt="UniqEnergy" />}
     <Link className="ug-back" to="/dashboard" aria-label="Back to the dashboard"><ArrowLeft size={18} aria-hidden="true" /><span>Back</span></Link>
+    <nav className="ug-sites" aria-label="Uniq Group companies">
+      {GROUP_LOGOS.map((logo) => <a key={logo.id} href={logo.site} target="_blank" rel="noopener noreferrer">{logo.name}</a>)}
+    </nav>
     <div className="ug-caption" aria-hidden="true"><b>UNIQ GROUP</b><span>ALCHEM · UNIQUEM · UNIQENERGY · KEMKO</span></div>
   </div>;
 }

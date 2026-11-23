@@ -6,7 +6,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 /**
  * The UniqGroup Logo scene: the real UniqEnergy mark in the centre, the four group companies orbiting it on a
- * tilted Saturn-style ring, inside a deep-space backdrop (nebula haze, layered stars, light rays, electron rings).
+ * tilted Saturn-style ring, inside a deep-space backdrop (nebula haze, faint distant stars, light rays, thin rings with four electrons).
  *
  * The centre mark is the official artwork file itself, on a plane that always faces the camera, drawn in a
  * second pass with no tone mapping, lighting, tint or colour conversion, so its pixels are the file's pixels.
@@ -21,10 +21,10 @@ const CROP = { x: 598, y: 30, w: 1393, h: 1001 };
 const GLOBE = { cx: 808, cy: 565, r: 440 }; // the striped sphere inside the crop
 
 export const GROUP_LOGOS = [
-  { id: "alchem", url: "/brand/group/alchem.png", height: 1.4 },
-  { id: "uniquem", url: "/brand/group/uniquem.png", height: 0.86 },
-  { id: "uniqenergy", url: "/brand/group/uniqenergy.png", height: 1.3 },
-  { id: "kemko", url: "/brand/group/kemko.png", height: 0.6 },
+  { id: "alchem", name: "Alchem Energy Services", url: "/brand/group/alchem.png", site: "https://alchem.ca/", height: 1.4 },
+  { id: "uniquem", name: "Uniquem", url: "/brand/group/uniquem.png", site: "https://uniquem.ca/", height: 1.03 },
+  { id: "uniqenergy", name: "UniqEnergy", url: "/brand/group/uniqenergy.png", site: "https://uniqenergy.com/", height: 1.3 },
+  { id: "kemko", name: "Kemko", url: "/brand/group/kemko.png", site: "https://www.kemko.ca/", height: 0.72 },
 ] as const;
 
 const ORBIT = 4.25;
@@ -32,6 +32,9 @@ const SPEED = 0.11; // rad/s, one lap in about 57 s
 const CENTRE_W = 5.6; // world width of the mark
 
 export type GroupScene = { start(): void; stop(): void; renderAt(t: number): void; resize(w: number, h: number): void; dispose(): void };
+
+/** Opens a company site in a new tab (kept outside the scene so the page decides how links open). */
+export const openSite = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
 
 // ---------- textures ----------
 function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, n: number) => void) {
@@ -118,13 +121,13 @@ type RingSpec = { r: number; tiltX: number; tiltZ: number; line: [number, number
   electrons: number; eSpeed: number; trail: number; dust: number; dustWidth: number };
 const RINGS: RingSpec[] = [
   // the logo ring
-  { r: ORBIT, tiltX: 0, tiltZ: 0, line: [0.42, 1.0, 0.62], base: 0.34, glint: 0.9, glints: 2, glintSpeed: 0.05, electrons: 4, eSpeed: 0.42, trail: 0.55, dust: 4200, dustWidth: 0.72 },
+  { r: ORBIT, tiltX: 0, tiltZ: 0, line: [0.42, 1.0, 0.62], base: 0.34, glint: 0.9, glints: 2, glintSpeed: 0.05, electrons: 1, eSpeed: 0.42, trail: 0.55, dust: 0, dustWidth: 0 },
   { r: ORBIT - 0.34, tiltX: 0, tiltZ: 0, line: [0.55, 1.0, 0.75], base: 0.09, glint: 0.4, glints: 3, glintSpeed: -0.07, electrons: 0, eSpeed: 0, trail: 0, dust: 0, dustWidth: 0 },
   { r: ORBIT + 0.38, tiltX: 0, tiltZ: 0, line: [0.55, 1.0, 0.75], base: 0.07, glint: 0.35, glints: 2, glintSpeed: 0.04, electrons: 0, eSpeed: 0, trail: 0, dust: 0, dustWidth: 0 },
   // electron shells at their own tilts and speeds
-  { r: 3.25, tiltX: 0.12, tiltZ: 0.42, line: [0.4, 0.95, 0.85], base: 0.1, glint: 0.55, glints: 2, glintSpeed: 0.12, electrons: 3, eSpeed: 0.62, trail: 0.7, dust: 260, dustWidth: 0.1 },
-  { r: 3.7, tiltX: -0.1, tiltZ: -0.5, line: [0.5, 1.0, 0.7], base: 0.08, glint: 0.5, glints: 3, glintSpeed: -0.09, electrons: 3, eSpeed: -0.5, trail: 0.6, dust: 260, dustWidth: 0.1 },
-  { r: 5.15, tiltX: 0.04, tiltZ: 0.1, line: [0.45, 0.9, 0.95], base: 0.05, glint: 0.3, glints: 2, glintSpeed: 0.03, electrons: 5, eSpeed: 0.26, trail: 0.45, dust: 420, dustWidth: 0.25 },
+  { r: 3.25, tiltX: 0.12, tiltZ: 0.42, line: [0.4, 0.95, 0.85], base: 0.1, glint: 0.55, glints: 2, glintSpeed: 0.12, electrons: 1, eSpeed: 0.62, trail: 0.7, dust: 0, dustWidth: 0 },
+  { r: 3.7, tiltX: -0.1, tiltZ: -0.5, line: [0.5, 1.0, 0.7], base: 0.08, glint: 0.5, glints: 3, glintSpeed: -0.09, electrons: 1, eSpeed: -0.5, trail: 0.6, dust: 0, dustWidth: 0 },
+  { r: 5.15, tiltX: 0.04, tiltZ: 0.1, line: [0.45, 0.9, 0.95], base: 0.05, glint: 0.3, glints: 2, glintSpeed: 0.03, electrons: 1, eSpeed: 0.26, trail: 0.45, dust: 0, dustWidth: 0 },
 ];
 
 export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () => void): GroupScene {
@@ -143,7 +146,7 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
   back.background = keep(backdrop());
 
   // layered starfield: three shells at different distances, turning at different rates (parallax)
-  const starLayers = [[110, 1500, 0.18, 0.004], [70, 800, 0.22, -0.007], [42, 260, 0.26, 0.011]].map(([dist, n, size, spin]) => {
+  const starLayers = [[120, 420, 0.16, 0.003]].map(([dist, n, size, spin]) => {
     const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n), ph = new Float32Array(n), rate = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const u = rnd() * 2 - 1, th = rnd() * Math.PI * 2, r = dist * (0.85 + rnd() * 0.3), s = Math.sqrt(1 - u * u);
@@ -153,7 +156,7 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     }
     const g = keep(new THREE.BufferGeometry()); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("aColor", new THREE.BufferAttribute(col, 3));
     g.setAttribute("aSize", new THREE.BufferAttribute(sz, 1)); g.setAttribute("aPhase", new THREE.BufferAttribute(ph, 1)); g.setAttribute("aRate", new THREE.BufferAttribute(rate, 1));
-    const pts = new THREE.Points(g, shader(twinkleMat(0.75, 2))); back.add(pts);
+    const pts = new THREE.Points(g, shader(twinkleMat(0.45, 2))); back.add(pts);
     return { pts, spin };
   });
 
@@ -177,19 +180,6 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
   const rayA = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(rays(5, 70)), color: 0x6dffa8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.09 })));
   const rayB = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(rays(17, 46)), color: 0x9dfff0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.07 })));
   rayA.position.set(0, 0, -1.2); rayB.position.set(0, 0, -1.3); back.add(rayA, rayB);
-
-  // sparkles around the rim of the globe, just behind it
-  {
-    const n = 90, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n), ph = new Float32Array(n), rate = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const a = rnd() * Math.PI * 2, r = 1.85 + Math.pow(rnd(), 1.6) * 1.6;
-      pos.set([r * Math.cos(a), r * Math.sin(a) * 0.92, -0.3 - rnd() * 1.4], i * 3);
-      const w = 0.6 + rnd() * 0.4; col.set([0.75 * w, w, 0.85 * w], i * 3); sz[i] = 0.05 + rnd() * 0.09; ph[i] = rnd() * 6.28; rate[i] = 0.6 + rnd() * 1.6;
-    }
-    const g = keep(new THREE.BufferGeometry()); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("aColor", new THREE.BufferAttribute(col, 3));
-    g.setAttribute("aSize", new THREE.BufferAttribute(sz, 1)); g.setAttribute("aPhase", new THREE.BufferAttribute(ph, 1)); g.setAttribute("aRate", new THREE.BufferAttribute(rate, 1));
-    back.add(new THREE.Points(g, shader(twinkleMat(1.1, 8))));
-  }
 
   // ================= pass 2: the mark, the rings and the logos (exact pixels for the mark) =================
   const front = new THREE.Scene();
@@ -266,7 +256,7 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     (mesh.material as THREE.MeshBasicMaterial).map = rawTexture(logo.url, (t) => { const img = t.image as { width: number; height: number }; base.w = logo.height * img.width / img.height; });
     const glow = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(softDot("rgba(90,255,140,0.5)", "rgba(30,140,70,0.12)")), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
     const anchor = new THREE.Object3D(); tilt.add(anchor); front.add(mesh); front.add(glow);
-    return { mesh, glow, anchor, base, phase: (i / GROUP_LOGOS.length) * Math.PI * 2 };
+    return { mesh, glow, anchor, base, site: logo.site, hover: 0, phase: (i / GROUP_LOGOS.length) * Math.PI * 2 };
   });
 
   // order pass 1: everything, then the disc, nothing after it needs hiding
@@ -300,30 +290,44 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     bloom.resolution.set(w, h);
   }
 
-  const tmp = new THREE.Vector3(), camDir = new THREE.Vector3();
+  // ================= view and interaction =================
+  // Drag spins (yaw) and tilts (pitch) the view within limits; on release it eases back to the default framing.
+  const YAW_MAX = 0.6, PITCH_MAX = 0.28;
+  const view = { yaw: 0, pitch: 0 };
+  let dragging = false, dragMoved = false, dragStart = { x: 0, y: 0, yaw: 0, pitch: 0 };
+  let hovered: (typeof logos)[number] | null = null;
+  const soft = (v: number, max: number) => max * Math.tanh(v / max); // resists near the limit instead of a hard stop
+
+  const tmp = new THREE.Vector3(), camDir = new THREE.Vector3(), offset = new THREE.Vector3();
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0);
   function aim(t: number) {
-    // a slow cinematic drift; the mark keeps facing the camera exactly, so it is never skewed
-    camera.position.set(camBase.x + Math.sin(t * 0.05) * 0.35, camBase.y + Math.sin(t * 0.037) * 0.18, camBase.z);
+    // a slow cinematic drift plus the user's drag; the mark keeps facing the camera exactly, so it is never skewed
+    offset.copy(camBase).sub(look);
+    offset.applyAxisAngle(X, -view.pitch + Math.sin(t * 0.037) * 0.012);
+    offset.applyAxisAngle(Y, view.yaw + Math.sin(t * 0.05) * 0.022);
+    camera.position.copy(look).add(offset);
     camera.lookAt(look); camera.updateMatrixWorld();
     for (const o of [centre, occluder, backOccluder]) o.quaternion.copy(camera.quaternion);
     centre.position.copy(centreOffset).multiplyScalar(heroK).applyQuaternion(camera.quaternion);
+    backOccluder.updateMatrixWorld(); occluder.updateMatrixWorld();
   }
-  function place(t: number) {
-    camDir.copy(camera.position).normalize();
+  function place(t: number, orbitT: number) {
+    camDir.copy(camera.position).sub(look).normalize();
     for (const l of logos) {
-      const a = l.phase + t * SPEED;
+      const a = l.phase + orbitT * SPEED;
       l.anchor.position.set(ORBIT * Math.cos(a), ORBIT * Math.sin(a), 0);
       l.anchor.updateWorldMatrix(true, false); l.anchor.getWorldPosition(tmp);
       l.mesh.position.copy(tmp); l.mesh.quaternion.copy(camera.quaternion);
       const f = THREE.MathUtils.clamp(tmp.dot(camDir) / (ORBIT * ringK), -1, 1);
-      const k = (f + 1) / 2, sc = (0.82 + 0.22 * k) * logoK;
+      const k = (f + 1) / 2, sc = (0.82 + 0.22 * k) * logoK * (1 + 0.08 * l.hover);
       l.mesh.scale.set(l.base.w * sc, l.base.h * sc, 1);
       const mat = l.mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.5 + 0.5 * k;
+      mat.opacity = Math.min(1, 0.5 + 0.5 * k + 0.5 * l.hover);
       const inFront = f > 0;
       mat.depthTest = !inFront; l.mesh.renderOrder = inFront ? 5 + k : 3.6;
-      l.glow.position.copy(tmp).addScaledVector(camDir, -0.05); l.glow.scale.setScalar(Math.max(l.base.w, l.base.h) * 1.9 * sc);
-      l.glow.material.opacity = 0.08 + 0.1 * k; l.glow.material.depthTest = !inFront; l.glow.renderOrder = inFront ? 4 : 3.5;
+      l.mesh.updateMatrixWorld();
+      l.glow.position.copy(tmp).addScaledVector(camDir, -0.05); l.glow.scale.setScalar(Math.max(l.base.w, l.base.h) * (1.9 + 0.5 * l.hover) * sc);
+      l.glow.material.opacity = 0.08 + 0.1 * k + 0.38 * l.hover; l.glow.material.depthTest = !inFront; l.glow.renderOrder = inFront ? 4 : 3.5;
     }
     for (const m of timed) m.uniforms.uTime.value = t;
     for (const l of starLayers) l.pts.rotation.y = t * l.spin;
@@ -333,8 +337,8 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     core.material.opacity = 0.42 + 0.1 * breathe; rayA.material.opacity = 0.075 + 0.03 * breathe;
   }
 
-  function draw(t: number) {
-    aim(t); place(t);
+  function draw(t: number, orbitT: number) {
+    aim(t); place(t, orbitT);
     renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NeutralToneMapping; renderer.autoClear = true;
     composer.render();
     renderer.setRenderTarget(null);
@@ -343,16 +347,81 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     renderer.render(front, camera);
   }
 
-  let raf = 0, running = false, last = performance.now(), elapsed = 0, frozenAt = 0;
-  const loop = (now: number) => { elapsed += Math.min(0.1, (now - last) / 1000); last = now; draw(elapsed); raf = requestAnimationFrame(loop); };
-  function renderOnce() { draw(running ? elapsed : frozenAt); }
+  // Which logo is under the pointer (a logo behind the globe does not count).
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function pick(x: number, y: number) {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects([occluder, ...logos.map((l) => l.mesh)], false)[0];
+    return hit ? logos.find((l) => l.mesh === hit.object) ?? null : null;
+  }
+  function setHover(l: (typeof logos)[number] | null) {
+    hovered = l;
+    canvas.style.cursor = dragging ? "grabbing" : l ? "pointer" : "grab";
+  }
+
+  let raf = 0, running = false, last = performance.now(), elapsed = 0, orbitT = 0;
+  function step(dt: number) {
+    elapsed += dt;
+    if (!hovered) orbitT += dt; // hovering a logo pauses the orbit
+    const e = 1 - Math.exp(-dt * 10);
+    for (const l of logos) l.hover += ((l === hovered ? 1 : 0) - l.hover) * e;
+    if (!dragging) { const back = 1 - Math.exp(-dt * 2.2); view.yaw -= view.yaw * back; view.pitch -= view.pitch * back; }
+  }
+  const loop = (now: number) => { step(Math.min(0.1, (now - last) / 1000)); last = now; draw(elapsed, orbitT); raf = requestAnimationFrame(loop); };
+  function renderOnce() { draw(elapsed, orbitT); }
+  // When the loop is stopped (reduced motion), interaction still redraws, without animated easing.
+  const still = () => { if (!running) { for (const l of logos) l.hover = l === hovered ? 1 : 0; renderOnce(); } };
+
+  const onDown = (ev: PointerEvent) => {
+    if (ev.button !== 0) return;
+    dragging = true; dragMoved = false; dragStart = { x: ev.clientX, y: ev.clientY, yaw: view.yaw, pitch: view.pitch };
+    canvas.setPointerCapture(ev.pointerId);
+  };
+  const onMove = (ev: PointerEvent) => {
+    if (dragging) {
+      const dx = ev.clientX - dragStart.x, dy = ev.clientY - dragStart.y;
+      if (Math.hypot(dx, dy) > 6) dragMoved = true;
+      if (dragMoved) {
+        const w = canvas.clientWidth || 1;
+        view.yaw = soft(dragStart.yaw - (dx / w) * 2.2, YAW_MAX);
+        view.pitch = soft(dragStart.pitch + (dy / w) * 1.6, PITCH_MAX);
+        setHover(null); still(); return;
+      }
+    }
+    if (ev.pointerType === "mouse") { const l = pick(ev.clientX, ev.clientY); if (l !== hovered) { setHover(l); still(); } }
+  };
+  const onUp = (ev: PointerEvent) => {
+    if (!dragging) return;
+    dragging = false;
+    if (canvas.hasPointerCapture(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId);
+    if (!running && dragMoved) { view.yaw = 0; view.pitch = 0; } // reduced motion: no animated ease, just return
+    setHover(ev.pointerType === "mouse" ? pick(ev.clientX, ev.clientY) : null); still();
+  };
+  const onClick = (ev: MouseEvent) => {
+    if (dragMoved) { dragMoved = false; return; } // a drag never opens a site
+    const l = pick(ev.clientX, ev.clientY);
+    if (l) openSite(l.site);
+  };
+  const onLeave = () => { if (!dragging && hovered) { setHover(null); still(); } };
+  canvas.addEventListener("pointerdown", onDown); canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointerup", onUp); canvas.addEventListener("pointercancel", onUp);
+  canvas.addEventListener("pointerleave", onLeave); canvas.addEventListener("click", onClick);
+  canvas.style.cursor = "grab"; canvas.style.touchAction = "none";
 
   resize(canvas.clientWidth || 1, canvas.clientHeight || 1);
   return {
     start() { if (running) return; running = true; last = performance.now(); raf = requestAnimationFrame(loop); },
     stop() { running = false; cancelAnimationFrame(raf); },
-    renderAt(t: number) { frozenAt = t; elapsed = t; draw(t); },
+    renderAt(t: number) { elapsed = t; orbitT = t; view.yaw = 0; view.pitch = 0; draw(t, t); },
     resize(w: number, h: number) { resize(w, h); renderOnce(); },
-    dispose() { cancelAnimationFrame(raf); running = false; composer.dispose(); disposables.forEach((d) => d.dispose()); renderer.dispose(); },
+    dispose() {
+      cancelAnimationFrame(raf); running = false;
+      canvas.removeEventListener("pointerdown", onDown); canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp); canvas.removeEventListener("pointercancel", onUp);
+      canvas.removeEventListener("pointerleave", onLeave); canvas.removeEventListener("click", onClick);
+      composer.dispose(); disposables.forEach((d) => d.dispose()); renderer.dispose();
+    },
   };
 }
