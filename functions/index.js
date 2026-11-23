@@ -51,3 +51,4 @@ export * from "./profile-functions.js";
 export * from "./users-functions.js";
 export * from "./inventory-functions.js";
 export * from "./voice-functions.js";
+export * from "./builder-functions.js";

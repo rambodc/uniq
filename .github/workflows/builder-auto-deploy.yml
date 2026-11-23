@@ -1,0 +1,41 @@
+# Squash-merges a Builder pull request after every check is green, then starts the production deploys.
+# A check_suite created by GITHUB_TOKEN does not start another workflow, so this waits on workflow_run
+# (and polls) instead. A merge made with GITHUB_TOKEN does not trigger push workflows. workflow_dispatch
+# still runs, so this job starts Hosting, Functions, and Rules itself. No extra token is used.
+name: Builder auto deploy
+on:
+  workflow_run:
+    workflows:
+      - "PR: Firebase Hosting"
+      - "PR: Firebase Functions"
+      - "PR: Firebase Rules"
+    types: [completed]
+  pull_request:
+    types: [labeled, opened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number
+        required: false
+        type: string
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: write
+concurrency:
+  group: builder-auto-deploy-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  merge:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Merge a green Builder pull request and start production deploys
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHECK_SHA: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha }}
+          CHECK_WAIT_MS: "1200000"
+        run: node .github/workflows/builder-auto-deploy.mjs

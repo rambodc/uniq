@@ -1,6 +1,6 @@
 # UniqEnergy
 
-Public marketing site and a private workspace for UniqEnergy staff. The public pages stay as they are. The workspace is email-and-password only, with five mini apps: Profile, Contact Form, Inventory Bot, Wells, and User Access.
+Public marketing site and a private workspace for UniqEnergy staff. The public pages stay as they are. The workspace is email-and-password only, with mini apps: Profile, Contact Form, Inventory Bot, Wells, UniqGroup Logo, User Access, and Builder.
 
 ## Architecture
 
@@ -15,8 +15,9 @@ Mini apps are declared once in `functions/miniApps.js`. The browser imports that
 | Inventory Bot | `inventoryBot` | `/inventory-bot` | Staff who are assigned it, and every super admin |
 | Wells | `wells` | `/wells` | Staff who are assigned it, and every super admin |
 | User Access | `users` | `/users` | Super admins only |
+| Builder | `builder` | `/builder` | Super admins only |
 
-Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/inventory-bot`, `/wells`, `/users`, `/profile`. The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
+Routes: `/signin`, `/dashboard`, `/contact-inbox`, `/contact-inbox/:id`, `/inventory-bot`, `/wells`, `/uniqgroup-logo`, `/users`, `/builder`, `/profile`. Builder is an in-app chat that asks a Cursor cloud agent to open a pull request; see [docs/APP_GUIDE.md](docs/APP_GUIDE.md). The contact inbox is a list of every message; opening one goes to its own page, and Back returns to the list (or, from the list, to the dashboard). There is no public sign-up and no email-code login. A super admin invites someone; the invite email contains a one-time Firebase link where they choose a password. Forgot password on `/signin` uses Firebase `sendPasswordResetEmail` and always shows the same confirmation. Password changes happen in Profile with `reauthenticateWithCredential` and `updatePassword`. Passwords never reach our functions.
 
 Access is checked on the server with `requireMiniApp(request, "<id>")` or `requireSuperAdmin(request)` in `functions/core.js`. A missing user record, a mismatched email, an unverified email, an unknown type, missing names, or `disabled: true` means no access.
 

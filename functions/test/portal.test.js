@@ -25,7 +25,7 @@ const database = fakeDb({
 });
 
 test("registry is the UniqEnergy mini apps", () => {
-  assert.deepEqual(MINI_APP_IDS, ["profile", "contact", "inventoryBot", "wells", "uniqGroupLogo", "users"]);
+  assert.deepEqual(MINI_APP_IDS, ["profile", "contact", "inventoryBot", "wells", "uniqGroupLogo", "users", "builder"]);
   assert.equal(new Set(MINI_APP_IDS).size, MINI_APPS.length);
   for (const app of MINI_APPS) {
     for (const key of ["id", "name", "description", "route", "icon", "accent"]) assert.equal(typeof app[key], "string");
@@ -201,7 +201,7 @@ test("public website enquiries notify both inboxes and other mail stays unchange
 });
 
 test("every callable except the public inquiry and getAccess is guarded, and removed apps are gone", () => {
-  const sources = { "../index.js": read("../index.js"), "../profile-functions.js": read("../profile-functions.js"), "../users-functions.js": read("../users-functions.js"), "../inventory-functions.js": read("../inventory-functions.js"), "../voice-functions.js": read("../voice-functions.js") };
+  const sources = { "../index.js": read("../index.js"), "../profile-functions.js": read("../profile-functions.js"), "../users-functions.js": read("../users-functions.js"), "../inventory-functions.js": read("../inventory-functions.js"), "../voice-functions.js": read("../voice-functions.js"), "../builder-functions.js": read("../builder-functions.js") };
   const callables = (source) => source.split(/export const (\w+) = onCall\(/).slice(1).reduce((all, part, index, parts) => (index % 2 === 0 ? [...all, { name: part, body: parts[index + 1].split(/\nexport /)[0] }] : all), []);
   const open = new Set(["submitContactInquiry", "getAccess"]);
   const names = [];
@@ -209,11 +209,11 @@ test("every callable except the public inquiry and getAccess is guarded, and rem
     for (const { name, body } of callables(source)) {
       names.push(name);
       if (open.has(name)) continue;
-      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? /requireMiniApp\(request, "inventoryBot"\)/ : file.includes("voice") ? /requireSignedIn\(request\)/ : /requireMiniApp\(request, "contact"\)/;
+      const guard = file.includes("users") ? /requireSuperAdmin\(request\)/ : file.includes("profile") ? /requireMiniApp\(request, "profile"\)/ : file.includes("inventory") ? /requireMiniApp\(request, "inventoryBot"\)/ : file.includes("voice") ? /requireSignedIn\(request\)/ : file.includes("builder") ? /requireMiniApp\(request, "builder"\)/ : /requireMiniApp\(request, "contact"\)/;
       assert.match(body, guard, `${name} in ${file}`);
     }
   }
-  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMimBoard", "inventoryBotMoveTicket", "inventoryBotOpenAppWell", "inventoryBotOpenMimWell", "inventoryBotOpenXpressWell", "inventoryBotRecomputeXref", "inventoryBotRequestWellRefresh", "inventoryBotSaveCorrection", "inventoryBotUndoCorrection", "inventoryBotXpressBoard", "listContactInquiries", "listUsers", "removeMyPhoto", "restoreContactInquiry", "sendUserInvite", "setMyPhoto", "setUserDisabled", "submitContactInquiry", "updateUser", "voiceChatToken"]);
+  assert.deepEqual(names.sort(), ["archiveContactInquiry", "createUser", "getAccess", "getBuilderArtifact", "getBuilderConversation", "getMyPhoto", "inventoryBotGrokSort", "inventoryBotLinkAppWell", "inventoryBotMimBoard", "inventoryBotMoveTicket", "inventoryBotOpenAppWell", "inventoryBotOpenMimWell", "inventoryBotOpenXpressWell", "inventoryBotRecomputeXref", "inventoryBotRequestWellRefresh", "inventoryBotSaveCorrection", "inventoryBotUndoCorrection", "inventoryBotXpressBoard", "listBuilderConversations", "listContactInquiries", "listUsers", "notifyBuilderAdmin", "removeMyPhoto", "renameBuilderConversation", "restoreContactInquiry", "sendBuilderMessage", "sendUserInvite", "setMyPhoto", "setUserDisabled", "startBuilderConversation", "submitContactInquiry", "updateUser", "voiceChatToken"]);
   const tree = readdirSync(new URL("..", import.meta.url));
   assert.equal(tree.includes("apps"), false);
   const bundle = names.join("\n") + read("../index.js");

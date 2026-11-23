@@ -18,6 +18,20 @@ service firebase.storage {
       allow read: if canReadInventoryTickets();
       allow write: if false;
     }
+
+    // Builder uploads. A signed-in person may read and write only builder/{their uid}/…, under 20 MB.
+    // Super admin is not checked here. The Inventory Bot ticket path already uses firestore.get;
+    // repeating that lookup on this path is unnecessary, and the Builder callables still require
+    // a super admin before a file is sent on.
+    match /builder/{uid}/{allPaths=**} {
+      allow read: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.uid == uid
+        && request.resource.size < 20 * 1024 * 1024;
+    }
     // Profile photos and every other object stay closed. Callables write those.
     match /{allPaths=**} {
       allow read, write: if false;
