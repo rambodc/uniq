@@ -12,6 +12,7 @@ import ProfileApp from "./profile/ProfileApp";
 import type { Inquiry, UserRecord } from "./core/api";
 import InventoryApp from "./inventory/InventoryApp";
 import WellsApp from "./wells/WellsApp";
+import UniqGroupLogoApp from "./uniqgroup/UniqGroupLogoApp";
 import { inventoryPreview } from "./inventory/previewData";
 import "./styles.css";
 import "./auth/portal.css";
@@ -21,7 +22,7 @@ const authState = {
   user: { emailVerified: true },
   loading: false,
   type: "super_admin",
-  miniApps: ["profile", "contact", "inventoryBot", "wells", "users"],
+  miniApps: ["profile", "contact", "inventoryBot", "wells", "uniqGroupLogo", "users"],
   profile,
   refreshAccess: async () => {},
   accessError: null,
@@ -52,4 +53,5 @@ createRoot(document.getElementById("root")!).render(<StrictMode><HashRouter><Aut
   <Route path="/profile" element={<ProfileApp />} />
   <Route path="/inventory-bot/*" element={<InventoryApp />} />
   <Route path="/wells/*" element={<WellsApp />} />
+  <Route path="/uniqgroup-logo" element={<UniqGroupLogoApp />} />
 </Routes></ThemeProvider></AuthProvider></HashRouter></StrictMode>);

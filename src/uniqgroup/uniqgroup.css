@@ -1,0 +1,9 @@
+.ug-stage{position:relative;width:100%;height:min(74vh,760px);min-height:420px;margin-top:8px;border-radius:22px;overflow:hidden;background:radial-gradient(ellipse at 50% 46%,#0d2a1c 0%,#07160f 30%,#03090a 62%,#010305 100%);box-shadow:0 24px 60px rgba(0,0,0,.35),inset 0 0 0 1px rgba(120,255,160,.08)}
+.ug-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .6s ease}
+.ug-canvas.is-ready{opacity:1}
+.ug-still{position:absolute;left:50%;top:46%;width:min(62%,520px);transform:translate(-50%,-50%)}
+.ug-caption{position:absolute;left:0;right:0;bottom:5%;display:grid;gap:8px;justify-items:center;color:#cfe9d6;pointer-events:none;text-align:center}
+.ug-caption b{font-size:13px;letter-spacing:.55em;font-weight:600;opacity:.85;padding-left:.55em}
+.ug-caption span{font-size:11px;letter-spacing:.32em;opacity:.45;padding-left:.32em}
+@media (max-width:600px){.ug-stage{height:calc(100svh - 190px);min-height:520px;border-radius:18px}.ug-caption{bottom:6%}.ug-caption span{font-size:9px;letter-spacing:.2em}}
+@media (prefers-reduced-motion:reduce){.ug-canvas{transition:none}}
