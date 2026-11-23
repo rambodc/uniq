@@ -35,7 +35,9 @@
       { "source": "/users", "destination": "/private.html" },
       { "source": "/users/**", "destination": "/private.html" },
       { "source": "/profile", "destination": "/private.html" },
-      { "source": "/profile/**", "destination": "/private.html" }
+      { "source": "/profile/**", "destination": "/private.html" },
+      { "source": "/builder", "destination": "/private.html" },
+      { "source": "/builder/**", "destination": "/private.html" }
     ],
     "headers": [
       { "source": "/signin", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
@@ -52,6 +54,8 @@
       { "source": "/users/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "/profile", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "/profile/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
+      { "source": "/builder", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
+      { "source": "/builder/**", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "/private", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "/private.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       { "source": "**/*.@(js|css)", "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }] },

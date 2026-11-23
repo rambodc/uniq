@@ -163,3 +163,37 @@ export async function fetchDeliveryStatus(id, apiKey, { fetchImpl = globalThis.f
   const body = await response.json();
   return deliveryStatus(body?.last_event);
 }
+
+/** Resend's inbox that accepts mail and never delivers it to a person. Tests and the sink send here only. */
+export const RESEND_SINK = "delivered@resend.dev";
+/** Production tells rambodr@uniquem.ca. BUILDER_NOTIFY_SINK=test sends only to the Resend sink. */
+export function builderNotifyAddress(env = globalThis.process?.env ?? {}) {
+  return env.BUILDER_NOTIFY_SINK === "test" ? RESEND_SINK : EMAIL_TO;
+}
+
+/** The email a super admin sends when a Builder task is blocked on the Grok Bot admin. */
+export function buildBuilderAdminEmail({ to, askedByName, askedByEmail, title, link, request, help, prUrl }) {
+  const text = [
+    "A Builder task on uniqenergy.com needs the Grok Bot admin.",
+    "",
+    `Who asked: ${askedByName} <${askedByEmail}>`,
+    `Build: ${title}`,
+    `Open it: ${link}`,
+    "",
+    "Original request:",
+    request,
+    "",
+    `Blocked: ${help?.blocked ?? ""}`,
+    `Why: ${help?.why ?? ""}`,
+    `Action: ${help?.action ?? ""}`,
+    `Context: ${help?.context ?? ""}`,
+    "",
+    prUrl ? `Pull request: ${prUrl}` : "Pull request: none yet",
+  ].join("\n");
+  return { from: EMAIL_FROM, to: [to], reply_to: askedByEmail, subject: `Builder needs the Grok Bot admin: ${title}`.slice(0, 180), text };
+}
+
+/** Same Resend sender as inquiries and invites. The idempotency key is the build id, so a second click does not send a second email. */
+export function sendBuilderAdminEmail(message, apiKey, { idempotencyKey, fetchImpl, wait } = {}) {
+  return sendEmail(message, apiKey, { idempotencyKey, retries: INVITE_RETRIES, fetchImpl, wait });
+}

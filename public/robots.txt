@@ -6,6 +6,7 @@ Disallow: /contact-inbox
 Disallow: /inventory-bot
 Disallow: /wells
 Disallow: /users
+Disallow: /builder
 Disallow: /profile
 Disallow: /private
 Disallow: /private.html

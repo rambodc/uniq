@@ -105,3 +105,21 @@ export const voiceChatToken = () => invoke<undefined, { token: string; expiresAt
 export const setMyPhoto = (photo: { photo: string; thumb: string }) => invoke<typeof photo, { photo: string }>("setMyPhoto", photo);
 export const removeMyPhoto = () => invoke("removeMyPhoto");
 export const getMyPhoto = () => invoke<undefined, { dataUrl: string | null }>("getMyPhoto");
+
+// ---- Builder mini app (super admins only; Cursor stays on the server) ----
+export type BuilderStatus = "running" | "finished" | "error";
+export type ShipPhase = "pr" | "checks" | "merged" | "deploying" | "live" | "failed";
+export type BuilderShip = { phase: ShipPhase; detail: string | null };
+export type BuilderAdminNotice = { at: string | null; by: string };
+export type BuilderSummary = { id: string; title: string; status: BuilderStatus; prUrl: string | null; branch: string | null; error: string | null; askedBy: string; updatedAt: string | null; ship: BuilderShip | null; adminNotice: BuilderAdminNotice | null };
+export type BuilderMessage = { id: string; kind: "user" | "assistant"; text: string; at: string };
+export type BuilderConversation = BuilderSummary & { agentUrl: string | null; messages: BuilderMessage[] };
+export const listBuilderConversations = () => invoke<undefined, { conversations: BuilderSummary[] }>("listBuilderConversations");
+export const getBuilderConversation = (conversationId: string, force = false) => invoke<{ conversationId: string; force: boolean }, { conversation: BuilderConversation }>("getBuilderConversation", { conversationId, force });
+export type BuilderUpload = { path: string; name: string; size: number; contentType: string };
+export const startBuilderConversation = (text: string, files: BuilderUpload[] = []) => invoke<{ text: string; files: BuilderUpload[] }, { conversation: BuilderConversation }>("startBuilderConversation", { text, files });
+export const sendBuilderMessage = (conversationId: string, text: string, files: BuilderUpload[] = []) => invoke<{ conversationId: string; text: string; files: BuilderUpload[] }, { conversation: BuilderConversation }>("sendBuilderMessage", { conversationId, text, files });
+export const notifyBuilderAdmin = (conversationId: string) => invoke<{ conversationId: string }, { already: boolean; conversation: BuilderConversation }>("notifyBuilderAdmin", { conversationId });
+export const renameBuilderConversation = (conversationId: string, title: string) => invoke<{ conversationId: string; title: string }, { conversation: BuilderConversation }>("renameBuilderConversation", { conversationId, title });
+export type BuilderArtifact = { available: false; name: string } | { available: true; name: string; url: string; expiresAt: string | null; bytes: number | null; kind: "image" | "video" | "file" };
+export const getBuilderArtifact = (conversationId: string, path: string) => invoke<{ conversationId: string; path: string }, BuilderArtifact>("getBuilderArtifact", { conversationId, path });

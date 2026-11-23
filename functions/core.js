@@ -7,6 +7,8 @@ import { hasNames, profileView } from "./profile.js";
 
 /** Key for the Resend email API (inquiry notifications and user invites). Never logged. */
 export const resendApiKey = defineSecret("RESEND_API_KEY");
+/** User API key for the Cursor Cloud Agents API, used only by Builder. Never logged or sent to the browser. */
+export const cursorApiKey = defineSecret("CURSOR_API_KEY");
 /** Inboxes notified for each new public website enquiry. Comma-separated. Invite mail is separate. */
 export const contactNotifyEmail = defineString("CONTACT_NOTIFY_EMAIL", { default: "rambodr@uniquem.ca,hrad@uniquem.ca" });
 export const db = getFirestore(getApps().length ? getApps()[0] : initializeApp());
@@ -62,3 +64,5 @@ export async function requireSignedIn(request, database = db) {
   if (!access) throw new HttpsError("permission-denied", "This account is not authorized.");
   return access;
 }
+
+export const isSuperAdmin = (access) => access?.type === SUPER_ADMIN;

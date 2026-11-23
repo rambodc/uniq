@@ -90,3 +90,37 @@ test("Inventory Bot staff can read the Inventory Xpress count and nobody can wri
   await assertFails(setDoc(doc(staff.firestore(), "inventoryBot/main/meta/productUsage"), { version: 2 }));
   await assertFails(getDoc(doc(staff.firestore(), "inventoryBot/main/tickets/xpress_NK-1")));
 });
+
+test("Firestore lets super admins read Builder and nobody write it", async () => {
+  const staffRecord = { email: "ann@uniqenergy.com", firstName: "Ann", lastName: "Nguyen", type: "staff", miniApps: ["inventoryBot"], disabled: false };
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/ann"), staffRecord);
+    await setDoc(doc(context.firestore(), "users/boss"), { ...staffRecord, email: "boss@uniqenergy.com", type: "super_admin", miniApps: [] });
+    await setDoc(doc(context.firestore(), "builder/abc"), { title: "Notes", status: "running", askedBy: "boss@uniqenergy.com" });
+    await setDoc(doc(context.firestore(), "builder/abc/messages/m1"), { kind: "user", text: "Hello", at: "2026-11-23T00:00:00.000Z" });
+  });
+  const staff = environment.authenticatedContext("ann", { email: "ann@uniqenergy.com", email_verified: true });
+  const boss = environment.authenticatedContext("boss", { email: "boss@uniqenergy.com", email_verified: true });
+  const anon = environment.unauthenticatedContext();
+  await assertSucceeds(getDoc(doc(boss.firestore(), "builder/abc")));
+  await assertSucceeds(getDoc(doc(boss.firestore(), "builder/abc/messages/m1")));
+  await assertFails(getDoc(doc(staff.firestore(), "builder/abc")));
+  await assertFails(getDoc(doc(anon.firestore(), "builder/abc")));
+  await assertFails(setDoc(doc(boss.firestore(), "builder/abc"), { title: "Changed" }));
+  await assertFails(setDoc(doc(staff.firestore(), "builder/abc/messages/m2"), { kind: "user", text: "nope" }));
+});
+
+test("Storage lets a signed-in person use only their own Builder folder under 20 MB", async () => {
+  const bucketName = "uniqenergy-de71c.firebasestorage.app";
+  const boss = environment.authenticatedContext("boss", { email: "boss@uniqenergy.com", email_verified: true });
+  const other = environment.authenticatedContext("ann", { email: "ann@uniqenergy.com", email_verified: true });
+  const anon = environment.unauthenticatedContext();
+  const mine = "builder/boss/new/shot.png";
+  const theirs = "builder/ann/new/shot.png";
+  await assertSucceeds(uploadBytes(ref(boss.storage(`gs://${bucketName}`), mine), new Uint8Array([1, 2, 3]), { contentType: "image/png" }));
+  await assertSucceeds(getBytes(ref(boss.storage(`gs://${bucketName}`), mine)));
+  await assertFails(uploadBytes(ref(boss.storage(`gs://${bucketName}`), theirs), new Uint8Array([1, 2, 3]), { contentType: "image/png" }));
+  await assertFails(getBytes(ref(other.storage(`gs://${bucketName}`), mine)));
+  await assertFails(getBytes(ref(anon.storage(`gs://${bucketName}`), mine)));
+  await assertFails(uploadBytes(ref(anon.storage(`gs://${bucketName}`), mine), new Uint8Array([1, 2, 3]), { contentType: "image/png" }));
+});

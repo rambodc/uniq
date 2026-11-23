@@ -21,6 +21,7 @@ export const MINI_APPS = /** @type {const} */ ([
   { id: "wells", name: "Wells", description: "Completed wells copied from the mud man app.", route: "/wells", icon: "Drill", accent: "#19c3b1", superAdminOnly: false, everyone: false },
   { id: "uniqGroupLogo", name: "UniqGroup Logo", description: "The Uniq Group in 3D: the UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit.", route: "/uniqgroup-logo", icon: "Orbit", accent: "#2bd94f", superAdminOnly: false, everyone: false },
   { id: "users", name: "User Access", description: "Invite people, edit their details, and choose which mini apps each one can open.", route: "/users", icon: "ShieldCheck", accent: "#7aa2ff", superAdminOnly: true, everyone: false },
+  { id: "builder", name: "Builder", description: "Describe a change. A cloud agent opens a pull request.", route: "/builder", icon: "Hammer", accent: "#0c9a78", superAdminOnly: true, everyone: false },
 ]);
 
 export const SUPER_ADMIN = "super_admin";

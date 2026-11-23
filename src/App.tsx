@@ -12,6 +12,7 @@ import ProfileApp from "./profile/ProfileApp";
 import InventoryApp from "./inventory/InventoryApp";
 import WellsApp from "./wells/WellsApp";
 const UniqGroupLogoApp = lazy(() => import("./uniqgroup/UniqGroupLogoApp"));
+const BuilderApp = lazy(() => import("./builder/BuilderApp"));
 import { isPrivatePage } from "./auth/privatePaths";
 import { ThemeProvider } from "./auth/Theme";
 import "./auth/portal.css";
@@ -44,6 +45,7 @@ export default function App() {
     <Route element={<RequireMiniApp app="wells" />}><Route path="/wells/*" element={<WellsApp />} /></Route>
     <Route element={<RequireMiniApp app="uniqGroupLogo" />}><Route path="/uniqgroup-logo" element={<Suspense fallback={null}><UniqGroupLogoApp /></Suspense>} /></Route>
     <Route element={<RequireMiniApp app="users" />}><Route path="/users" element={<UsersApp />} /></Route>
+    <Route element={<RequireMiniApp app="builder" />}><Route path="/builder" element={<Suspense fallback={null}><BuilderApp /></Suspense>} /><Route path="/builder/:conversationId" element={<Suspense fallback={null}><BuilderApp /></Suspense>} /></Route>
     <Route element={<RequireMiniApp app="profile" />}><Route path="/profile" element={<ProfileApp />} /></Route>
     </Route>
     <Route path="*" element={<PublicSite />} />
