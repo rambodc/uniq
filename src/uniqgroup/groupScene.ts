@@ -22,7 +22,7 @@ const GLOBE = { cx: 808, cy: 565, r: 440 }; // the striped sphere inside the cro
 
 export const GROUP_LOGOS = [
   { id: "alchem", name: "Alchem Energy Services", url: "/brand/group/alchem.png", site: "https://alchem.ca/", height: 1.4 },
-  { id: "uniquem", name: "Uniquem", url: "/brand/group/uniquem.png", site: "https://uniquem.ca/", height: 1.03 },
+  { id: "uniquem", name: "Uniquem", url: "/brand/group/uniquem-orbit.png", site: "https://uniquem.ca/", height: 0.991 }, // same wordmark size as 1.03 with the old file; "Chemical Company" line removed,
   { id: "uniqenergy", name: "UniqEnergy", url: "/brand/group/uniqenergy.png", site: "https://uniqenergy.com/", height: 1.3 },
   { id: "kemko", name: "Kemko", url: "/brand/group/kemko.png", site: "https://www.kemko.ca/", height: 0.72 },
 ] as const;
