@@ -19,6 +19,7 @@ export const MINI_APPS = /** @type {const} */ ([
   { id: "contact", name: "Contact Form", description: "Messages received through uniqenergy.com.", route: "/contact-inbox", icon: "Inbox", accent: "#32c9ed", superAdminOnly: false, everyone: false },
   { id: "inventoryBot", name: "Inventory Bot", description: "Warehouse tickets, rig inventory, and the morning checks.", route: "/inventory-bot", icon: "PackageSearch", accent: "#f0b429", superAdminOnly: false, everyone: false },
   { id: "wells", name: "Wells", description: "Completed wells copied from the mud man app.", route: "/wells", icon: "Drill", accent: "#19c3b1", superAdminOnly: false, everyone: false },
+  { id: "uniqGroupLogo", name: "UniqGroup Logo", description: "The Uniq Group in 3D: the UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit.", route: "/uniqgroup-logo", icon: "Orbit", accent: "#2bd94f", superAdminOnly: false, everyone: false },
   { id: "users", name: "User Access", description: "Invite people, edit their details, and choose which mini apps each one can open.", route: "/users", icon: "ShieldCheck", accent: "#7aa2ff", superAdminOnly: true, everyone: false },
 ]);
 

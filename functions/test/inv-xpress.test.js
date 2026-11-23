@@ -301,7 +301,11 @@ test("packed documents round-trip under the size limit", () => {
 test("the preview sample is the rig-group count", () => {
   const result = buildInvXpress(demoInput());
   assert.equal(result.summary.warehouses.inTransit, 2555);
-  assert.equal(result.summary.wells.units, sample.summary.wells.units);
+  // The preview sample also carries 48 UniCide G15 well units (added in #61 so the Only in warehouses table has a
+  // product with stock in both places); the demo input has none, so the sample is the computed count plus those.
+  const g15 = sample.products.find((row) => row.name === "UniCide G15");
+  assert.equal(result.products.find((row) => row.name === "UniCide G15").wells, 0);
+  assert.equal(result.summary.wells.units + g15.wells, sample.summary.wells.units);
   assert.equal(result.groups.find((group) => group.rig === "Horizon 55").counted, 3246);
   assert.equal(result.wells.some((well) => /test/i.test(well.name)), false);
   assert.equal(result.products.some((row) => /drum|pallet|envirobag|atp test|c-u/i.test(row.name)), false);

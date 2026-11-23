@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Outlet, Route, Routes, useLocation } from "react-router-dom";
 import PublicSite from "./public/PublicSite";
 import { AuthProvider } from "./auth/AuthContext";
@@ -11,6 +11,7 @@ import UsersApp from "./users/UsersApp";
 import ProfileApp from "./profile/ProfileApp";
 import InventoryApp from "./inventory/InventoryApp";
 import WellsApp from "./wells/WellsApp";
+const UniqGroupLogoApp = lazy(() => import("./uniqgroup/UniqGroupLogoApp"));
 import { isPrivatePage } from "./auth/privatePaths";
 import { ThemeProvider } from "./auth/Theme";
 import "./auth/portal.css";
@@ -41,6 +42,7 @@ export default function App() {
     </Route>
     <Route element={<RequireMiniApp app="inventoryBot" />}><Route path="/inventory-bot/*" element={<InventoryApp />} /></Route>
     <Route element={<RequireMiniApp app="wells" />}><Route path="/wells/*" element={<WellsApp />} /></Route>
+    <Route element={<RequireMiniApp app="uniqGroupLogo" />}><Route path="/uniqgroup-logo" element={<Suspense fallback={null}><UniqGroupLogoApp /></Suspense>} /></Route>
     <Route element={<RequireMiniApp app="users" />}><Route path="/users" element={<UsersApp />} /></Route>
     <Route element={<RequireMiniApp app="profile" />}><Route path="/profile" element={<ProfileApp />} /></Route>
     </Route>

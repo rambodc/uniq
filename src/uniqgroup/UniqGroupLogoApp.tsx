@@ -1,0 +1,42 @@
+import { useEffect, useRef, useState } from "react";
+import PageShell from "../auth/Shell";
+import { CENTRE_LOGO_URL } from "./groupScene";
+import "./uniqgroup.css";
+
+/** Orbit phase (seconds) for the still frame shown when motion is reduced: every logo is clear of the mark. */
+const STILL_T = 7.1;
+
+function canRenderWebGL() { try { const c = document.createElement("canvas"); return Boolean(c.getContext("webgl2") || c.getContext("webgl")); } catch { return false; } }
+
+export default function UniqGroupLogoApp() {
+  return <PageShell title="UniqGroup Logo" eyebrow="Uniq Group" appId="uniqGroupLogo" back>
+    <GroupStage />
+  </PageShell>;
+}
+
+function GroupStage() {
+  const stage = useRef<HTMLDivElement>(null), canvas = useRef<HTMLCanvasElement>(null);
+  const [webgl, setWebgl] = useState(() => typeof document === "undefined" || canRenderWebGL()), [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (!webgl) return;
+    let disposed = false, cleanup = () => {};
+    import("./groupScene").then(({ createGroupScene }) => {
+      if (disposed || !canvas.current || !stage.current) return;
+      const el = stage.current;
+      const motion = matchMedia("(prefers-reduced-motion: reduce)");
+      const scene = createGroupScene(canvas.current, () => setReady(true));
+      const sync = () => { if (motion.matches) { scene.stop(); scene.renderAt(STILL_T); } else if (document.hidden) scene.stop(); else scene.start(); };
+      const ro = new ResizeObserver(() => scene.resize(el.clientWidth, el.clientHeight));
+      ro.observe(el); scene.resize(el.clientWidth, el.clientHeight);
+      if (motion.matches) scene.renderAt(STILL_T); sync();
+      document.addEventListener("visibilitychange", sync); motion.addEventListener("change", sync);
+      cleanup = () => { ro.disconnect(); document.removeEventListener("visibilitychange", sync); motion.removeEventListener("change", sync); scene.dispose(); };
+    }).catch(() => setWebgl(false));
+    return () => { disposed = true; cleanup(); };
+  }, [webgl]);
+  return <div className="ug-stage" ref={stage}>
+    {webgl ? <canvas ref={canvas} className={ready ? "ug-canvas is-ready" : "ug-canvas"} aria-label="The UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko orbiting it" role="img" />
+      : <img className="ug-still" src={CENTRE_LOGO_URL} alt="UniqEnergy" />}
+    <div className="ug-caption" aria-hidden="true"><b>UNIQ GROUP</b><span>ALCHEM · UNIQUEM · UNIQENERGY · KEMKO</span></div>
+  </div>;
+}
