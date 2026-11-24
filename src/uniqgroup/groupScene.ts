@@ -30,6 +30,7 @@ export const GROUP_LOGOS = [
 const ORBIT = 4.25;
 const SPEED = 0.11; // rad/s, one lap in about 57 s
 const CENTRE_W = 5.6; // world width of the mark
+const HERO_SCALE = 0.7; // ~30% smaller centre globe (halo and rays scale with it)
 
 export type GroupScene = { start(): void; stop(): void; renderAt(t: number): void; resize(w: number, h: number): void; dispose(): void };
 
@@ -145,7 +146,7 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
   const back = new THREE.Scene();
   back.background = keep(backdrop());
 
-  // layered starfield: three shells at different distances, turning at different rates (parallax)
+  // starfield: one distant shell. Hidden on mobile — WebGL points read as grainy speckles on high-DPR phones.
   const starLayers = [[120, 420, 0.16, 0.003]].map(([dist, n, size, spin]) => {
     const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n), ph = new Float32Array(n), rate = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -277,7 +278,10 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     renderer.setSize(w, h, false); composer.setSize(w, h);
     camera.aspect = w / h;
     const portrait = camera.aspect < 0.8;
-    ringK = portrait ? 0.8 : 1; logoK = portrait ? 0.82 : 1; heroK = portrait ? 0.98 : 1; tiltBase = portrait ? -62 : -69;
+    // Phones, tablets, and narrow windows: hide the star points so the backdrop stays a smooth gradient.
+    const mobile = w <= 900 || (window.matchMedia("(pointer: coarse)").matches && Math.max(w, h) <= 1366);
+    for (const l of starLayers) l.pts.visible = !mobile;
+    ringK = portrait ? 0.8 : 1; logoK = portrait ? 0.82 : 1; heroK = (portrait ? 0.98 : 1) * HERO_SCALE; tiltBase = portrait ? -62 : -69;
     for (const { g, spec } of ringGroups) { g.scale.setScalar(ringK); g.rotation.set(THREE.MathUtils.degToRad(tiltBase) + spec.tiltX, 0, THREE.MathUtils.degToRad(-10) + spec.tiltZ); }
     const vf = THREE.MathUtils.degToRad(camera.fov), needW = portrait ? 9.6 : 14.2, needH = portrait ? 8.4 : 9.2;
     const d = Math.max(needH / 2 / Math.tan(vf / 2), needW / 2 / (Math.tan(vf / 2) * camera.aspect));
