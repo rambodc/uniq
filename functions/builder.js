@@ -4,8 +4,10 @@
 // v1 has no transcript. Assistant replies are GET /v0/agents/{id}/conversation (messages[].type assistant_message),
 // which a grok_ service token can read. v0 GET /v0/agents/{id} supplies status, summary, and target.prUrl.
 // A run's `result` is only a fallback when that conversation is empty.
+// Live steps are SSE from GET /v1/agents/{id}/runs/{runId}/stream (or the agent stream when the run id is missing).
+// The key stays on the server. The browser only receives the short step label and assistant line.
 
-import { withoutStoredFiles } from "./builderHelp.js";
+import { LIVE_SITE, LIVE_TEXT, clipLine, liveHref, withoutStoredFiles } from "./builderHelp.js";
 import { MINI_APPS } from "./miniApps.js";
 
 export const NOT_CONFIGURED = "Builder is not configured yet.";
@@ -92,8 +94,8 @@ function standingText(userText) {
     "A change request is a new list and a new PREVIEW. On the first reply that is more than a question, add one line: TITLE: <a short name, such as Update Safety>",
     `After approval, build it in ${REPO_URL} and open a pull request into the production branch. Put this exact line in the body, on its own:`,
     "Builder-Auto-Deploy: yes",
-    "Add the label builder-auto-deploy. Fix CI failures until they are green. It merges and goes live on its own. There is no final question.",
-    "If you add or change a page, end with one line: Live route: /path. If the pull request changes a mini app, update its docs/mini-apps/<id>.md. If a mini app is added, renamed, or removed, update the list in AGENTS.md.",
+    "Add the label builder-auto-deploy. Fix CI failures until they are green. It merges on its own. Do not say the change is live, done, or on production. The app posts that message after the production deploy succeeds. There is no final question.",
+    "If you add or change a page, end with one line: Live route: /path. That line is the page path. It is not a claim that the change is live. If the pull request changes a mini app, update its docs/mini-apps/<id>.md. If a mini app is added, renamed, or removed, update the list in AGENTS.md.",
     "Do not merge or push to production yourself. The automation does that. Do not read or change secrets or IAM.",
     "When you are fully blocked on a secret, IAM, DNS, billing, or an external account, end with this block and nothing after it:",
     ":::builder-admin-help",
@@ -127,7 +129,7 @@ const REMINDER = [
   "PREVIEW:",
   "<short list of planned changes>",
   "APPROVE:",
-  "Add one TITLE: line once, such as TITLE: Update Wells. No code until the plan is approved. If they tell you to build it, that is the approval. After approval, open a pull request into production with the label builder-auto-deploy and this body line on its own: Builder-Auto-Deploy: yes. Fix CI failures. It goes live automatically. There is no final question. production is the only permanent branch, and the branch is deleted when the pull request merges.",
+  "Add one TITLE: line once, such as TITLE: Update Wells. No code until the plan is approved. If they tell you to build it, that is the approval. After approval, open a pull request into production with the label builder-auto-deploy and this body line on its own: Builder-Auto-Deploy: yes. Fix CI failures. It merges on its own. Do not say the change is live, done, or on production. The app posts that message after the production deploy succeeds. There is no final question. production is the only permanent branch, and the branch is deleted when the pull request merges.",
   "If the pull request changes a mini app, update its docs/mini-apps/<id>.md. If a mini app is added, renamed, or removed, update the list in AGENTS.md.",
   "Do not merge or push to production yourself. The automation does that. Do not read or change secrets or IAM.",
   "Follow-up:",
@@ -566,8 +568,27 @@ export function summaryView(id, data) {
   return { id, title: data.title, status: data.status, prUrl: data.prUrl ?? null, branch: data.branch ?? null, error: data.error ?? null, askedBy: data.askedBy, updatedAt, ship: data.ship?.phase ? { phase: data.ship.phase, detail: data.ship.detail ?? null } : null, adminNotice: notice ? { at: stamp(notice.at), by: notice.by ?? "" } : null };
 }
 
+function siteHref(value) {
+  if (typeof value !== "string") return LIVE_SITE;
+  try {
+    const url = new globalThis.URL(value);
+    if (url.protocol !== "https:" || url.hostname !== "uniqenergy.com") return LIVE_SITE;
+    const path = url.pathname.replace(/\/+$/, "");
+    return path ? `${LIVE_SITE}${path}` : LIVE_SITE;
+  } catch {
+    return LIVE_SITE;
+  }
+}
+
 export function messageView(id, data) {
-  return { id, kind: data.kind === "assistant" ? "assistant" : "user", text: typeof data.text === "string" ? data.text : "", at: typeof data.at === "string" ? data.at : "" };
+  const kind = data.kind === "assistant" ? "assistant" : data.kind === "notice" ? "notice" : "user";
+  const view = { id, kind, text: typeof data.text === "string" ? data.text : "", at: typeof data.at === "string" ? data.at : "" };
+  if (kind === "notice") {
+    view.tone = data.tone === "live" ? "live" : "note";
+    view.href = siteHref(data.href);
+    view.prUrl = githubPr(data.prUrl);
+  }
+  return view;
 }
 
 export function pullNumber(url) {
@@ -772,4 +793,272 @@ export async function fetchArtifact(apiKey, agentId, ref, fetchImpl) {
     if (downloaded.status === 200 && url) return { name: ref.name, url, expiresAt: typeof downloaded.data?.expiresAt === "string" ? downloaded.data.expiresAt : null, bytes, kind: artifactKind(ref.name) };
   }
   return null;
+}
+
+/** How long one watch holds the Cursor stream open, and how long that claim blocks a second stream. */
+export const STREAM_WINDOW_MS = 45_000;
+export const STREAM_HOLD_MS = 55_000;
+const STREAM_TERMINAL = new Set(["FINISHED", "COMPLETE", "COMPLETED", "CANCELLED", "ERROR", "FAILED", "EXPIRED"]);
+
+const TOOL_STEPS = new Map([
+  ["read_file", "Reading files"],
+  ["read_file_v2", "Reading files"],
+  ["list_dir", "Reading files"],
+  ["list_directory", "Reading files"],
+  ["file_search", "Searching"],
+  ["glob", "Searching"],
+  ["glob_file_search", "Searching"],
+  ["grep_search", "Searching"],
+  ["grep", "Searching"],
+  ["codebase_search", "Searching"],
+  ["semantic_search", "Searching"],
+  ["web_search", "Searching"],
+  ["edit_file", "Editing files"],
+  ["search_replace", "Editing files"],
+  ["apply_patch", "Editing files"],
+  ["write", "Editing files"],
+  ["delete_file", "Editing files"],
+  ["edit_notebook", "Editing files"],
+]);
+
+export function cursorAgentId(value) {
+  return typeof value === "string" && /^bc-[A-Za-z0-9-]{8,80}$/.test(value) ? value : "";
+}
+
+export function cursorRunId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{4,120}$/.test(value) ? value : "";
+}
+
+/** Opaque SSE id. Anything else is dropped so it cannot be sent as a header. */
+export function eventCursor(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_.:-]{1,200}$/.test(value) ? value : "";
+}
+
+export function streamHoldOpen(live, now = Date.now()) {
+  const until = Date.parse(live?.holdUntil || "");
+  return Number.isFinite(until) && until > now;
+}
+
+export function blankLive(runId, now = new Date().toISOString()) {
+  return { step: "", text: "", eventId: "", runId: cursorRunId(runId), updatedAt: now, holdUntil: null, open: false };
+}
+
+function terminalDescription(args) {
+  const raw = args && typeof args === "object" && !Array.isArray(args) ? args.description : "";
+  const text = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!text || /api[_-]?key|authorization|bearer\s|cursor_api_key/i.test(text)) return "";
+  return clipLine(text, 72);
+}
+
+/** The short label for one tool call. A shell command prefers its description. */
+export function toolStepLabel(name, args) {
+  const tool = String(name || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (tool === "run_terminal_cmd" || tool === "run_terminal_command") {
+    const description = terminalDescription(args);
+    return description ? `Running ${description}` : "Running a command";
+  }
+  if (tool === "mcp") return "Using a tool";
+  return TOOL_STEPS.get(tool) || "";
+}
+
+export function emptyStream() {
+  return { step: "", text: "", segment: "", eventId: "", tools: {}, done: false, status: "", open: false };
+}
+
+/** Fold one SSE event into the live step and the latest assistant text. */
+export function foldStreamEvent(state, event) {
+  const current = state && typeof state === "object" ? state : emptyStream();
+  const next = {
+    step: current.step || "",
+    text: current.text || "",
+    segment: current.segment || "",
+    eventId: event?.id ? eventCursor(event.id) || current.eventId || "" : (current.eventId || ""),
+    tools: { ...(current.tools || {}) },
+    done: Boolean(current.done),
+    status: current.status || "",
+    open: Boolean(current.open),
+  };
+  const type = String(event?.event || "");
+  const data = event?.data && typeof event.data === "object" ? event.data : {};
+  if (type === "status") {
+    next.status = String(data.status || "");
+    if (STREAM_TERMINAL.has(next.status.toUpperCase())) next.done = true;
+  } else if (type === "assistant") {
+    const piece = typeof data.text === "string" ? data.text : "";
+    next.segment = `${next.segment}${piece}`.slice(-8000);
+    next.text = next.segment;
+    next.open = true;
+  } else if (type === "thinking") {
+    if (typeof data.text === "string" && data.text.trim()) next.step = "Thinking";
+  } else if (type === "tool_call") {
+    const callId = String(data.callId || "").slice(0, 120);
+    const label = toolStepLabel(data.name, data.args);
+    if (data.status === "running") {
+      if (next.segment.trim()) next.text = next.segment;
+      next.segment = "";
+      next.open = false;
+      if (callId) next.tools[callId] = label;
+      if (label) next.step = label;
+    } else if (data.status === "completed") {
+      if (callId) delete next.tools[callId];
+      const still = Object.values(next.tools).filter(Boolean);
+      if (still.length) next.step = still.at(-1);
+      else if (label) next.step = label;
+    }
+  } else if (type === "result") {
+    if (typeof data.text === "string" && data.text.trim()) {
+      next.segment = data.text.slice(-8000);
+      next.text = next.segment;
+      next.open = true;
+    }
+    next.status = String(data.status || next.status);
+    next.done = true;
+  } else if (type === "error" || type === "done") {
+    next.done = true;
+  }
+  return next;
+}
+
+export function liveRecord(state, runId, now, holdUntil = null) {
+  return {
+    step: clipLine(state?.step, 96),
+    text: clipLine(state?.text, 240),
+    eventId: eventCursor(state?.eventId),
+    runId: cursorRunId(runId),
+    updatedAt: now,
+    holdUntil,
+    open: Boolean(state?.open),
+  };
+}
+
+export function liveChanged(previous, next) {
+  return (previous?.step || "") !== (next?.step || "")
+    || (previous?.text || "") !== (next?.text || "")
+    || (previous?.eventId || "") !== (next?.eventId || "")
+    || Boolean(previous?.open) !== Boolean(next?.open);
+}
+
+/** Split a Server-Sent Events buffer. The trailing partial block stays in `rest`. */
+export function takeSseEvents(buffer) {
+  const text = String(buffer || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const parts = text.split("\n\n");
+  const rest = parts.pop() ?? "";
+  const events = [];
+  for (const block of parts) {
+    if (!block.trim() || block.trim().startsWith(":")) continue;
+    let id = "";
+    let event = "message";
+    const data = [];
+    for (const line of block.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      if (line.startsWith("id:")) id = line.slice(3).trim();
+      else if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    let payload = null;
+    const raw = data.join("\n");
+    if (raw) {
+      try { payload = JSON.parse(raw); } catch { payload = null; }
+    }
+    events.push({ id, event, data: payload });
+  }
+  return { events, rest };
+}
+
+export function streamPath(agentId, runId) {
+  const id = encodeURIComponent(agentId);
+  const run = cursorRunId(runId);
+  return run ? `/v1/agents/${id}/runs/${encodeURIComponent(run)}/stream` : `/v1/agents/${id}/stream`;
+}
+
+export function streamFailure(status, data) {
+  const code = String(data?.code || data?.error?.code || "");
+  if (status === 410 || code === "stream_expired") return "expired";
+  if (status === 400 && (code === "invalid_last_event_id" || /last[_ ]event/i.test(code))) return "bad-cursor";
+  if (status === 429) return "limited";
+  if (status === 409) return "closed";
+  if (status === 200) return "";
+  return "failed";
+}
+
+export async function readEventStream(response, onEvent, signal) {
+  const reader = response?.body?.getReader?.();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (!signal?.aborted) {
+      const next = await reader.read();
+      if (next.done) break;
+      buffer += decoder.decode(next.value, { stream: true });
+      const parsed = takeSseEvents(buffer);
+      buffer = parsed.rest;
+      for (const event of parsed.events) onEvent(event);
+    }
+  } catch (error) {
+    if (signal?.aborted || error?.name === "AbortError") return;
+    throw error;
+  } finally {
+    try { reader.releaseLock?.(); } catch { /* the lock is already gone */ }
+  }
+}
+
+async function openCursorStream(apiKey, { agentId, runId, lastEventId, signal }, fetchImpl) {
+  const headers = {
+    Authorization: `Basic ${globalThis.Buffer.from(`${apiKey}:`).toString("base64")}`,
+    Accept: "text/event-stream",
+  };
+  const cursor = eventCursor(lastEventId);
+  if (cursor) headers["Last-Event-ID"] = cursor;
+  try {
+    return await fetchImpl(`${API}${streamPath(agentId, runId)}`, { method: "GET", headers, signal });
+  } catch (error) {
+    if (signal?.aborted || error?.name === "AbortError") return { status: 200, aborted: true, body: null, text: async () => "" };
+    throw new BuilderError("Cursor could not be reached. Try again.", "unavailable");
+  }
+}
+
+/** Read one run stream, resuming from Last-Event-ID. A stale cursor is retried once from the start. */
+export async function followCursorStream(apiKey, { agentId, runId, lastEventId, signal }, onEvent, fetchImpl = globalThis.fetch) {
+  const agent = cursorAgentId(agentId);
+  if (!agent) return { failure: "failed", eventId: "" };
+  let cursor = eventCursor(lastEventId);
+  const attempt = async (resume) => {
+    const response = await openCursorStream(apiKey, { agentId: agent, runId, lastEventId: resume, signal }, fetchImpl);
+    if (response?.aborted) return { failure: "" };
+    if (response.status !== 200) {
+      let data = null;
+      const raw = typeof response.text === "function" ? await response.text() : "";
+      if (raw) { try { data = JSON.parse(raw); } catch { data = null; } }
+      return { failure: streamFailure(response.status, data) || "failed" };
+    }
+    await readEventStream(response, (event) => {
+      const id = eventCursor(event.id);
+      if (id) cursor = id;
+      onEvent(event);
+    }, signal);
+    return { failure: "" };
+  };
+  let result = await attempt(cursor);
+  if ((result.failure === "expired" || result.failure === "bad-cursor") && cursor && !signal?.aborted) {
+    cursor = "";
+    result = await attempt("");
+  }
+  return { failure: result.failure, eventId: cursor };
+}
+
+export function liveNoticeId(prUrl) {
+  const number = pullNumber(prUrl);
+  return number ? `live-${number}` : "";
+}
+
+/** The done card is only for a deploy that actually went live. */
+export function shouldPostLiveNotice(ship) {
+  return ship?.phase === "live" && ship?.detail !== "No changes.";
+}
+
+export function liveNotice(prUrl, messages, at) {
+  const id = liveNoticeId(prUrl);
+  if (!id) return null;
+  return { id, kind: "notice", tone: "live", text: LIVE_TEXT, href: liveHref(messages), prUrl, at };
 }

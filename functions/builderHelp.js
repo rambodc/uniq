@@ -209,15 +209,44 @@ export function withoutAdminHelp(text) {
   return withoutStoredFiles(stripQuestions(text.replace(/:::builder-admin-help[\s\S]*?:::/g, "")).replace(IDEAS_BLOCK, "").replace(BUILD_BLOCK, "").replace(PREVIEW_BLOCK, "").replace(/(?:^|\n)\s*TITLE:\s*.+/g, ""));
 }
 
-/** Local status when the agent has gone quiet. "five" at 5s, "ten" at 10s, or null while text is fresh. */
-export function fillerPhase(elapsedSec, quietSec) {
-  if (quietSec != null && quietSec < 5) return null;
-  if (elapsedSec >= 10) return "ten";
-  if (elapsedSec >= 5) return "five";
-  return null;
+export const LIVE_TEXT = "It's live on uniqenergy.com — your change is ready.";
+export const LIVE_SITE = "https://uniqenergy.com";
+
+/** One line, cut on a word, with an ellipsis when it does not fit. */
+export function clipLine(text, max = 160) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  const limit = Math.max(8, max);
+  if (flat.length <= limit) return flat;
+  const cut = flat.slice(0, limit - 1);
+  const space = cut.lastIndexOf(" ");
+  const base = (space > Math.floor(limit * 0.6) ? cut.slice(0, space) : cut).trim();
+  return `${base}…`;
 }
 
-/** The one line under Working…. The latest assistant sentence, or Starting. */
+/** The live step and assistant line the browser may see. The stream cursor stays on the server. */
+export function publicLive(live) {
+  if (!live || typeof live !== "object") return null;
+  const step = clipLine(live.step, 96);
+  const text = clipLine(live.text, 240);
+  const updatedAt = typeof live.updatedAt === "string" ? live.updatedAt : null;
+  if (!step && !text && !updatedAt) return null;
+  return { step, text, updatedAt };
+}
+
+/** Where the done card links. A Live route line deep-links that page. Anything else stays on the site root. */
+export function liveHref(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.kind !== "assistant") continue;
+    const match = /(?:^|\n)\s*Live route:\s*(\/[A-Za-z0-9][A-Za-z0-9/_-]{0,80})/.exec(String(list[i].text || ""));
+    if (!match || match[1].includes("..")) continue;
+    const path = match[1].replace(/\/+$/, "");
+    return path ? `${LIVE_SITE}${path}` : LIVE_SITE;
+  }
+  return LIVE_SITE;
+}
+
+/** The latest assistant sentence, or Starting. Shown when the live stream has no text yet. */
 export function workingStep(messages) {
   const list = Array.isArray(messages) ? messages : [];
   for (let i = list.length - 1; i >= 0; i -= 1) {

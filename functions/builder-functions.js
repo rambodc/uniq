@@ -7,12 +7,13 @@ import { randomUUID } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { db, callable, cursorApiKey, resendApiKey, isSuperAdmin, requireMiniApp, text } from "./core.js";
-import { BuilderError, NOT_CONFIGURED, UNTITLED, artifactRef, chatSummary, createAgent, fetchArtifact, generatedTitle, loadRemote, loadShip, messageView, messageWithFiles, needsFreshAgent, nextState, normalizeBuilderFiles, patchChanged, promptFiles, readCursorKey, repliesToWrite, requestText, sendFollowUp, shouldRefresh, summaryView, viewStatus } from "./builder.js";
-import { latestAdminHelp } from "./builderHelp.js";
+import { BuilderError, NOT_CONFIGURED, STREAM_HOLD_MS, STREAM_WINDOW_MS, UNTITLED, artifactRef, blankLive, chatSummary, createAgent, cursorAgentId, cursorRunId, fetchArtifact, foldStreamEvent, followCursorStream, generatedTitle, liveChanged, liveNotice, liveNoticeId, liveRecord, loadRemote, loadShip, messageView, messageWithFiles, needsFreshAgent, nextState, normalizeBuilderFiles, patchChanged, promptFiles, readCursorKey, repliesToWrite, requestText, sendFollowUp, shouldPostLiveNotice, shouldRefresh, streamHoldOpen, summaryView, viewStatus } from "./builder.js";
+import { latestAdminHelp, publicLive } from "./builderHelp.js";
 import { buildBuilderAdminEmail, builderNotifyAddress, sendBuilderAdminEmail } from "./mailer.js";
 
 const builderCall = { ...callable, secrets: [cursorApiKey, resendApiKey], timeoutSeconds: 60 };
 const warmBuilderCall = { ...builderCall, minInstances: 1 };
+const watchCall = { ...callable, secrets: [cursorApiKey], timeoutSeconds: 75 };
 const SITE = "https://uniqenergy.com";
 const conversations = () => db.collection("builder");
 const messages = (id) => conversations().doc(id).collection("messages");
@@ -57,13 +58,52 @@ async function refresh(id, data, apiKey, force = false) {
 async function refreshShip(id, data) {
   if (!data?.prUrl) return;
   const at = Date.parse(data.shipCache?.at || "");
-  if (data.ship && Number.isFinite(at) && Date.now() - at < 20_000) return;
+  if (data.ship && Number.isFinite(at) && Date.now() - at < 20_000) {
+    if (shouldPostLiveNotice(data.ship)) await postLiveNotice(id, data.prUrl);
+    return;
+  }
   try {
     const loaded = await loadShip(data.prUrl, data.shipCache, globalThis.fetch, globalThis.process.env);
     if (!loaded || loaded.limited || loaded.error || !loaded.ship) return;
     await conversations().doc(id).set({ ship: loaded.ship, shipCache: { ...loaded.cache, at: new Date().toISOString() } }, { merge: true });
+    if (shouldPostLiveNotice(loaded.ship)) await postLiveNotice(id, data.prUrl);
   } catch { /* a public GitHub read is best-effort; the saved ship stays */ }
 }
+function alreadyExists(error) {
+  const code = error?.code;
+  return code === 6 || code === "already-exists" || code === "ALREADY_EXISTS";
+}
+
+/** One completion message per pull request, and only after the production deploy is live. */
+async function postLiveNotice(id, prUrl) {
+  const noteId = liveNoticeId(prUrl);
+  if (!noteId) return;
+  const ref = messages(id).doc(noteId);
+  const existing = await ref.get();
+  if (existing.exists) return;
+  const stored = await loadMessages(id);
+  const note = liveNotice(prUrl, stored, new Date().toISOString());
+  if (!note) return;
+  try {
+    await ref.create({ kind: "notice", tone: "live", text: note.text, href: note.href, prUrl: note.prUrl, runId: null, at: note.at });
+  } catch (error) {
+    if (!alreadyExists(error)) { /* the next refresh tries again; ship status stays as saved */ }
+  }
+}
+
+/** Write the live line only while this run is still the active one, so a new message cannot be overwritten. */
+async function commitLive(ref, runId, record, touchUpdated) {
+  let wrote = false;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data();
+    if (!data || data.status !== "running" || (data.runId || "") !== (runId || "")) return;
+    wrote = true;
+    tx.update(ref, touchUpdated ? { live: record, updatedAt: FieldValue.serverTimestamp() } : { live: record });
+  });
+  return wrote;
+}
+
 function blank(access) {
   return { title: UNTITLED, agentId: null, agentUrl: null, runId: null, status: "running", error: null, prUrl: null, branch: null, awaitingSince: null, askedBy: access.email, askedByUid: access.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
 }
@@ -114,7 +154,7 @@ async function present(id) {
     await conversations().doc(id).update({ title, updatedAt: FieldValue.serverTimestamp() });
     data.title = title;
   }
-  return { ...summaryView(id, data), agentUrl: data.agentUrl ?? null, messages: stored };
+  return { ...summaryView(id, data), agentUrl: data.agentUrl ?? null, messages: stored, live: publicLive(data.live) };
 }
 
 export const listBuilderConversations = onCall(builderCall, async (request) => {
@@ -141,6 +181,97 @@ export const getBuilderConversation = onCall(warmBuilderCall, async (request) =>
   return { conversation };
 });
 
+/** Open the Cursor run stream for a short window and store the current step. Super admins only. The key stays here. */
+export const watchBuilderRun = onCall(watchCall, async (request) => {
+  const access = await requireMiniApp(request, "builder");
+  if (!isSuperAdmin(access)) throw new HttpsError("permission-denied", "This account is not authorized.");
+  const id = conversationId(request.data?.conversationId);
+  const ref = conversations().doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "That build no longer exists.");
+  const data = snap.data();
+  const idle = { status: data.status || "finished", live: publicLive(data.live), held: false, holdUntil: null, done: false };
+  const pause = (ms) => ({ ...idle, held: true, holdUntil: new Date(Date.now() + ms).toISOString() });
+  if (data.status !== "running") return idle;
+  if (!cursorAgentId(data.agentId)) return pause(15_000);
+  const apiKey = keyOrNull();
+  if (!apiKey) return pause(30_000);
+  if (streamHoldOpen(data.live)) return { status: "running", live: publicLive(data.live), held: true, holdUntil: data.live.holdUntil || null, done: false };
+  const holdUntil = new Date(Date.now() + STREAM_HOLD_MS).toISOString();
+  const claim = await db.runTransaction(async (tx) => {
+    const current = await tx.get(ref);
+    const row = current.data();
+    if (!row || row.status !== "running" || !cursorAgentId(row.agentId)) return { open: false, status: row?.status || "finished", live: row?.live || null };
+    if (streamHoldOpen(row.live)) return { open: false, status: "running", live: row.live, held: true, holdUntil: row.live.holdUntil || null };
+    const activeRun = cursorRunId(row.runId);
+    const continuing = (row.live?.runId || "") === activeRun;
+    const now = new Date().toISOString();
+    const record = liveRecord({
+      step: continuing ? row.live?.step : "",
+      text: continuing ? row.live?.text : "",
+      eventId: continuing ? row.live?.eventId : "",
+      open: continuing ? row.live?.open : false,
+    }, activeRun, row.live?.updatedAt || now, holdUntil);
+    tx.update(ref, { live: record });
+    return { open: true, agentId: row.agentId, runId: activeRun, record };
+  });
+  if (!claim.open) return { status: claim.status || "finished", live: publicLive(claim.live), held: Boolean(claim.held), holdUntil: claim.holdUntil || null, done: false };
+  const controller = new AbortController();
+  let state = {
+    step: claim.record.step,
+    text: claim.record.text,
+    segment: claim.record.open ? claim.record.text : "",
+    eventId: claim.record.eventId,
+    tools: {},
+    done: false,
+    status: "",
+    open: Boolean(claim.record.open),
+  };
+  let last = claim.record;
+  let lastWrite = Date.now();
+  let pending = Promise.resolve(true);
+  let stopped = false;
+  const flush = async (force) => {
+    if (stopped) return false;
+    const record = liveRecord(state, claim.runId, new Date().toISOString(), holdUntil);
+    const stepChanged = record.step !== last.step;
+    const textChanged = record.text !== last.text;
+    const age = Date.now() - lastWrite;
+    if (!force && !stepChanged && !textChanged && age < 3000) return true;
+    if (!force && !stepChanged && age < 1000) return true;
+    if (!force && !liveChanged(last, record)) return true;
+    const wrote = await commitLive(ref, claim.runId, record, stepChanged || textChanged);
+    if (!wrote) { stopped = true; controller.abort(); return false; }
+    last = record;
+    lastWrite = Date.now();
+    return true;
+  };
+  const timer = setTimeout(() => controller.abort(), STREAM_WINDOW_MS);
+  let received = false;
+  let failure = "";
+  try {
+    const result = await followCursorStream(apiKey, { agentId: claim.agentId, runId: claim.runId, lastEventId: state.eventId, signal: controller.signal }, (event) => {
+      received = true;
+      state = foldStreamEvent(state, event);
+      if (state.done) controller.abort();
+      pending = pending.then(() => flush(false)).catch(() => false);
+    });
+    failure = result.failure || "";
+    if (result.eventId) state.eventId = result.eventId;
+  } catch (error) {
+    failure = "failed";
+    if (!(error instanceof BuilderError)) throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!received && failure) state = { ...state, step: "" };
+  await pending.catch(() => false);
+  const terminalHold = state.done ? new Date(Date.now() + 12_000).toISOString() : failure ? new Date(Date.now() + 20_000).toISOString() : null;
+  const finalRecord = liveRecord(state, claim.runId, new Date().toISOString(), terminalHold);
+  await commitLive(ref, claim.runId, finalRecord, finalRecord.step !== claim.record.step || finalRecord.text !== claim.record.text);
+  return { status: "running", live: publicLive(finalRecord), held: Boolean(terminalHold), holdUntil: terminalHold, done: Boolean(state.done) };
+});
+
 export const startBuilderConversation = onCall(warmBuilderCall, async (request) => {
   const access = await requireMiniApp(request, "builder");
   if (!isSuperAdmin(access)) throw new HttpsError("permission-denied", "This account is not authorized.");
@@ -154,7 +285,7 @@ export const startBuilderConversation = onCall(warmBuilderCall, async (request) 
   await messages(ref.id).add({ kind: "user", text: messageWithFiles(body, shared.files), runId: null, at: now });
   try {
     const created = await createAgent(apiKey, promptFiles(body, shared.links), undefined, shared.images);
-    await ref.update({ agentId: created.agentId, agentUrl: created.agentUrl, runId: created.runId, status: viewStatus(created.runStatus, "ACTIVE"), error: null, awaitingSince: now, updatedAt: FieldValue.serverTimestamp() });
+    await ref.update({ agentId: created.agentId, agentUrl: created.agentUrl, runId: created.runId, status: viewStatus(created.runStatus, "ACTIVE"), error: null, awaitingSince: now, live: blankLive(created.runId, now), updatedAt: FieldValue.serverTimestamp() });
   } catch (error) {
     const message = error instanceof BuilderError ? error.message : "Cursor could not start the build.";
     await ref.update({ status: "error", error: message, updatedAt: FieldValue.serverTimestamp() });
@@ -194,6 +325,7 @@ export const sendBuilderMessage = onCall(warmBuilderCall, async (request) => {
         ship: FieldValue.delete(),
         shipCache: FieldValue.delete(),
         awaitingSince: now,
+        live: blankLive(created.runId, now),
         updatedAt: FieldValue.serverTimestamp(),
       });
     } catch (error) {
@@ -204,7 +336,7 @@ export const sendBuilderMessage = onCall(warmBuilderCall, async (request) => {
   }
   try {
     const sent = await sendFollowUp(apiKey, data.agentId, prompt, data.status === "running", undefined, shared.images);
-    await ref.update({ status: "running", error: null, awaitingSince: now, ...(sent.runId ? { runId: sent.runId } : {}), updatedAt: FieldValue.serverTimestamp() });
+    await ref.update({ status: "running", error: null, awaitingSince: now, ...(sent.runId ? { runId: sent.runId } : {}), live: blankLive(sent.runId || data.runId, now), updatedAt: FieldValue.serverTimestamp() });
   } catch (error) {
     const message = error instanceof BuilderError ? error.message : "The follow-up could not be sent.";
     await ref.update({ error: message, updatedAt: FieldValue.serverTimestamp() });

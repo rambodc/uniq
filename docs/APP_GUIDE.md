@@ -98,7 +98,7 @@ createdAt, updatedAt
 
 `ship.phase` is `pr`, `checks`, `merged`, `deploying`, `live`, or `failed`. `live` means every production deploy workflow that actually ran on the merge commit succeeded. A merged pull request that changed no files has detail `No changes.` The server reads the GitHub API for `rambodc/uniq`. The optional secret `BUILDER_GITHUB_TOKEN` is used when it is set (read-only). When it is missing, the call is unauthenticated and uses the public API, which works while the repo is public. A missing token does not fail the request. `GITHUB_TOKEN` and `GH_TOKEN` are the same fallback. The result is cached about 20 seconds on the document. The check named "Builder auto deploy" is ignored. Production deploy workflow files are `firebase-hosting-merge.yml`, `firebase-functions-merge.yml`, and `firebase-rules-merge.yml`.
 
-`builder/{id}/messages/{id}`: `kind` (`user` or `assistant`), `text`, `runId`, `at`. Assistant text may end with a `builder-admin-help` block or a question / ideas / preview block. The chat strips those and shows cards. A question block is plain text, never Cursor's question tool:
+`builder/{id}/messages/{id}`: `kind` (`user`, `assistant`, or `notice`), `text`, `runId`, `at`. A notice with `tone: live` is the one completion card for a pull request (`live-{number}`), written only after `ship.phase` is `live`. Assistant text may end with a `builder-admin-help` block or a question / ideas / preview block. The chat strips those and shows cards. A question block is plain text, never Cursor's question tool:
 
 ```
 QUESTION:
@@ -112,7 +112,7 @@ Idea chips, the build summary, and the preview use `IDEAS:`, `BUILD:` / `CONTINU
 
 Callables, every one `requireMiniApp(request, "builder")` then `isSuperAdmin`:
 
-- `listBuilderConversations`, `getBuilderConversation`, `startBuilderConversation`, `sendBuilderMessage`, `renameBuilderConversation`
+- `listBuilderConversations`, `getBuilderConversation`, `watchBuilderRun`, `startBuilderConversation`, `sendBuilderMessage`, `renameBuilderConversation`
 - `getBuilderArtifact` — a 15-minute Cursor URL for one file under the agent's artifacts directory. Nothing is copied into Storage.
 - `notifyBuilderAdmin` — sends the admin email described below, and only when a complete help block is stored on an assistant message.
 
@@ -120,7 +120,7 @@ The Cursor key is the secret `CURSOR_API_KEY`. It stays on the server. A missing
 
 The composer has a paperclip. Any file type, up to eight files, 20 MB each. The browser uploads them to Storage at `builder/{uid}/{conversation or new}/{id}-{name}`. Images of 15 MB or less also go to Cursor as base64; other files go as download URLs.
 
-A chat still starts by asking which mini app to work on, and may also change other mini apps or app-wide parts in the same pull request. The person can answer, skip ahead, or say to build it. No code until the plan is approved, and saying to build it is that approval. Do not make a screenshot, a mockup, or a visual preview a required step. Only make a screenshot when they explicitly ask. After approval the agent opens the pull request with the auto-deploy label and line, and fixes CI. The pull request merges and goes live on its own. The branch is deleted on merge.
+A chat still starts by asking which mini app to work on, and may also change other mini apps or app-wide parts in the same pull request. The person can answer, skip ahead, or say to build it. No code until the plan is approved, and saying to build it is that approval. Do not make a screenshot, a mockup, or a visual preview a required step. Only make a screenshot when they explicitly ask. After approval the agent opens the pull request with the auto-deploy label and line, and fixes CI. The pull request merges and deploys on its own. The agent does not say the change is live or done. The Builder posts that message after the production deploy succeeds. The branch is deleted on merge.
 
 ## Email
 
@@ -140,6 +140,7 @@ Do not do any of these, and do not ask the user to paste a secret into the chat:
 - DNS.
 - Billing, and any external account (GitHub settings, Resend, Firebase console, Cursor).
 - Merging or deploying by hand, pushing to `production`, or opening a pull request in any other repository.
+- Saying a change is live, done, or on production. A `Live route: /path` line is only the page path. The app posts the completion message after the production deploy succeeds.
 
 When you are fully blocked on one of those, or on a failure you have already tried to fix and cannot, end your reply with this block and nothing after it. All four lines are required. Do not add the block for anything you can still do yourself.
 

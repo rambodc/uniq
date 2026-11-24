@@ -112,10 +112,13 @@ export type ShipPhase = "pr" | "checks" | "merged" | "deploying" | "live" | "fai
 export type BuilderShip = { phase: ShipPhase; detail: string | null };
 export type BuilderAdminNotice = { at: string | null; by: string };
 export type BuilderSummary = { id: string; title: string; status: BuilderStatus; prUrl: string | null; branch: string | null; error: string | null; askedBy: string; updatedAt: string | null; ship: BuilderShip | null; adminNotice: BuilderAdminNotice | null };
-export type BuilderMessage = { id: string; kind: "user" | "assistant"; text: string; at: string };
-export type BuilderConversation = BuilderSummary & { agentUrl: string | null; messages: BuilderMessage[] };
+export type BuilderMessage = { id: string; kind: "user" | "assistant" | "notice"; text: string; at: string; tone?: "live" | "note"; href?: string | null; prUrl?: string | null };
+export type BuilderLive = { step: string; text: string; updatedAt: string | null };
+export type BuilderConversation = BuilderSummary & { agentUrl: string | null; messages: BuilderMessage[]; live?: BuilderLive | null };
+export type BuilderWatch = { status: BuilderStatus; live: BuilderLive | null; held: boolean; holdUntil: string | null; done: boolean };
 export const listBuilderConversations = () => invoke<undefined, { conversations: BuilderSummary[] }>("listBuilderConversations");
 export const getBuilderConversation = (conversationId: string, force = false) => invoke<{ conversationId: string; force: boolean }, { conversation: BuilderConversation }>("getBuilderConversation", { conversationId, force });
+export const watchBuilderRun = async (conversationId: string) => (await httpsCallable<{ conversationId: string }, BuilderWatch>(functions, "watchBuilderRun", { timeout: 80_000 })({ conversationId })).data;
 export type BuilderUpload = { path: string; name: string; size: number; contentType: string };
 export const startBuilderConversation = (text: string, files: BuilderUpload[] = []) => invoke<{ text: string; files: BuilderUpload[] }, { conversation: BuilderConversation }>("startBuilderConversation", { text, files });
 export const sendBuilderMessage = (conversationId: string, text: string, files: BuilderUpload[] = []) => invoke<{ conversationId: string; text: string; files: BuilderUpload[] }, { conversation: BuilderConversation }>("sendBuilderMessage", { conversationId, text, files });
