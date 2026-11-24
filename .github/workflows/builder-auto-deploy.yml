@@ -1,7 +1,10 @@
 # Squash-merges a Builder pull request after every check is green, then starts the production deploys.
+# Skips an empty diff against production and a head commit that already belongs to a merged pull request.
+# Does not merge while that pull request's Cursor agent run is still active. CURSOR_API_KEY is optional:
+# when it is missing, the head commit must be at least two minutes old and unchanged on a re-check.
 # A check_suite created by GITHUB_TOKEN does not start another workflow, so this waits on workflow_run
 # (and polls) instead. A merge made with GITHUB_TOKEN does not trigger push workflows. workflow_dispatch
-# still runs, so this job starts Hosting, Functions, and Rules itself. No extra token is used.
+# still runs, so this job starts Hosting, Functions, and Rules itself.
 name: Builder auto deploy
 on:
   workflow_run:
@@ -35,6 +38,7 @@ jobs:
       - name: Merge a green Builder pull request and start production deploys
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           CHECK_SHA: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha }}
           CHECK_WAIT_MS: "1200000"

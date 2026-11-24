@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { URL } from "node:url";
-import { BUILDER_MODEL, BuilderError, NOT_CONFIGURED, REPO_URL, STARTING_REF, UNTITLED, artifactRef, createAgent, createBody, cursorImages, fetchArtifact, followBody, followPrompt, generatedTitle, githubAuthToken, githubGet, loadRemote, messageWithFiles, modelRejected, nextState, normalizeBuilderFiles, patchChanged, promptFiles, promptFor, publicCursorError, pullRequestFrom, readCursorKey, repliesToWrite, requestText, sendFollowUp, shipFromGitHub, shouldRefresh, summaryView, titleFrom, viewStatus } from "../builder.js";
+import { BUILDER_MODEL, BuilderError, NOT_CONFIGURED, REPO_URL, STARTING_REF, UNTITLED, artifactRef, chatSummary, continuationBody, continuationPrompt, createAgent, createBody, cursorImages, fetchArtifact, followBody, followPrompt, generatedTitle, githubAuthToken, githubGet, loadRemote, messageWithFiles, modelRejected, needsFreshAgent, nextState, normalizeBuilderFiles, patchChanged, promptFiles, promptFor, publicCursorError, pullRequestFrom, pullRequestSettled, readCursorKey, repliesToWrite, requestText, sendFollowUp, shipFromGitHub, shipMeansSettled, shouldRefresh, summaryView, titleFrom, viewStatus } from "../builder.js";
 import { latestAdminHelp, openPreview, parseAdminHelp, parseQuestion, questionViews, withoutAdminHelp, withoutStoredFiles } from "../builderHelp.js";
 import { EMAIL_FROM, RESEND_SINK, buildBuilderAdminEmail, builderNotifyAddress, sendBuilderAdminEmail } from "../mailer.js";
 
@@ -32,8 +32,12 @@ test("every Cursor prompt starts with the standing instructions and then the req
   assert.match(prompt, /IDEAS:\n<one line>\n- <idea>/);
   assert.match(prompt, /BUILD:\nWhat: <what you will build>\nParts: <every mini app or app-wide area this touches>\nData: <no change, or the schema change; data that will not fit is deleted, with no conversion>\nCONTINUE:/);
   assert.match(prompt, /PREVIEW:\n<short list of planned changes>\nAPPROVE:/);
-  assert.match(prompt, /No code until the preview is approved/);
-  assert.match(prompt, /Only make a screenshot when they ask for one/);
+  assert.match(prompt, /No code until the plan is approved/);
+  assert.match(prompt, /If they tell you to build it, that is the approval/);
+  assert.match(prompt, /Only make a screenshot when they explicitly ask for one/);
+  assert.match(prompt, /Do not create a screenshot, a mockup, or a visual preview unless they ask/);
+  assert.match(prompt, /only permanent branch/);
+  assert.doesNotMatch(prompt, /required step|before building, (make|create) a screenshot/i);
   assert.doesNotMatch(prompt, /dark-theme/);
   assert.match(prompt, /There is no final question/);
   assert.ok(prompt.indexOf("Mini app: Wells") < prompt.indexOf("After approval"));
@@ -204,10 +208,12 @@ test("a follow-up steers with only prompt and delivery, and an idle follow-up st
   assert.doesNotMatch(followPrompt(ask), /:::builder-new-chat/);
   assert.match(followPrompt(ask), /CONTINUE:/);
   assert.match(followPrompt(ask), /PREVIEW:\n<short list of planned changes>\nAPPROVE:/);
-  assert.match(followPrompt(ask), /Only make a screenshot when they ask for one/);
+  assert.match(followPrompt(ask), /Only make a screenshot when they explicitly ask for one/);
+  assert.match(followPrompt(ask), /Do not create a screenshot, a mockup, or a visual preview unless they ask/);
   assert.doesNotMatch(followPrompt(ask), /dark-theme/);
   assert.match(followPrompt(ask), /TITLE:/);
-  assert.match(followPrompt(ask), /until the preview is approved/);
+  assert.match(followPrompt(ask), /until the plan is approved/);
+  assert.match(followPrompt(ask), /If they tell you to build it, that is the approval/);
   assert.match(followPrompt(ask), /builder-auto-deploy/);
   assert.match(followPrompt(ask), /Do not merge or push to production yourself/);
   assert.match(followPrompt(ask), /Do not read or change secrets or IAM/);
@@ -219,6 +225,10 @@ test("a follow-up steers with only prompt and delivery, and an idle follow-up st
   const sendSource = read("../builder-functions.js").split("export const sendBuilderMessage")[1].split("export const renameBuilderConversation")[0];
   assert.match(sendSource, /warmBuilderCall/);
   assert.doesNotMatch(sendSource, /await refresh/);
+  assert.match(sendSource, /needsFreshAgent\(data\)/);
+  assert.match(sendSource, /chatSummary\(/);
+  assert.match(sendSource, /prUrl: null/);
+  assert.match(sendSource, /ship: FieldValue\.delete\(\)/);
   assert.match(read("../builder-functions.js").split("export const getBuilderConversation")[1].split("export const ")[0], /warmBuilderCall/);
   assert.match(read("../builder-functions.js").split("export const startBuilderConversation")[1].split("export const ")[0], /warmBuilderCall/);
   assert.equal(Object.hasOwn(followBody(ask, true), "model"), false);
@@ -325,7 +335,7 @@ test("an unknown model is retried once without the model field, and the Cursor e
   await assert.rejects(createAgent("top-secret", ask, async () => json(400, rejected)), (error) => error instanceof BuilderError && /Unknown model composer-2/.test(error.message) && !error.message.includes("top-secret"));
   const source = read("../builder-functions.js");
   assert.doesNotMatch(source, /This build never started/);
-  assert.match(source, /if \(!data\.agentId\) \{[\s\S]*createAgent\(apiKey, prompt/);
+  assert.match(source, /if \(!data\.agentId \|\| fresh\) \{[\s\S]*createAgent\(apiKey, prompt/);
 });
 
 test("a refused key and a missing agent become clear errors that do not echo the key", async () => {
@@ -450,6 +460,9 @@ test("a service token downloads an artifact from v0, and a refused v0 falls thro
 
 test("ship status uses a GitHub token when one is present, and works without one", async () => {
   assert.equal(githubAuthToken({}), "");
+  assert.equal(githubAuthToken({ BUILDER_GITHUB_TOKEN: undefined }), "");
+  assert.equal(githubAuthToken({ BUILDER_GITHUB_TOKEN: "" }), "");
+  assert.doesNotThrow(() => githubAuthToken({ BUILDER_GITHUB_TOKEN: undefined }));
   assert.equal(githubAuthToken({ GITHUB_TOKEN: "  tok  " }), "tok");
   assert.equal(githubAuthToken({ BUILDER_GITHUB_TOKEN: "a", GITHUB_TOKEN: "b" }), "a");
   let headers = null;
@@ -483,6 +496,48 @@ test("ship status follows the pull request from open checks through the producti
   assert.equal(shipFromGitHub({ pr: { merged: true, labeled: true }, checks: [], deploys }).phase, "live");
   deploys[1] = { name: "Production: Firebase Functions", status: "completed", conclusion: "failure" };
   assert.equal(shipFromGitHub({ pr: { merged: true, labeled: true }, checks: [], deploys }).phase, "failed");
+  assert.equal(shipFromGitHub({ pr: { merged: true, empty: true }, checks: [], deploys: [] }).detail, "No changes.");
+  assert.equal(shipFromGitHub({ pr: { merged: true }, checks: [], deploys: [{ name: "Production: Firebase Hosting", status: "completed", conclusion: "success" }] }).phase, "live");
+  assert.equal(shipFromGitHub({ pr: { merged: true }, checks: [], deploys: [{ name: "Production: Firebase Hosting", status: "completed", conclusion: "success" }, { name: "Production: Firebase Rules", status: "completed", conclusion: "skipped" }] }).phase, "live");
+});
+
+test("a merged or closed pull request starts a new agent from production", async () => {
+  const github = (body) => async () => ({ status: 200, headers: { get: () => null }, json: async () => body });
+  assert.equal(pullRequestSettled({ merged: true, state: "closed" }), true);
+  assert.equal(pullRequestSettled({ merged: false, state: "closed" }), true);
+  assert.equal(pullRequestSettled({ merged: false, state: "open" }), false);
+  assert.equal(shipMeansSettled({ phase: "live", detail: "Live on uniqenergy.com." }), true);
+  assert.equal(shipMeansSettled({ phase: "failed", detail: "The pull request was closed without merging." }), true);
+  assert.equal(shipMeansSettled({ phase: "failed", detail: "frontend failed." }), false);
+  assert.equal(shipMeansSettled({ phase: "merged", detail: "No changes." }), true);
+  const record = { agentId: "bc-00000000-0000-0000-0000-000000000001", prUrl: "https://github.com/rambodc/uniq/pull/70" };
+  assert.equal(await needsFreshAgent(record, github({ merged: true, state: "closed", changed_files: 0, additions: 0, deletions: 0, labels: [] }), {}), true);
+  assert.equal(await needsFreshAgent(record, github({ merged: false, state: "closed", changed_files: 2, additions: 1, deletions: 1, labels: [] }), {}), true);
+  assert.equal(await needsFreshAgent({ ...record, ship: { phase: "checks", detail: "Checks are running." } }, github({ merged: false, state: "open", changed_files: 2, additions: 1, deletions: 1, labels: [{ name: "builder-auto-deploy" }] }), {}), false);
+  assert.equal(await needsFreshAgent({ ...record, ship: { phase: "live", detail: "Live on uniqenergy.com." } }, async () => { throw new Error("down"); }, {}), true);
+  assert.equal(await needsFreshAgent({ agentId: record.agentId, ship: { phase: "live", detail: "Live on uniqenergy.com." } }, github({}), {}), false);
+  const summary = chatSummary([{ kind: "user", text: "Add a notes mini app." }, { kind: "assistant", text: "Opened the pull request." }, { kind: "user", text: ask }]);
+  assert.match(summary, /User: Add a notes mini app/);
+  assert.match(summary, /Builder: Opened the pull request/);
+  const prompt = continuationPrompt(summary, ask);
+  assert.match(prompt, /Standing instructions/);
+  assert.match(prompt, /Earlier in this chat/);
+  assert.match(prompt, /new branch/);
+  assert.match(prompt, /Do not reuse the old branch/);
+  assert.ok(prompt.endsWith(ask));
+  const body = continuationBody(summary, ask);
+  assert.equal(body.prompt.text, prompt);
+  assert.equal(body.repos[0].startingRef, "production");
+  assert.equal(body.autoCreatePR, true);
+  assert.equal(body.workOnCurrentBranch, false);
+  let seen;
+  await createAgent("top-secret", ask, async (url, options) => {
+    seen = JSON.parse(options.body);
+    return json(201, { agent: { id: "bc-00000000-0000-0000-0000-000000000099", url: "https://cursor.com/agents/bc-00000000-0000-0000-0000-000000000099" }, run: { id: "run-9", status: "CREATING" } });
+  }, [], { summary });
+  assert.equal(seen.prompt.text, prompt);
+  assert.equal(seen.repos[0].startingRef, "production");
+  assert.doesNotMatch(JSON.stringify(seen), /top-secret/);
 });
 
 test("auto-merge waits for the pull request checks workflow, then squash-merges or comments", async () => {
@@ -530,18 +585,69 @@ test("auto-merge waits for the pull request checks workflow, then squash-merges 
   assert.doesNotMatch(workflow, /check_suite:/);
   assert.match(workflow, /workflow_dispatch/);
   assert.match(workflow, /secrets\.GITHUB_TOKEN/);
+  assert.match(workflow, /secrets\.CURSOR_API_KEY/);
   assert.match(workflow, /contents: write/);
   assert.match(workflow, /pull-requests: write/);
   assert.match(workflow, /actions: write/);
   assert.match(workflow, /CHECK_WAIT_MS: "1200000"/);
   assert.match(workflow, /builder-auto-deploy-\$\{\{ github\.event\.pull_request\.number/);
-  assert.doesNotMatch(workflow, /secrets\.(?!GITHUB_TOKEN)\w+/);
+  assert.doesNotMatch(workflow, /secrets\.(?!GITHUB_TOKEN|CURSOR_API_KEY)\w+/);
   assert.match(script, /firebase-hosting-merge\.yml/);
   assert.match(script, /firebase-functions-merge\.yml/);
   assert.match(script, /firebase-rules-merge\.yml/);
   assert.match(script, /--squash/);
+  assert.match(script, /--match-head-commit/);
+  assert.match(script, /--delete-branch/);
   assert.match(script, /"comment"/);
   assert.match(script, /Left this pull request open/);
+});
+
+test("auto-merge skips an empty or already-merged head and waits for an active agent", async () => {
+  const { HEAD_SETTLE_MS, activityFrom, agentIdFromText, agentMatching, diffEmpty, emptyNote, headAlreadyMerged, headIsSettled, mergeDecision, readCursorActivity, staleNote, waitUntilMerge } = await import("../../.github/workflows/builder-auto-deploy.mjs");
+  const ready = { ready: true, failed: [] };
+  const base = { qualifies: true, checks: ready, empty: false, alreadyMerged: false, agentKnown: false, agentActive: false, committedAt: "2026-11-24T00:00:00.000Z", sha: "aaa" };
+  const now = Date.parse("2026-11-24T00:10:00.000Z");
+  assert.equal(diffEmpty({ status: "identical", files: 0 }), true);
+  assert.equal(diffEmpty({ status: "ahead", files: 0 }), true);
+  assert.equal(diffEmpty({ status: "ahead", files: 3 }), false);
+  assert.equal(diffEmpty(null), false);
+  assert.equal(headAlreadyMerged([{ number: 70, merged_at: "2026-11-24T00:51:35Z" }, { number: 80 }], 80), true);
+  assert.equal(headAlreadyMerged([{ number: 80, merged_at: null }], 80), false);
+  assert.equal(agentIdFromText('see https://cursor.com/agents/bc-46e56396-7461-40c8-9ec2-646c9b321b44?x=1 and bcId=bc-46e56396-7461-40c8-9ec2-646c9b321b44'), "bc-46e56396-7461-40c8-9ec2-646c9b321b44");
+  assert.equal(agentIdFromText("no agent"), null);
+  assert.equal(activityFrom({ runStatus: "RUNNING", agentStatus: "ACTIVE" }).active, true);
+  assert.equal(activityFrom({ runStatus: "FINISHED", agentStatus: "ACTIVE" }).active, false);
+  assert.equal(activityFrom({ agentStatus: "IDLE" }).active, false);
+  assert.equal(activityFrom({}).known, false);
+  assert.equal(agentMatching({ items: [{ id: "bc-1" }] }, { filtered: true })?.id, "bc-1");
+  assert.equal(agentMatching({ agents: [{ id: "bc-2", target: { branchName: "cursor/notes" } }] }, { branch: "cursor/notes" })?.id, "bc-2");
+  assert.equal(headIsSettled(base.committedAt, now, HEAD_SETTLE_MS), true);
+  assert.equal(headIsSettled("2026-11-24T00:09:30.000Z", now, HEAD_SETTLE_MS), false);
+  assert.equal(mergeDecision({ ...base, empty: true }, { now }), "empty");
+  assert.equal(mergeDecision({ ...base, alreadyMerged: true }, { now }), "stale");
+  assert.equal(mergeDecision({ ...base, agentKnown: true, agentActive: true }, { now }), "wait");
+  assert.equal(mergeDecision({ ...base, agentKnown: true, agentActive: false }, { now }), "merge");
+  assert.equal(mergeDecision(base, { now, seenSha: "" }), "wait");
+  assert.equal(mergeDecision(base, { now, seenSha: "aaa" }), "merge");
+  assert.equal(mergeDecision(base, { now, seenSha: "bbb" }), "wait");
+  assert.equal(mergeDecision({ ...base, committedAt: "2026-11-24T00:09:30.000Z" }, { now, seenSha: "aaa" }), "wait");
+  assert.equal(mergeDecision({ ...base, checks: { ready: false, failed: ["frontend"] } }, { now }), "fail");
+  assert.match(emptyNote(), /No file changes against production/);
+  assert.match(staleNote(), /already in a merged pull request/);
+  let seen = 0;
+  const polled = await waitUntilMerge(() => {
+    seen += 1;
+    return base;
+  }, { waitMs: 5000, intervalMs: 1, sleep: async () => {}, now: () => now });
+  assert.equal(polled.decision, "merge");
+  assert.equal(seen, 2);
+  const active = await readCursorActivity("cursor-key", { prUrl: "https://github.com/rambodc/uniq/pull/80", branch: "cursor/notes", body: "https://cursor.com/agents/bc-46e56396-7461-40c8-9ec2-646c9b321b44" }, async (url) => {
+    assert.equal(url.includes("cursor-key"), false);
+    if (url.endsWith("/runs/run-1")) return { ok: true, json: async () => ({ status: "RUNNING" }) };
+    return { ok: true, json: async () => ({ id: "bc-46e56396-7461-40c8-9ec2-646c9b321b44", status: "ACTIVE", latestRunId: "run-1" }) };
+  });
+  assert.deepEqual(active, { known: true, active: true });
+  assert.deepEqual(await readCursorActivity("", { prUrl: "", branch: "", body: "" }, async () => { throw new Error("no"); }), { known: false, active: false });
 });
 
 test("Builder is wired to the secret, one collection, and super-admin reads with no client writes", () => {

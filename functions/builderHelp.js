@@ -189,7 +189,7 @@ export function openSummary(messages) {
   return latestBlock(messages, parseSummary);
 }
 
-/** The preview approval card. The screenshot stays in the message, outside this block. */
+/** The plan approval card. A screenshot is shown only when the reply already has one. */
 export function parsePreview(text) {
   if (typeof text !== "string" || !/(?:^|\n)PREVIEW:/.test(text)) return null;
   const match = /(?:^|\n)PREVIEW:\s*([\s\S]*?)\nAPPROVE:\s*/.exec(text);

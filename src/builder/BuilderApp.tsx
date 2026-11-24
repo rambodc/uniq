@@ -45,6 +45,13 @@ function BuilderBar() {
 
 const STATUS_LABEL: Record<BuilderStatus, string> = { running: "Running", finished: "Finished", error: "Error" };
 const SHIP_LABEL = { pr: "PR opened", checks: "Checks", merged: "Merged", deploying: "Deploying", live: "Live", failed: "Failed" } as const;
+
+/** The ship line in the header and the build list. An empty merge says so. */
+export function shipLabel(ship: BuilderShip | null) {
+  if (!ship) return "";
+  if (ship.detail === "No changes.") return "No changes";
+  return SHIP_LABEL[ship.phase];
+}
 const STARTER = [...MINI_APPS.map((app) => app.name), "New mini app"].map((label, index) => ({ key: String.fromCharCode(65 + index), label }));
 const BUILDER_ACCENT = MINI_APPS.find((app) => app.id === "builder")?.accent ?? "#0c9a78";
 
@@ -52,10 +59,11 @@ const BUILDER_ACCENT = MINI_APPS.find((app) => app.id === "builder")?.accent ?? 
 export const IDLE_POLL_MS = 40_000;
 
 /** How often to ask the server while the chat is open. A running turn stays fast. */
-export function pollDelay(status: BuilderStatus, prUrl: string | null, updatedAt: string | null, now = Date.now(), hasAssistant = true, shipPhase: BuilderShip["phase"] | null = null) {
+export function pollDelay(status: BuilderStatus, prUrl: string | null, updatedAt: string | null, now = Date.now(), hasAssistant = true, shipPhase: BuilderShip["phase"] | null = null, shipDetail: string | null = null) {
   const age = updatedAt ? now - Date.parse(updatedAt) : Infinity;
   if (status === "running") return age < 30_000 ? 1500 : 5000;
   if (!hasAssistant && age < 30 * 60 * 1000) return 5000;
+  if (shipDetail === "No changes.") return IDLE_POLL_MS;
   if (shipPhase && shipPhase !== "live" && shipPhase !== "failed") return 8000;
   if (status === "finished" && !prUrl && age < 10 * 60 * 1000) return 8000;
   return IDLE_POLL_MS;
@@ -74,6 +82,7 @@ export function startFailureNote(error: string | null, status: BuilderStatus, ag
 
 export function pillOf(status: BuilderStatus, ship: BuilderShip | null, waiting = false) {
   if (waiting) return { label: "Waiting for you", kind: "wait" };
+  if (ship?.detail === "No changes.") return { label: "No changes", kind: "" };
   if (ship?.phase === "failed" || status === "error") return { label: ship?.phase === "failed" ? "Failed" : "Error", kind: "bad" };
   if (ship?.phase === "live") return { label: "Live", kind: "" };
   if (status === "running") return { label: "Running", kind: "run" };
@@ -183,7 +192,7 @@ export function BuildList({ items, current }: { items: BuilderSummary[]; current
   if (!items.length) return <div className="ws-empty">No builds yet.</div>;
   return <ul className="bd-builds">{items.map((item) => <li key={item.id}><Link className="bd-build" to={`/builder/${item.id}`} aria-current={item.id === current ? "page" : undefined}>
     <strong>{item.title || "New build"}</strong>
-    <small>{item.ship ? SHIP_LABEL[item.ship.phase] : STATUS_LABEL[item.status]} · {item.askedBy}</small>
+    <small>{item.ship ? shipLabel(item.ship) : STATUS_LABEL[item.status]} · {item.askedBy}</small>
   </Link></li>)}</ul>;
 }
 
@@ -229,6 +238,7 @@ export function ChatColumn({ conversation, extras = [], now, busy = false, refre
     {onRefresh && <button type="button" className={refreshing ? "bd-refresh spin" : "bd-refresh"} aria-label="Check for new messages" title="Check for new messages" disabled={refreshing} onClick={onRefresh}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" /></svg></button>}
     {showFiller && <div className="bd-work"><span className="bd-dot" /><div><b>{phase === "ten" ? `Still working, ${elapsedLabel(anchor, now)}` : (workingStep(conversation.messages) === "Starting" ? "Reading the files…" : workingStep(conversation.messages))} <span className="bd-dots"><i /><i /><i /></span></b></div></div>}
     {conversation.status === "running" && !showFiller && !waiting && <div className="bd-work"><span className="bd-dot" /><div><b>Working… {elapsedLabel(anchor, now)}</b><small>{workingStep(conversation.messages)}</small></div></div>}
+    {conversation.ship?.detail === "No changes." && <div className="bd-banner"><div><b>No changes</b><small>The merge did not change production.</small></div></div>}
     {conversation.ship?.phase === "failed" && <div className="bd-banner bad"><div><b>Failed</b><small>{conversation.ship.detail || "The deploy did not finish."}</small></div>{onFix && <button className="ws-button" type="button" disabled={busy} onClick={onFix}>{busy ? "Sending…" : "Ask Builder to fix"}</button>}</div>}
   </div>;
 }
@@ -376,7 +386,7 @@ export default function BuilderApp() {
   const shown = conversation?.id === conversationId ? conversation : null;
   useEffect(() => {
     const hasAssistant = Boolean(shown?.messages.some((message) => message.kind === "assistant"));
-    const delay = shown ? pollEvery(pollDelay(shown.status, shown.prUrl, shown.updatedAt, Date.now(), hasAssistant, shown.ship?.phase ?? null), hidden) : 0;
+    const delay = shown ? pollEvery(pollDelay(shown.status, shown.prUrl, shown.updatedAt, Date.now(), hasAssistant, shown.ship?.phase ?? null, shown.ship?.detail ?? null), hidden) : 0;
     if (!delay) return;
     const timer = window.setInterval(() => { void loadOne(conversationId, true); }, delay);
     return () => window.clearInterval(timer);
