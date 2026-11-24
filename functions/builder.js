@@ -6,6 +6,7 @@
 // A run's `result` is only a fallback when that conversation is empty.
 
 import { withoutStoredFiles } from "./builderHelp.js";
+import { MINI_APPS } from "./miniApps.js";
 
 export const NOT_CONFIGURED = "Builder is not configured yet.";
 export const REPO_URL = "https://github.com/rambodc/uniq";
@@ -28,10 +29,43 @@ export class BuilderError extends Error {
 /** Fast Composer. Create and ordinary follow-ups send this. A steer cannot carry a model. */
 export const BUILDER_MODEL = { id: "composer-2.5", params: [{ id: "fast", value: "true" }] };
 
-function standingText() {
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function mentions(text, phrase) {
+  return new RegExp(`\\b${escapeRegExp(phrase)}\\b`, "i").test(text);
+}
+
+/** Mini apps the first message names, in registry order, plus whether it starts a new one. */
+function targetedDocs(userText) {
+  const text = String(userText || "");
+  const ids = MINI_APPS.filter((app) => mentions(text, app.name)).map((app) => app.id);
+  return { ids, isNew: mentions(text, "New mini app") };
+}
+
+function fileList(ids) {
+  const files = ids.map((id) => `docs/mini-apps/${id}.md`);
+  if (files.length < 2) return files[0] || "";
+  if (files.length === 2) return `${files[0]} and ${files[1]}`;
+  return `${files.slice(0, -1).join(", ")}, and ${files.at(-1)}`;
+}
+
+/** What the first Cursor run should read before it opens code. */
+function docsInstruction(userText) {
+  const { ids, isNew } = targetedDocs(userText);
+  const files = fileList(ids);
+  if (isNew && files) return `Read AGENTS.md and ${files} first. Only open code when those docs are not enough. This also starts a new mini app: create docs/mini-apps/<id>.md for it and add that app to the list in AGENTS.md.`;
+  if (isNew) return "Read AGENTS.md first. This is a new mini app: create docs/mini-apps/<id>.md for it and add that app to the list in AGENTS.md. Only open code when AGENTS.md is not enough.";
+  if (files) return `Read AGENTS.md and ${files} first. Only open code when those docs are not enough.`;
+  return "Read AGENTS.md first. Only open code when that guide is not enough.";
+}
+
+function standingText(userText) {
   return [
     "Standing instructions. They win if the request below conflicts with them.",
-    "This is the UniqEnergy site (uniqenergy.com). Work only in this repo. Follow docs/APP_GUIDE.md and AGENTS.md. Use the existing portal theme (src/auth/portal.css, Shell, and Theme). Do not change brand marks or logos unless the request asks for it.",
+    docsInstruction(userText),
+    "This is the UniqEnergy site (uniqenergy.com). Work only in this repo. Follow AGENTS.md. Use the existing portal theme (src/auth/portal.css, Shell, and Theme). Do not change brand marks or logos unless the request asks for it.",
     "Follow four steps, in order: the mini app, the features, a short list of the planned changes, then build and deploy.",
     "The first message already names the mini app, for example Mini app: Wells. Do not ask that again. Also change other mini apps, and app-wide parts such as users, account types, portal navigation, shared components, auth, rules, and functions, when the person mentions them or the fix needs them. Everything goes in one pull request. Keep one Firestore top-level collection per mini app.",
     "Ask at most one question at a time. Use this shape, with each option on its own line:",
@@ -59,7 +93,7 @@ function standingText() {
     `After approval, build it in ${REPO_URL} and open a pull request into the production branch. Put this exact line in the body, on its own:`,
     "Builder-Auto-Deploy: yes",
     "Add the label builder-auto-deploy. Fix CI failures until they are green. It merges and goes live on its own. There is no final question.",
-    "If you add or change a page, end with one line: Live route: /path. If a route, mini app, collection, function, or deploy changes, update docs/APP_GUIDE.md in that pull request.",
+    "If you add or change a page, end with one line: Live route: /path. If the pull request changes a mini app, update its docs/mini-apps/<id>.md. If a mini app is added, renamed, or removed, update the list in AGENTS.md.",
     "Do not merge or push to production yourself. The automation does that. Do not read or change secrets or IAM.",
     "When you are fully blocked on a secret, IAM, DNS, billing, or an external account, end with this block and nothing after it:",
     ":::builder-admin-help",
@@ -94,13 +128,15 @@ const REMINDER = [
   "<short list of planned changes>",
   "APPROVE:",
   "Add one TITLE: line once, such as TITLE: Update Wells. No code until the preview is approved. After approval, open a pull request into production with the label builder-auto-deploy and this body line on its own: Builder-Auto-Deploy: yes. Fix CI failures. It goes live automatically. There is no final question.",
+  "If the pull request changes a mini app, update its docs/mini-apps/<id>.md. If a mini app is added, renamed, or removed, update the list in AGENTS.md.",
   "Do not merge or push to production yourself. The automation does that. Do not read or change secrets or IAM.",
   "Follow-up:",
 ].join("\n");
 
 /** The first prompt: standing instructions, then the request. */
 export function promptFor(userText) {
-  return `${standingText()}\n${userText.trim()}`;
+  const text = userText.trim();
+  return `${standingText(text)}\n${text}`;
 }
 
 /** A follow-up. The long standing block is not sent again. */

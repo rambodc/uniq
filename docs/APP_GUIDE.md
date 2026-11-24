@@ -2,7 +2,7 @@
 
 Read this before you change the site. It is the map of UniqEnergy (uniqenergy.com): what the company is, how the site is put together, every mini app, and what a Builder agent is not allowed to do.
 
-When you change the app's structure — a route, a mini app, a Firestore collection or the shape of its documents, a Cloud Function, auth, or how a deploy works — update this file in the same pull request. A change that leaves this guide wrong is incomplete.
+Per-app screens, collections, and files are in `docs/mini-apps/<id>.md`. The index is `AGENTS.md`. When a pull request changes a mini app, update that page. When a mini app is added, renamed, or removed, update the list in `AGENTS.md`. Update this guide when the public site, email, auth, or deploy behavior changes.
 
 ## What UniqEnergy is
 
