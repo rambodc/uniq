@@ -4,7 +4,7 @@ Assigned staff and super admins. One route, `/uniqgroup-logo`. It does not use `
 
 ## Screens
 
-`src/uniqgroup/UniqGroupLogoApp.tsx` draws one full-screen scene: the UniqEnergy mark in the centre, with UniqEnergy, Uniquem, Kemko, and Alchem on a tilted ring. Drag turns the view. Clicking a logo opens that company's site. A caption and a text nav list the same four links. Reduced motion holds a still frame. If WebGL is missing, the page shows the centre mark as an image.
+`src/uniqgroup/UniqGroupLogoApp.tsx` draws one full-screen scene: the UniqEnergy mark in the centre (about 70% of its original size), with UniqEnergy, Uniquem, Kemko, and Alchem on a tilted ring. Drag turns the view. Clicking a logo opens that company's site. A caption and a text nav list the same four links. Reduced motion holds a still frame. If WebGL is missing, the page shows the centre mark as an image. A faint starfield sits behind the scene on desktop; it is hidden on phones, tablets, and narrow windows because the points look like grain.
 
 There is no Firestore collection and no Storage path.
 
