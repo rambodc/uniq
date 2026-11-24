@@ -19,18 +19,27 @@ service firebase.storage {
       allow write: if false;
     }
 
-    // Builder uploads. A signed-in person may read and write only builder/{their uid}/…, under 20 MB.
-    // Super admin is not checked here. The Inventory Bot ticket path already uses firestore.get;
-    // repeating that lookup on this path is unnecessary, and the Builder callables still require
-    // a super admin before a file is sent on.
+    // Builder uploads, including Report to Builder screenshots. Only a super admin may read and write,
+    // and only under builder/{their uid}/…, under 20 MB. The Builder callables check super admin again
+    // before a file is sent on to Cursor.
+    function isSuperAdmin() {
+      let user = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email != null
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && user.disabled != true
+        && user.email == request.auth.token.email.lower()
+        && user.type == "super_admin";
+    }
     match /builder/{uid}/{allPaths=**} {
       allow read: if request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.uid == uid;
-      allow create, update: if request.auth != null
-        && request.auth.token.email_verified == true
         && request.auth.uid == uid
-        && request.resource.size < 20 * 1024 * 1024;
+        && isSuperAdmin();
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 20 * 1024 * 1024
+        && isSuperAdmin();
     }
     // Profile photos and every other object stay closed. Callables write those.
     match /{allPaths=**} {

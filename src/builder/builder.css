@@ -168,6 +168,8 @@
 .bd-files .bd-file { display: inline-flex; width: auto; max-width: 100%; min-height: 36px; margin: 0; padding: 4px 8px; gap: 6px; color: var(--ink); }
 .bd-files .bd-file img { width: 28px; height: 28px; object-fit: cover; border-radius: 6px; }
 .bd-files .bd-file b { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.bd-msg .bd-files .bd-file:has(img) { flex-direction: column; align-items: flex-start; padding: 6px; }
+.bd-msg .bd-files .bd-file img { width: min(240px, 60vw); height: auto; max-height: 180px; object-fit: contain; border-radius: 8px; background: rgba(0, 0, 0, .2); }
 .bd-files .bd-file small { color: var(--mute); font-size: 12px; }
 .bd-files .bd-file button { border: 0; background: transparent; color: var(--mute); font-size: 16px; padding: 0 2px; }
 .bd-file-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }

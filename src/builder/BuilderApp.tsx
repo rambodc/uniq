@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { doc, onSnapshot } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
 import { getBuilderConversation, listBuilderConversations, notifyBuilderAdmin, renameBuilderConversation, sendBuilderMessage, startBuilderConversation, watchBuilderRun, type BuilderConversation, type BuilderLive, type BuilderShip, type BuilderStatus, type BuilderSummary } from "../core/api";
@@ -10,6 +10,7 @@ import { messageOf } from "../core/api";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../auth/Theme";
 import { AssistantMessage } from "./RichMessage";
+import { takePendingReport } from "../report/report";
 import "./builder.css";
 
 /** Reload conversation data when the tab comes back after being hidden for a minute. */
@@ -144,7 +145,7 @@ function StoredFileChip({ file }: { file: StoredFile }) {
     getDownloadURL(storageRef(storage, file.path)).then((next) => { if (live) setUrl(next); }).catch(() => undefined);
     return () => { live = false; };
   }, [file.path, url]);
-  return <span className="bd-file">{file.contentType.startsWith("image/") && url ? <img src={url} alt="" /> : null}<b>{file.name}</b>{file.size ? <small>{Math.max(1, Math.round(file.size / 1024))} KB</small> : null}</span>;
+  return <span className="bd-file">{file.contentType.startsWith("image/") && url ? <a href={url} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`}><img src={url} alt="" /></a> : null}<b>{file.name}</b>{file.size ? <small>{Math.max(1, Math.round(file.size / 1024))} KB</small> : null}</span>;
 }
 
 function otherChoice(label: string) {
@@ -349,6 +350,7 @@ function localTitle(text: string) {
 export default function BuilderApp() {
   const { conversationId = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [items, setItems] = useState<BuilderSummary[] | null>(null);
   const [conversation, setConversation] = useState<BuilderConversation | null>(null);
   const [draft, setDraft] = useState("");
@@ -459,16 +461,16 @@ export default function BuilderApp() {
     if (code === "storage/unauthorized" || code === "storage/unauthenticated") return "Storage refused this file. Sign in as a super admin and retry.";
     return messageOf(cause, "That file could not be uploaded.");
   }
-  function send(text = draft, retryId?: string) {
+  function send(text = draft, retryId?: string, given?: { id: string; file: File; previewUrl: string }[]) {
     const body = text.trim();
-    const files = retryId ? heldFiles.current.get(retryId) || [] : attached;
+    const files = retryId ? heldFiles.current.get(retryId) || [] : given ?? attached;
     if (!body && !files.length) return;
     const id = retryId || `local-${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
     const at = new Date().toISOString();
     const user: Row = { id, kind: "user", text: body || "Attached files.", at, pending: "sending", files: files.map((item) => ({ name: item.file.name, size: item.file.size, contentType: item.file.type || "application/octet-stream", previewUrl: item.previewUrl })) };
     heldFiles.current.set(id, files);
     const ack: Row = { id: `ack-${id}`, kind: "assistant", text: "Got it. Starting now.", at, localAck: true };
-    if (!retryId) { setDraft(""); setAttached([]); }
+    if (!retryId && !given) { setDraft(""); setAttached([]); }
     setFixing(false);
     followOwn.current = true;
     pinned.current = true;
@@ -498,6 +500,15 @@ export default function BuilderApp() {
       }
     })();
   }
+  // A "Report" screenshot from another page: start a new build with the marked-up image attached.
+  const sendRef = useRef(send);
+  useEffect(() => { sendRef.current = send; });
+  useEffect(() => {
+    if (conversationId) return;
+    const report = takePendingReport();
+    if (!report) return;
+    sendRef.current(report.text, undefined, [{ id: crypto.randomUUID(), file: report.file, previewUrl: URL.createObjectURL(report.file) }]);
+  }, [conversationId, location.key]);
   function startWithChoice(choice: string) {
     const label = choice.replace(/^[A-H]\)\s*/, "").replace(/^Other:\s*/, "");
     const extra = draft.trim();

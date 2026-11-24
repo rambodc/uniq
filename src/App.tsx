@@ -15,9 +15,10 @@ const UniqGroupLogoApp = lazy(() => import("./uniqgroup/UniqGroupLogoApp"));
 const BuilderApp = lazy(() => import("./builder/BuilderApp"));
 import { isPrivatePage } from "./auth/privatePaths";
 import { ThemeProvider } from "./auth/Theme";
+import ReportButton from "./report/ReportButton";
 import "./auth/portal.css";
 
-function PortalFrame() { return <ThemeProvider><Outlet /></ThemeProvider>; }
+function PortalFrame() { return <ThemeProvider><Outlet /><ReportButton /></ThemeProvider>; }
 
 function RouteMetadata() {
   const { pathname } = useLocation();

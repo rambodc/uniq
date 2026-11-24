@@ -110,8 +110,13 @@ test("Firestore lets super admins read Builder and nobody write it", async () =>
   await assertFails(setDoc(doc(staff.firestore(), "builder/abc/messages/m2"), { kind: "user", text: "nope" }));
 });
 
-test("Storage lets a signed-in person use only their own Builder folder under 20 MB", async () => {
+test("Storage lets only a super admin use their own Builder folder under 20 MB", async () => {
   const bucketName = "uniqenergy-de71c.firebasestorage.app";
+  const record = { email: "boss@uniqenergy.com", firstName: "Bo", lastName: "Ss", type: "super_admin", miniApps: [], disabled: false };
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/boss"), record);
+    await setDoc(doc(context.firestore(), "users/ann"), { ...record, email: "ann@uniqenergy.com", type: "staff", miniApps: ["inventoryBot"] });
+  });
   const boss = environment.authenticatedContext("boss", { email: "boss@uniqenergy.com", email_verified: true });
   const other = environment.authenticatedContext("ann", { email: "ann@uniqenergy.com", email_verified: true });
   const anon = environment.unauthenticatedContext();
@@ -123,4 +128,6 @@ test("Storage lets a signed-in person use only their own Builder folder under 20
   await assertFails(getBytes(ref(other.storage(`gs://${bucketName}`), mine)));
   await assertFails(getBytes(ref(anon.storage(`gs://${bucketName}`), mine)));
   await assertFails(uploadBytes(ref(anon.storage(`gs://${bucketName}`), mine), new Uint8Array([1, 2, 3]), { contentType: "image/png" }));
+  await assertFails(uploadBytes(ref(other.storage(`gs://${bucketName}`), theirs), new Uint8Array([1, 2, 3]), { contentType: "image/png" }));
+  await assertFails(getBytes(ref(other.storage(`gs://${bucketName}`), theirs)));
 });
