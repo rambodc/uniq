@@ -44,7 +44,7 @@ export default function App() {
     <Route element={<RequireMiniApp app="inventoryBot" />}><Route path="/inventory-bot/*" element={<InventoryApp />} /></Route>
     <Route element={<RequireMiniApp app="wells" />}><Route path="/wells/*" element={<WellsApp />} /></Route>
     <Route element={<RequireMiniApp app="uniqGroupLogo" />}><Route path="/uniqgroup-logo" element={<Suspense fallback={null}><UniqGroupLogoApp /></Suspense>} /></Route>
-    <Route element={<RequireMiniApp app="users" />}><Route path="/users" element={<UsersApp />} /></Route>
+    <Route element={<RequireMiniApp app="users" />}><Route path="/users/*" element={<UsersApp />} /></Route>
     <Route element={<RequireMiniApp app="builder" />}><Route path="/builder" element={<Suspense fallback={null}><BuilderApp /></Suspense>} /><Route path="/builder/:conversationId" element={<Suspense fallback={null}><BuilderApp /></Suspense>} /></Route>
     <Route element={<RequireMiniApp app="profile" />}><Route path="/profile" element={<ProfileApp />} /></Route>
     </Route>

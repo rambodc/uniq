@@ -49,7 +49,7 @@ createRoot(document.getElementById("root")!).render(<StrictMode><HashRouter><Aut
   <Route path="/dashboard" element={<Dashboard />} />
   <Route path="/contact-inbox" element={<ContactInbox />} />
   <Route path="/contact-inbox/:inquiryId" element={<ContactDetail />} />
-  <Route path="/users" element={<UsersApp />} />
+  <Route path="/users/*" element={<UsersApp />} />
   <Route path="/profile" element={<ProfileApp />} />
   <Route path="/inventory-bot/*" element={<InventoryApp />} />
   <Route path="/wells/*" element={<WellsApp />} />
