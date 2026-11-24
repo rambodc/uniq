@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { db, callable, cursorApiKey, resendApiKey, isSuperAdmin, requireMiniApp, text } from "./core.js";
-import { BuilderError, NOT_CONFIGURED, UNTITLED, artifactRef, createAgent, fetchArtifact, generatedTitle, loadRemote, loadShip, messageView, messageWithFiles, nextState, normalizeBuilderFiles, patchChanged, promptFiles, readCursorKey, repliesToWrite, requestText, sendFollowUp, shouldRefresh, summaryView, viewStatus } from "./builder.js";
+import { BuilderError, NOT_CONFIGURED, UNTITLED, artifactRef, chatSummary, createAgent, fetchArtifact, generatedTitle, loadRemote, loadShip, messageView, messageWithFiles, needsFreshAgent, nextState, normalizeBuilderFiles, patchChanged, promptFiles, readCursorKey, repliesToWrite, requestText, sendFollowUp, shouldRefresh, summaryView, viewStatus } from "./builder.js";
 import { latestAdminHelp } from "./builderHelp.js";
 import { buildBuilderAdminEmail, builderNotifyAddress, sendBuilderAdminEmail } from "./mailer.js";
 
@@ -59,7 +59,7 @@ async function refreshShip(id, data) {
   const at = Date.parse(data.shipCache?.at || "");
   if (data.ship && Number.isFinite(at) && Date.now() - at < 20_000) return;
   try {
-    const loaded = await loadShip(data.prUrl, data.shipCache);
+    const loaded = await loadShip(data.prUrl, data.shipCache, globalThis.fetch, globalThis.process.env);
     if (!loaded || loaded.limited || loaded.error || !loaded.ship) return;
     await conversations().doc(id).set({ ship: loaded.ship, shipCache: { ...loaded.cache, at: new Date().toISOString() } }, { merge: true });
   } catch { /* a public GitHub read is best-effort; the saved ship stays */ }
@@ -177,10 +177,25 @@ export const sendBuilderMessage = onCall(warmBuilderCall, async (request) => {
   const now = new Date().toISOString();
   await messages(id).add({ kind: "user", text: messageWithFiles(body, shared.files), runId: null, at: now });
   const prompt = promptFiles(body, shared.links);
-  if (!data.agentId) {
+  const fresh = Boolean(data.agentId) && await needsFreshAgent(data);
+  if (!data.agentId || fresh) {
     try {
-      const created = await createAgent(apiKey, prompt, undefined, shared.images);
-      await ref.update({ agentId: created.agentId, agentUrl: created.agentUrl, runId: created.runId, status: viewStatus(created.runStatus, "ACTIVE"), error: null, awaitingSince: now, updatedAt: FieldValue.serverTimestamp() });
+      const prior = fresh ? await loadMessages(id) : [];
+      const summary = fresh ? chatSummary(prior.at(-1)?.kind === "user" ? prior.slice(0, -1) : prior) : undefined;
+      const created = await createAgent(apiKey, prompt, undefined, shared.images, fresh ? { summary } : undefined);
+      await ref.update({
+        agentId: created.agentId,
+        agentUrl: created.agentUrl,
+        runId: created.runId,
+        status: viewStatus(created.runStatus, "ACTIVE"),
+        error: null,
+        prUrl: null,
+        branch: null,
+        ship: FieldValue.delete(),
+        shipCache: FieldValue.delete(),
+        awaitingSince: now,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     } catch (error) {
       const message = error instanceof BuilderError ? error.message : "Cursor could not start the build.";
       await ref.update({ status: "error", error: message, updatedAt: FieldValue.serverTimestamp() });

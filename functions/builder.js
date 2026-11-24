@@ -65,8 +65,8 @@ function standingText(userText) {
   return [
     "Standing instructions. They win if the request below conflicts with them.",
     docsInstruction(userText),
-    "This is the UniqEnergy site (uniqenergy.com). Work only in this repo. Follow AGENTS.md. Use the existing portal theme (src/auth/portal.css, Shell, and Theme). Do not change brand marks or logos unless the request asks for it.",
-    "Follow four steps, in order: the mini app, the features, a short list of the planned changes, then build and deploy.",
+    "This is the UniqEnergy site (uniqenergy.com). Work only in this repo. Follow AGENTS.md. production is the only permanent branch. Your branch is deleted when the pull request merges. Use the existing portal theme (src/auth/portal.css, Shell, and Theme). Do not change brand marks or logos unless the request asks for it.",
+    "Follow their lead. They may answer, skip ahead, or tell you to build it. When you still need a decision, ask one question, offer idea chips, or post the plan.",
     "The first message already names the mini app, for example Mini app: Wells. Do not ask that again. Also change other mini apps, and app-wide parts such as users, account types, portal navigation, shared components, auth, rules, and functions, when the person mentions them or the fix needs them. Everything goes in one pull request. Keep one Firestore top-level collection per mini app.",
     "Ask at most one question at a time. Use this shape, with each option on its own line:",
     "QUESTION:",
@@ -85,7 +85,7 @@ function standingText(userText) {
     "Parts: <every mini app or app-wide area this touches>",
     "Data: <no change, or the schema change; data that will not fit is deleted, with no conversion>",
     "CONTINUE:",
-    "After they continue, post a short plain-text list of the planned changes and this block. No code until the preview is approved. Only make a screenshot when they ask for one.",
+    "After they continue, post a short plain-text list of the planned changes and this block. No code until the plan is approved. If they tell you to build it, that is the approval. Only make a screenshot when they explicitly ask for one. Do not create a screenshot, a mockup, or a visual preview unless they ask.",
     "PREVIEW:",
     "<short list of planned changes>",
     "APPROVE:",
@@ -107,7 +107,7 @@ function standingText(userText) {
 }
 
 const REMINDER = [
-  "Reminder. Four steps: mini app, features, a short list of the planned changes, then build and deploy. The first message names the mini app. Also change other mini apps and app-wide parts when the person mentions them or the fix needs them. Everything goes in one pull request. Only make a screenshot when they ask for one.",
+  "Reminder. Follow their lead. The first message names the mini app. Also change other mini apps and app-wide parts when the person mentions them or the fix needs them. Everything goes in one pull request. Only make a screenshot when they explicitly ask for one. Do not create a screenshot, a mockup, or a visual preview unless they ask.",
   "Ask at most one question at a time, each option on its own line:",
   "QUESTION:",
   "<one question>",
@@ -127,7 +127,7 @@ const REMINDER = [
   "PREVIEW:",
   "<short list of planned changes>",
   "APPROVE:",
-  "Add one TITLE: line once, such as TITLE: Update Wells. No code until the preview is approved. After approval, open a pull request into production with the label builder-auto-deploy and this body line on its own: Builder-Auto-Deploy: yes. Fix CI failures. It goes live automatically. There is no final question.",
+  "Add one TITLE: line once, such as TITLE: Update Wells. No code until the plan is approved. If they tell you to build it, that is the approval. After approval, open a pull request into production with the label builder-auto-deploy and this body line on its own: Builder-Auto-Deploy: yes. Fix CI failures. It goes live automatically. There is no final question. production is the only permanent branch, and the branch is deleted when the pull request merges.",
   "If the pull request changes a mini app, update its docs/mini-apps/<id>.md. If a mini app is added, renamed, or removed, update the list in AGENTS.md.",
   "Do not merge or push to production yourself. The automation does that. Do not read or change secrets or IAM.",
   "Follow-up:",
@@ -142,6 +142,33 @@ export function promptFor(userText) {
 /** A follow-up. The long standing block is not sent again. */
 export function followPrompt(userText) {
   return `${REMINDER}\n${userText.trim()}`;
+}
+
+/** A short record of the chat so a new agent can continue it. */
+export function chatSummary(messages, max = 1600) {
+  const lines = [];
+  for (const message of Array.isArray(messages) ? messages : []) {
+    const kind = message?.kind === "assistant" ? "Builder" : message?.kind === "user" ? "User" : "";
+    if (!kind) continue;
+    const text = withoutStoredFiles(message.text || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    lines.push(`${kind}: ${text.length > 320 ? `${text.slice(0, 319)}…` : text}`);
+  }
+  const summary = lines.join("\n");
+  return summary.length <= max ? summary : summary.slice(summary.length - max);
+}
+
+/** A new agent on a new branch. Standing rules, a short recap, then the new request. */
+export function continuationPrompt(summary, userText) {
+  const standing = standingText(userText).replace(/\nThe request:$/, "");
+  return [
+    standing,
+    "This continues an earlier build in the same chat. That pull request is already merged or closed. Start from production on a new branch. Do not reuse the old branch or the old pull request.",
+    "Earlier in this chat:",
+    summary || "(no earlier messages)",
+    "The new request:",
+    userText.trim(),
+  ].join("\n");
 }
 
 export function requestText(value) {
@@ -239,18 +266,27 @@ export function readCursorKey(secret) {
   return value.trim();
 }
 
-export function createBody(text, imageUrls = []) {
-  const prompt = { text: promptFor(text) };
+function agentBody(promptText, imageUrls, name) {
+  const prompt = { text: promptText };
   const images = cursorImages(imageUrls);
   if (images.length) prompt.images = images;
   return {
     prompt,
     model: BUILDER_MODEL,
-    name: titleFrom(text).slice(0, 100),
+    name: titleFrom(name).slice(0, 100),
     repos: [{ url: REPO_URL, startingRef: STARTING_REF }],
     autoCreatePR: true,
     workOnCurrentBranch: false,
   };
+}
+
+export function createBody(text, imageUrls = []) {
+  return agentBody(promptFor(text), imageUrls, text);
+}
+
+/** The create body for a follow-up that must start from production on a new branch. */
+export function continuationBody(summary, text, imageUrls = []) {
+  return agentBody(continuationPrompt(summary, text), imageUrls, text);
 }
 
 /** `steer` is only prompt + delivery. Any other field, including model, makes Cursor reject the steer. */
@@ -344,15 +380,18 @@ function agentIdOf(value) {
   return typeof value === "string" && /^bc-[A-Za-z0-9-]{8,80}$/.test(value) ? value : null;
 }
 
-export async function createAgent(apiKey, text, fetchImpl, imageUrls = []) {
-  let response = await cursorJson(apiKey, "POST", "/v1/agents", createBody(text, imageUrls), fetchImpl);
-  if (imageUrls.length && (response.status === 400 || response.status === 422) && /image/i.test(publicCursorError(response.data) || JSON.stringify(response.data || ""))) {
+export async function createAgent(apiKey, text, fetchImpl, imageUrls = [], options = {}) {
+  const build = (images) => options.summary == null ? createBody(text, images) : continuationBody(options.summary, text, images);
+  let images = imageUrls;
+  let response = await cursorJson(apiKey, "POST", "/v1/agents", build(images), fetchImpl);
+  if (images.length && (response.status === 400 || response.status === 422) && /image/i.test(publicCursorError(response.data) || JSON.stringify(response.data || ""))) {
     logCursor(response.status, response.data);
-    response = await cursorJson(apiKey, "POST", "/v1/agents", createBody(text), fetchImpl);
+    images = [];
+    response = await cursorJson(apiKey, "POST", "/v1/agents", build(images), fetchImpl);
   }
   if (modelRejected(response.status, response.data)) {
     logCursor(response.status, response.data);
-    const plain = createBody(text);
+    const plain = build(images);
     delete plain.model;
     response = await cursorJson(apiKey, "POST", "/v1/agents", plain, fetchImpl);
   }
@@ -540,9 +579,18 @@ const DONE_CHECK = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 const PENDING_CHECK = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]);
 const DEPLOY_NAMES = ["Production: Firebase Hosting", "Production: Firebase Functions", "Production: Firebase Rules"];
 
+/** A merged pull request whose merge commit changed no files. */
+export function commitEmpty(data) {
+  if (!data || typeof data !== "object") return false;
+  if (data.stats && data.stats.total === 0) return true;
+  if (Array.isArray(data.files) && data.files.length === 0) return true;
+  return false;
+}
+
 /** Where a Builder pull request is on the way to production. */
 export function shipFromGitHub({ pr, checks, deploys }) {
   if (!pr) return null;
+  if (pr.merged && pr.empty) return { phase: "merged", detail: "No changes." };
   if (pr.state === "closed" && !pr.merged) return { phase: "failed", detail: "The pull request was closed without merging." };
   const relevant = (checks || []).filter((check) => check.name !== "Builder auto deploy");
   const failed = relevant.filter((check) => String(check.status).toUpperCase() === "COMPLETED" && !DONE_CHECK.has(String(check.conclusion || "").toUpperCase()));
@@ -553,18 +601,34 @@ export function shipFromGitHub({ pr, checks, deploys }) {
     if (!pr.labeled) return { phase: "checks", detail: "Checks passed. The pull request needs the builder-auto-deploy label before it can merge." };
     return { phase: "checks", detail: "Checks passed. Merging into production." };
   }
-  const runs = deploys || [];
+  const runs = (deploys || []).filter((run) => DEPLOY_NAMES.includes(run.name) && String(run.conclusion || "").toUpperCase() !== "SKIPPED");
   const broken = runs.filter((run) => ["FAILURE", "CANCELLED", "TIMED_OUT"].includes(String(run.conclusion || "").toUpperCase()));
   if (broken.length) return { phase: "failed", detail: broken.map((run) => `${run.name} ${String(run.conclusion).toLowerCase()}`).join(", ") + "." };
-  const finished = DEPLOY_NAMES.every((name) => runs.some((run) => run.name === name && String(run.conclusion).toUpperCase() === "SUCCESS"));
-  if (finished) return { phase: "live", detail: "Live on uniqenergy.com." };
   if (runs.some((run) => String(run.status).toUpperCase() !== "COMPLETED")) return { phase: "deploying", detail: "Deploying to production." };
+  if (runs.length && runs.every((run) => String(run.conclusion).toUpperCase() === "SUCCESS")) return { phase: "live", detail: "Live on uniqenergy.com." };
   return { phase: "merged", detail: "Merged. Waiting for the production deploy." };
 }
 
-/** A GitHub token if one is available. Prefers a Builder-specific secret, then the usual env names. Empty when none is set. */
+/** True when the latest pull request is merged or closed, so the next message needs a new branch. */
+export function pullRequestSettled(pr) {
+  if (!pr || typeof pr !== "object") return false;
+  if (pr.merged === true) return true;
+  return String(pr.state || "").toLowerCase() === "closed";
+}
+
+/** Ship cache used only when GitHub cannot be read. An open pull request with failing checks stays a follow-up. */
+export function shipMeansSettled(ship) {
+  const phase = ship?.phase;
+  if (phase === "merged" || phase === "deploying" || phase === "live") return true;
+  if (ship?.detail === "No changes.") return true;
+  if (phase === "failed" && /closed without merging/i.test(ship.detail || "")) return true;
+  if (phase === "failed" && /Production: Firebase/i.test(ship.detail || "")) return true;
+  return false;
+}
+
+/** A GitHub token if one is available. Prefers the optional BUILDER_GITHUB_TOKEN, then the usual env names. Empty when none is set. Never throws. */
 export function githubAuthToken(env = globalThis.process?.env ?? {}) {
-  const value = env.BUILDER_GITHUB_TOKEN || env.GITHUB_TOKEN || env.GH_TOKEN;
+  const value = env?.BUILDER_GITHUB_TOKEN || env?.GITHUB_TOKEN || env?.GH_TOKEN;
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
@@ -588,7 +652,8 @@ export async function githubGet(url, etag, fetchImpl = globalThis.fetch, env = g
 
 function slimPr(data) {
   const labels = (data.labels || []).map((label) => label.name || label);
-  return { merged: data.merged === true, state: data.state === "closed" ? "closed" : "open", sha: data.head?.sha || null, mergeSha: data.merge_commit_sha || null, labeled: labels.includes("builder-auto-deploy") };
+  const empty = data.changed_files === 0 || (data.additions === 0 && data.deletions === 0 && data.changed_files == null);
+  return { merged: data.merged === true, state: data.state === "closed" ? "closed" : "open", sha: data.head?.sha || null, mergeSha: data.merge_commit_sha || null, labeled: labels.includes("builder-auto-deploy"), empty };
 }
 function slimChecks(data) {
   return (data.check_runs || []).map((check) => ({ name: check.name, status: check.status, conclusion: check.conclusion }));
@@ -607,15 +672,23 @@ export async function loadShip(prUrl, previous, fetchImpl, env = globalThis.proc
   const prRes = await githubGet(`${base}/pulls/${number}`, etags.pr, fetchImpl, env);
   if (prRes.limited) return { limited: true };
   if (prRes.error) return { error: prRes.error };
-  const pr = prRes.notModified ? previous.pr : slimPr(prRes.data);
+  let pr = prRes.notModified ? previous.pr : slimPr(prRes.data);
   const sha = pr.merged && pr.mergeSha ? pr.mergeSha : pr.sha;
-  if (!sha) return { ship: { phase: "pr", detail: "Pull request opened." }, cache: { etags: { pr: prRes.etag }, pr, checks: [], deploys: [] } };
+  if (!sha) return { ship: shipFromGitHub({ pr, checks: [], deploys: [] }) || { phase: "pr", detail: "Pull request opened." }, cache: { etags: { pr: prRes.etag }, pr, checks: [], deploys: [] } };
+  const nextEtags = { pr: prRes.etag || etags.pr };
+  if (pr.merged && pr.mergeSha) {
+    const commitRes = await githubGet(`${base}/commits/${pr.mergeSha}`, previous?.sha === sha ? etags.commit : null, fetchImpl, env);
+    if (commitRes.limited) return { limited: true };
+    nextEtags.commit = commitRes.etag || null;
+    const empty = commitRes.notModified ? previous?.pr?.empty === true : commitRes.data ? commitEmpty(commitRes.data) : false;
+    if (empty) pr = { ...pr, empty: true };
+  }
   const checksUrl = `${base}/commits/${sha}/check-runs?per_page=100`;
   const checksRes = await githubGet(checksUrl, previous?.sha === sha ? etags.checks : null, fetchImpl, env);
   if (checksRes.limited) return { limited: true };
   const checks = checksRes.notModified ? previous.checks : checksRes.data ? slimChecks(checksRes.data) : [];
   const deploys = [];
-  const nextEtags = { pr: prRes.etag || etags.pr, checks: checksRes.etag || null };
+  nextEtags.checks = checksRes.etag || null;
   if (pr.merged) {
     for (const [file, name] of [["firebase-hosting-merge.yml", "Production: Firebase Hosting"], ["firebase-functions-merge.yml", "Production: Firebase Functions"], ["firebase-rules-merge.yml", "Production: Firebase Rules"]]) {
       const key = file;
@@ -626,6 +699,25 @@ export async function loadShip(prUrl, previous, fetchImpl, env = globalThis.proc
     }
   }
   return { ship: shipFromGitHub({ pr, checks, deploys }), cache: { etags: nextEtags, pr, checks, deploys, sha } };
+}
+
+/** The GitHub state of the chat's pull request, or null when GitHub cannot be read. */
+export async function lookupPullRequest(prUrl, fetchImpl = globalThis.fetch, env = globalThis.process?.env ?? {}) {
+  const number = pullNumber(prUrl);
+  if (!number) return null;
+  const res = await githubGet(`https://api.github.com/repos/rambodc/uniq/pulls/${number}`, null, fetchImpl, env);
+  if (!res?.data) return null;
+  return slimPr(res.data);
+}
+
+/** A follow-up stays on the open pull request. A merged or closed one starts a new agent from production. */
+export async function needsFreshAgent(record, fetchImpl = globalThis.fetch, env = globalThis.process?.env ?? {}) {
+  if (!record?.agentId || !record.prUrl) return false;
+  try {
+    const pr = await lookupPullRequest(record.prUrl, fetchImpl, env);
+    if (pr) return pullRequestSettled(pr);
+  } catch { /* the saved ship is the fallback */ }
+  return shipMeansSettled(record.ship);
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;

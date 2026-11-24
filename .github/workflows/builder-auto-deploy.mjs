@@ -1,7 +1,9 @@
 // Decides which pull requests Builder may merge, and performs that merge when executed on the runner.
 // A pull request qualifies only when it targets production from this repository, is not a draft,
 // carries the label builder-auto-deploy, and its body has the exact line "Builder-Auto-Deploy: yes".
-// The job polls the current head until checks finish. A GITHUB_TOKEN merge does not start push
+// An empty diff against production, or a head commit that already belongs to a merged pull request, is skipped.
+// The job waits until checks finish and the Cursor agent is idle. Without a Cursor key, the head commit
+// must be at least two minutes old and unchanged on a re-check. A GITHUB_TOKEN merge does not start push
 // workflows, so the three production deploys are started with workflow_dispatch.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -9,10 +11,13 @@ import { readFileSync } from "node:fs";
 export const MARKER = "Builder-Auto-Deploy: yes";
 export const LABEL = "builder-auto-deploy";
 export const WAIT_MS = 20 * 60 * 1000;
+export const HEAD_SETTLE_MS = 2 * 60 * 1000;
 const INTERVAL_MS = 20 * 1000;
 const DEPLOYS = ["firebase-hosting-merge.yml", "firebase-functions-merge.yml", "firebase-rules-merge.yml"];
 const DONE = new Set(["SUCCESS", "SKIPPED", "NEUTRAL"]);
 const PENDING = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED", ""]);
+const ACTIVE_RUN = new Set(["CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK", "ACTIVE"]);
+const API = "https://api.cursor.com";
 
 export function builderPullRequest(pr) {
   const labels = (pr.labels || []).map((label) => label.name || label);
@@ -48,6 +53,70 @@ export function failureNote(names) {
   return `Checks failed: ${names.join(", ")}. Left this pull request open.`;
 }
 
+export function emptyNote() {
+  return "No file changes against production. Left this pull request open.";
+}
+
+export function staleNote() {
+  return "This head commit is already in a merged pull request. Left this pull request open.";
+}
+
+/** True when the compare against production has no file changes. Missing data is not empty. */
+export function diffEmpty(compare) {
+  if (!compare || typeof compare !== "object") return false;
+  if (String(compare.status || "").toLowerCase() === "identical") return true;
+  if (typeof compare.files === "number") return compare.files === 0;
+  if (Array.isArray(compare.files)) return compare.files.length === 0;
+  return false;
+}
+
+/** True when this commit is already on a merged pull request other than the one we are looking at. */
+export function headAlreadyMerged(pulls, number) {
+  return (Array.isArray(pulls) ? pulls : []).some((pr) => Number(pr.number) !== Number(number) && (pr.merged_at || pr.merged === true));
+}
+
+/** The Cursor agent id Cursor writes into the pull request body, or null. */
+export function agentIdFromText(text) {
+  const match = /(?:cursor\.com\/agents\/|bcId=)(bc-[A-Za-z0-9-]{8,80})/.exec(String(text || ""));
+  return match ? match[1] : null;
+}
+
+export function runIsActive(status) {
+  return ACTIVE_RUN.has(String(status || "").toUpperCase());
+}
+
+/** Prefer the run. An agent status is enough when the run was not returned. Unknown when both are missing. */
+export function activityFrom({ agentStatus, runStatus } = {}) {
+  if (runStatus) return { known: true, active: runIsActive(runStatus) };
+  if (agentStatus) return { known: true, active: runIsActive(agentStatus) };
+  return { known: false, active: false };
+}
+
+export function headIsSettled(committedAt, now, minMs = HEAD_SETTLE_MS) {
+  const at = Date.parse(committedAt || "");
+  return Number.isFinite(at) && now - at >= minMs;
+}
+
+/**
+ * empty and stale skip immediately. A known active Cursor run waits.
+ * Without a Cursor result, the head commit must be two minutes old, and the same sha must be seen again.
+ */
+export function mergeDecision(snap, { waitedMs = 0, waitMs = WAIT_MS, now = 0, seenSha = "" } = {}) {
+  if (!snap?.qualifies) return "skip";
+  if (snap.empty) return "empty";
+  if (snap.alreadyMerged) return "stale";
+  const checks = snap.checks || { ready: false, failed: [] };
+  if (checks.failed?.length) return "fail";
+  const expired = waitedMs >= waitMs;
+  if (!checks.ready) return expired ? "timeout" : "wait";
+  const headMoved = Boolean(seenSha && snap.sha && snap.sha !== seenSha);
+  if (snap.agentKnown) return snap.agentActive || headMoved ? (expired ? "timeout" : "wait") : "merge";
+  const settled = headIsSettled(snap.committedAt, now);
+  const seenBefore = Boolean(snap.sha && snap.sha === seenSha);
+  if (headMoved || !settled || !seenBefore) return expired ? "timeout" : "wait";
+  return "merge";
+}
+
 export function candidateNumbers(event, env = process.env) {
   const numbers = [];
   const add = (value) => {
@@ -78,18 +147,122 @@ export async function waitForChecks(load, { waitMs = WAIT_MS, intervalMs = INTER
   }
 }
 
+/** Polls until the pull request may merge, must be skipped, or the wait is over. `load` returns one snapshot. */
+export async function waitUntilMerge(load, { waitMs = WAIT_MS, intervalMs = INTERVAL_MS, sleep = delay, now = Date.now } = {}) {
+  const start = now();
+  let seenSha = "";
+  for (;;) {
+    const snap = await load();
+    const decision = mergeDecision(snap, { waitedMs: now() - start, waitMs, now: now(), seenSha });
+    if (snap?.sha) seenSha = snap.sha;
+    if (decision !== "wait") return { decision, snap };
+    await sleep(intervalMs);
+  }
+}
+
+function listedAgents(payload) {
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.agents)) return payload.agents;
+  return [];
+}
+
+/** The agent for this pull request, from a prUrl filter, an id, or a branch name on a v0 list. */
+export function agentMatching(payload, { prUrl, branch, agentId, filtered = false } = {}) {
+  const items = listedAgents(payload);
+  if (agentId) {
+    const found = items.find((item) => item?.id === agentId);
+    if (found) return found;
+  }
+  if (prUrl) {
+    const found = items.find((item) => item?.target?.prUrl === prUrl);
+    if (found) return found;
+  }
+  if (branch) {
+    const found = items.find((item) => item?.target?.branchName === branch);
+    if (found) return found;
+  }
+  return filtered ? items[0] || null : null;
+}
+
+/** Cursor run activity for this pull request. Unknown when the key is missing or Cursor cannot be read. */
+export async function readCursorActivity(apiKey, { prUrl, branch, body }, fetchImpl = globalThis.fetch) {
+  if (!apiKey) return { known: false, active: false };
+  const headers = { Authorization: `Basic ${globalThis.Buffer.from(`${apiKey}:`).toString("base64")}`, Accept: "application/json" };
+  const agentId = agentIdFromText(body);
+  async function getJson(url) {
+    const response = await fetchImpl(url, { headers });
+    if (!response?.ok) return null;
+    return response.json();
+  }
+  try {
+    let agent = null;
+    if (agentId) agent = await getJson(`${API}/v1/agents/${encodeURIComponent(agentId)}`);
+    if (!agent?.id && prUrl) {
+      const listed = await getJson(`${API}/v1/agents?limit=20&prUrl=${encodeURIComponent(prUrl)}`);
+      agent = agentMatching(listed, { prUrl, filtered: true });
+    }
+    if (!agent?.id && branch) {
+      const listed = await getJson(`${API}/v0/agents?limit=100`);
+      agent = agentMatching(listed, { prUrl, branch, agentId });
+    }
+    if (!agent?.id) return { known: false, active: false };
+    if (agent.latestRunId) {
+      const run = await getJson(`${API}/v1/agents/${encodeURIComponent(agent.id)}/runs/${encodeURIComponent(agent.latestRunId)}`);
+      if (run?.status) return activityFrom({ agentStatus: agent.status, runStatus: run.status });
+    }
+    return activityFrom({ agentStatus: agent.status });
+  } catch {
+    return { known: false, active: false };
+  }
+}
+
 function gh(args) {
   return execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
+function ghJson(args) {
+  try {
+    return JSON.parse(gh(args));
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || error).replace(/\s+/g, " ").trim().slice(0, 240);
+    if (detail) console.log(detail);
+    return null;
+  }
+}
+
 function view(number) {
-  return JSON.parse(gh(["pr", "view", String(number), "--repo", "rambodc/uniq", "--json", "number,baseRefName,headRepository,headRepositoryOwner,isDraft,state,labels,body,statusCheckRollup"]));
+  return JSON.parse(gh(["pr", "view", String(number), "--repo", "rambodc/uniq", "--json", "number,baseRefName,headRefName,headRefOid,headRepository,headRepositoryOwner,isDraft,state,labels,body,statusCheckRollup"]));
 }
 
 function commentOnce(number, body) {
   const comments = JSON.parse(gh(["api", `repos/rambodc/uniq/issues/${number}/comments?per_page=100`]));
   if (comments.some((comment) => comment.body === body)) return;
   gh(["pr", "comment", String(number), "--repo", "rambodc/uniq", "--body", body]);
+}
+
+async function snapshot(number) {
+  const pr = view(number);
+  const sha = /^[0-9a-f]{7,64}$/i.test(pr.headRefOid || "") ? pr.headRefOid : "";
+  const qualifies = builderPullRequest(pr);
+  if (!qualifies || !sha) return { qualifies, checks: checksReady(pr.statusCheckRollup), empty: false, alreadyMerged: false, agentKnown: false, agentActive: false, committedAt: "", sha };
+  const compare = ghJson(["api", `repos/rambodc/uniq/compare/production...${sha}`, "--jq", "{status:.status,files:(.files//[]|length)}"]);
+  const pulls = ghJson(["api", `repos/rambodc/uniq/commits/${sha}/pulls`, "-H", "Accept: application/vnd.github+json"]);
+  const commit = ghJson(["api", `repos/rambodc/uniq/commits/${sha}`, "--jq", "{date:(.commit.committer.date // .commit.author.date)}"]);
+  const cursor = await readCursorActivity(process.env.CURSOR_API_KEY || "", {
+    prUrl: `https://github.com/rambodc/uniq/pull/${number}`,
+    branch: pr.headRefName || "",
+    body: pr.body || "",
+  });
+  return {
+    qualifies,
+    checks: checksReady(pr.statusCheckRollup),
+    empty: diffEmpty(compare),
+    alreadyMerged: headAlreadyMerged(pulls, number),
+    agentKnown: cursor.known,
+    agentActive: cursor.active,
+    committedAt: commit?.date || "",
+    sha,
+  };
 }
 
 export async function run() {
@@ -104,19 +277,34 @@ export async function run() {
   for (const number of numbers) {
     const pr = view(number);
     if (!builderPullRequest(pr)) { console.log(`PR ${number} is not a Builder auto-deploy pull request.`); continue; }
-    const result = await waitForChecks(() => view(number).statusCheckRollup, { waitMs });
+    const result = await waitUntilMerge(() => snapshot(number), { waitMs });
+    if (result.decision === "empty") {
+      console.log(`PR ${number}: ${emptyNote()}`);
+      commentOnce(number, emptyNote());
+      continue;
+    }
+    if (result.decision === "stale") {
+      console.log(`PR ${number}: ${staleNote()}`);
+      commentOnce(number, staleNote());
+      continue;
+    }
     if (result.decision === "fail") {
-      const note = failureNote(result.checks.failed);
+      const note = failureNote(result.snap.checks.failed);
       console.log(`PR ${number}: ${note}`);
       commentOnce(number, note);
       continue;
     }
-    if (result.decision !== "merge") { console.log(`PR ${number} checks did not finish within 20 minutes.`); continue; }
-    const again = view(number);
-    if (!builderPullRequest(again) || !checksReady(again.statusCheckRollup).ready) { console.log(`PR ${number} changed before merge.`); continue; }
-    console.log(`Squash-merging PR ${number}.`);
+    if (result.decision !== "merge") { console.log(`PR ${number} is not ready to merge (${result.decision}).`); continue; }
+    const again = await snapshot(number);
+    const head = again.sha;
+    if (!again.qualifies || again.empty || again.alreadyMerged || !again.checks.ready || again.sha !== result.snap.sha || !head) {
+      console.log(`PR ${number} changed before merge.`);
+      continue;
+    }
+    if (again.agentKnown && again.agentActive) { console.log(`PR ${number} Cursor agent is still running.`); continue; }
+    console.log(`Squash-merging PR ${number} at ${head}.`);
     try {
-      gh(["pr", "merge", String(number), "--repo", "rambodc/uniq", "--squash"]);
+      gh(["pr", "merge", String(number), "--repo", "rambodc/uniq", "--squash", "--match-head-commit", head, "--delete-branch"]);
     } catch (error) {
       if (String(view(number).state).toUpperCase() === "OPEN") throw error;
       console.log(`PR ${number} is no longer open.`);

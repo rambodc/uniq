@@ -17,7 +17,9 @@ When a pull request changes a mini app, update `docs/mini-apps/<id>.md` in that 
 - Never deploy Firebase Hosting, Functions, Firestore rules, indexes, or Storage directly from a local shell.
 - Do not run `npm run deploy`, `firebase deploy`, or any equivalent local production command.
 - Publish production changes by committing the intended files and pushing the `production` branch. The matching GitHub Actions workflow is the only authorized deployment path.
-- Production is the default target. Do not open PRs or create preview/test deployments unless the user explicitly requests them, or the task is from the Builder mini app (see below).
+- `production` is the default branch and the only permanent branch. Do not recreate `main` or open a pull request into any other long-lived branch.
+- Every change uses a short-lived branch and a pull request into `production`. The branch is deleted when the pull request merges.
+- Do not open pull requests or create preview/test deployments unless the user explicitly requests them, or the task is from the Builder mini app (see below).
 - Run focused checks once and repeat only for relevant changes or failures. Run paid AI checks only when AI behavior changes. Deploy only affected components; coordinate dependent backend/rules changes before Hosting.
 - After publishing, monitor the relevant GitHub Actions run and report its final result and URL.
 
@@ -25,9 +27,11 @@ Pull requests run `.github/workflows/firebase-hosting-pull-request.yml` (PR: Fir
 
 ## Builder exception
 
-A task from the Builder mini app includes the line `Builder-Auto-Deploy: yes`. For that task only, open a pull request into `production`, put that line in the pull request body, add the label `builder-auto-deploy`, and fix checks until they are green. A green pull request with that label and that line squash-merges into `production` and the production workflows deploy it. Do not merge it yourself. Do not deploy. Do not read or change secrets or IAM. Any other pull request stops when it is open.
+A task from the Builder mini app includes the line `Builder-Auto-Deploy: yes`. For that task only, open a pull request into `production`, put that line in the pull request body, add the label `builder-auto-deploy`, and fix checks until they are green. A green pull request with that label and that line squash-merges into `production` and the production workflows deploy it. The merge matches the current head commit and deletes the branch. The workflow skips a pull request with no file changes against `production`, and a pull request whose head commit is already in a merged pull request. It does not merge while that pull request's Cursor agent run is still active. Do not merge it yourself. Do not deploy. Do not read or change secrets or IAM. Any other pull request stops when it is open.
 
-`.github/workflows/builder-auto-deploy.yml` is the workflow that squash-merges that pull request and starts the three production workflows.
+`.github/workflows/builder-auto-deploy.yml` is the workflow that squash-merges that pull request, deletes its branch, and starts the three production workflows.
+
+Do not make a screenshot, a mockup, or a visual preview a required step. Only make a screenshot when the person explicitly asks for one. A plan and an approval still come before code, unless they already said to build it.
 
 ## Mini apps
 

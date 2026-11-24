@@ -39,6 +39,10 @@ describe("Builder chat", () => {
     expect(failed).toContain("frontend failed.");
     expect(failed).toContain("Ask Builder to fix");
     expect(pillOf("running", null).label).toBe("Running");
+    expect(pillOf("finished", { phase: "merged", detail: "No changes." }).label).toBe("No changes");
+    const empty = html(<ChatColumn now={Date.parse("2026-11-22T18:04:00.000Z")} conversation={conversation({ status: "finished", ship: { phase: "merged", detail: "No changes." } })} />);
+    expect(empty).toContain("No changes");
+    expect(empty).toContain("The merge did not change production.");
     expect(startFailureNote("Cursor could not complete that request. (Unknown model)", "error", null)).toContain("Send a message to start this build.");
     expect(startFailureNote("Cursor refused this request.", "error", "https://cursor.com/agents/bc-1")).toBe("Cursor refused this request.");
   });
@@ -47,6 +51,7 @@ describe("Builder chat", () => {
     expect(pollDelay("running", null, "2026-11-22T18:09:50.000Z", now)).toBe(1500);
     expect(pollDelay("running", null, "2026-11-22T18:00:00.000Z", now)).toBe(5000);
     expect(pollDelay("finished", "https://github.com/rambodc/uniq/pull/12", "2026-11-22T18:00:00.000Z", now, true, "live")).toBe(IDLE_POLL_MS);
+    expect(pollDelay("finished", "https://github.com/rambodc/uniq/pull/12", "2026-11-22T18:00:00.000Z", now, true, "merged", "No changes.")).toBe(IDLE_POLL_MS);
     expect(IDLE_POLL_MS).toBeGreaterThanOrEqual(30_000);
     expect(IDLE_POLL_MS).toBeLessThanOrEqual(45_000);
     expect(pollEvery(IDLE_POLL_MS, true)).toBe(0);
