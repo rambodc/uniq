@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Mail } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { listContactInquiries, messageOf, type Inquiry } from "../core/api";
 import { previewInquiries } from "../auth/preview";
+import { AppIcon } from "../auth/AppIcon";
 import { PageShell } from "../auth/Shell";
 import { formatInquiryDate, inboxRows, inquiryLabel, messagePath, previewText, rememberInboxScroll, restoreInboxScroll } from "./inbox";
 
@@ -65,10 +67,13 @@ export default function ContactInbox() {
       {shown.length === 0 ? <p className="portal-empty">No messages found.</p> : <ul className="mail-list">
         {shown.map((item) => <li key={item.id}>
           <Link className="mail-row" to={messagePath(item.id, archived, query)} onClick={rememberInboxScroll}>
-            <span className="mail-row-top"><strong>{item.name}</strong><time dateTime={item.createdAt ?? undefined}>{formatInquiryDate(item.createdAt)}</time></span>
-            <span className="mail-meta">{[item.email || item.phone, item.company].filter(Boolean).join(" · ")}</span>
-            <span className="mail-badge">{inquiryLabel(item.inquiryType)}{item.productName ? ` · ${item.productName}` : ""}</span>
-            <span className="mail-preview">{previewText(item.message)}</span>
+            <AppIcon icon={Mail} />
+            <span className="mail-row-body">
+              <span className="mail-row-top"><strong>{item.name}</strong><time dateTime={item.createdAt ?? undefined}>{formatInquiryDate(item.createdAt)}</time></span>
+              <span className="mail-meta">{[item.email || item.phone, item.company].filter(Boolean).join(" · ")}</span>
+              <span className="mail-badge">{inquiryLabel(item.inquiryType)}{item.productName ? ` · ${item.productName}` : ""}</span>
+              <span className="mail-preview">{previewText(item.message)}</span>
+            </span>
           </Link>
         </li>)}
       </ul>}
