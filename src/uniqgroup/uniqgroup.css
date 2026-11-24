@@ -1,5 +1,5 @@
-html.ug-fullscreen,html.ug-fullscreen body{overflow:hidden;background:#000203}
-.ug-page{position:fixed;inset:0;z-index:50;overflow:hidden;background:radial-gradient(ellipse at 50% 47%,#0b2419 0%,#06130e 30%,#020707 62%,#000203 100%)}
+html.ug-fullscreen,html.ug-fullscreen body{overflow:hidden;background:#000}
+.ug-page{position:fixed;inset:0;z-index:50;overflow:hidden;background:#000}
 .ug-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity 1.2s ease}
 .ug-canvas.is-ready{opacity:1}
 .ug-still{position:absolute;left:50%;top:47%;width:min(43%,392px);transform:translate(-50%,-50%)}

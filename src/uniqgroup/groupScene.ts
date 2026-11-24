@@ -6,7 +6,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 /**
  * The UniqGroup Logo scene: the real UniqEnergy mark in the centre, the four group companies orbiting it on a
- * tilted Saturn-style ring, inside a deep-space backdrop (nebula haze, faint distant stars, light rays, thin rings with four electrons).
+ * tilted Saturn-style ring, on a solid black backdrop (light rays behind the mark, faint distant stars on desktop, thin rings with four electrons).
  *
  * The centre mark is the official artwork file itself, on a plane that always faces the camera, drawn in a
  * second pass with no tone mapping, lighting, tint or colour conversion, so its pixels are the file's pixels.
@@ -46,25 +46,6 @@ const softDot = (inner: string, mid: string) => canvasTex(128, (g) => {
   const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   r.addColorStop(0, inner); r.addColorStop(0.25, mid); r.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
 });
-const backdrop = () => canvasTex(1024, (g) => {
-  const r = g.createRadialGradient(512, 480, 0, 512, 512, 760);
-  r.addColorStop(0, "#0a2017"); r.addColorStop(0.28, "#05110c"); r.addColorStop(0.6, "#010505"); r.addColorStop(1, "#000102");
-  g.fillStyle = r; g.fillRect(0, 0, 1024, 1024);
-});
-function cloud(seed: number) {
-  let s = seed; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  return canvasTex(512, (g) => {
-    for (let i = 0; i < 90; i++) {
-      const a = rnd() * Math.PI * 2, d = Math.pow(rnd(), 0.7) * 170, x = 256 + Math.cos(a) * d, y = 256 + Math.sin(a) * d * 0.62, rad = 30 + rnd() * 110;
-      const r = g.createRadialGradient(x, y, 0, x, y, rad); const al = 0.04 + rnd() * 0.09;
-      r.addColorStop(0, `rgba(255,255,255,${al})`); r.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = r; g.fillRect(0, 0, 512, 512);
-    }
-    // fade the square's edges so the sprite never shows a border
-    g.globalCompositeOperation = "destination-in";
-    const m = g.createRadialGradient(256, 256, 120, 256, 256, 256); m.addColorStop(0, "rgba(0,0,0,1)"); m.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = m; g.fillRect(0, 0, 512, 512);
-  });
-}
 function rays(seed: number, count: number) {
   let s = seed; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   return canvasTex(1024, (g) => {
@@ -142,9 +123,9 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
   const shader = (m: THREE.ShaderMaterial) => { timed.push(keep(m)); return m; };
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 300);
 
-  // ================= pass 1: deep-space backdrop, haze, light (bloomed, tone mapped) =================
+  // ================= pass 1: black backdrop and the light behind the mark (bloomed, tone mapped) =================
   const back = new THREE.Scene();
-  back.background = keep(backdrop());
+  back.background = new THREE.Color(0x000000);
 
   // starfield: one distant shell. Hidden on mobile — WebGL points read as grainy speckles on high-DPR phones.
   const starLayers = [[120, 420, 0.16, 0.003]].map(([dist, n, size, spin]) => {
@@ -159,18 +140,6 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     g.setAttribute("aSize", new THREE.BufferAttribute(sz, 1)); g.setAttribute("aPhase", new THREE.BufferAttribute(ph, 1)); g.setAttribute("aRate", new THREE.BufferAttribute(rate, 1));
     const pts = new THREE.Points(g, shader(twinkleMat(0.45, 2))); back.add(pts);
     return { pts, spin };
-  });
-
-  // nebula haze: soft green/teal clouds far behind, drifting very slowly
-  const clouds = [
-    { seed: 3, color: 0x1fbf6a, x: -13, y: 6, z: -32, s: 34, o: 0.05, spin: 0.004 },
-    { seed: 9, color: 0x17a3a0, x: 14, y: -4, z: -34, s: 40, o: 0.06, spin: -0.003 },
-    { seed: 21, color: 0x2ee07a, x: 3, y: 9, z: -40, s: 44, o: 0.02, spin: 0.002 },
-    { seed: 33, color: 0x0f8f6a, x: -6, y: -9, z: -26, s: 30, o: 0.05, spin: -0.005 },
-    { seed: 47, color: 0x3dffa0, x: 0, y: -1.6, z: -8, s: 17, o: 0.035, spin: 0.006 }, // faint mist close behind the ring
-  ].map((c) => {
-    const sp = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(cloud(c.seed)), color: c.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: c.o })));
-    sp.position.set(c.x, c.y, c.z); sp.scale.set(c.s, c.s * 0.7, 1); back.add(sp); return { sp, spin: c.spin, x: c.x, y: c.y };
   });
 
   // light behind the mark: wide halo, bright core, two counter-rotating ray fans
@@ -278,7 +247,7 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     renderer.setSize(w, h, false); composer.setSize(w, h);
     camera.aspect = w / h;
     const portrait = camera.aspect < 0.8;
-    // Phones, tablets, and narrow windows: hide the star points so the backdrop stays a smooth gradient.
+    // Phones, tablets, and narrow windows: hide the star points so they do not read as grain on a black backdrop.
     const mobile = w <= 900 || (window.matchMedia("(pointer: coarse)").matches && Math.max(w, h) <= 1366);
     for (const l of starLayers) l.pts.visible = !mobile;
     ringK = portrait ? 0.8 : 1; logoK = portrait ? 0.82 : 1; heroK = (portrait ? 0.98 : 1) * HERO_SCALE; tiltBase = portrait ? -62 : -69;
@@ -335,7 +304,6 @@ export function createGroupScene(canvas: HTMLCanvasElement, onFirstFrame?: () =>
     }
     for (const m of timed) m.uniforms.uTime.value = t;
     for (const l of starLayers) l.pts.rotation.y = t * l.spin;
-    for (const c of clouds) { c.sp.material.rotation = t * c.spin; c.sp.position.x = c.x + Math.sin(t * 0.02 + c.y) * 0.8; }
     rayA.material.rotation = t * 0.012; rayB.material.rotation = -t * 0.018;
     const breathe = 0.5 + 0.5 * Math.sin(t * 0.35);
     core.material.opacity = 0.42 + 0.1 * breathe; rayA.material.opacity = 0.075 + 0.03 * breathe;
