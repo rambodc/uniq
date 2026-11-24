@@ -41,12 +41,27 @@ test("every Cursor prompt starts with the standing instructions and then the req
   assert.doesNotMatch(prompt, /Cursor's question tool/);
   assert.doesNotMatch(prompt, /git fetch/);
   assert.match(prompt, /Live route: \/path/);
-  assert.match(prompt, /docs\/APP_GUIDE\.md/);
+  assert.match(prompt, /Read AGENTS\.md first\. Only open code when that guide is not enough\./);
+  assert.doesNotMatch(prompt, /docs\/mini-apps\/wells\.md/);
+  assert.match(prompt, /update its docs\/mini-apps\/<id>\.md/);
+  assert.match(prompt, /update the list in AGENTS\.md/);
   assert.match(prompt, /fully blocked/);
   assert.match(prompt, /:::builder-admin-help/);
   assert.ok(prompt.indexOf(":::builder-admin-help") < prompt.indexOf("The request:"));
   assert.ok(prompt.endsWith(ask));
   assert.equal(promptFor(ask).split(ask).length, 2, "the request is included once");
+});
+
+test("the first prompt names the mini-app docs to read, and a new mini app creates one", () => {
+  const wells = promptFor("Mini app: Wells\n\nShow the spud date.");
+  assert.match(wells, /Read AGENTS\.md and docs\/mini-apps\/wells\.md first\. Only open code when those docs are not enough\./);
+  assert.ok(wells.endsWith("Mini app: Wells\n\nShow the spud date."));
+  const both = promptFor("Mini app: Wells, Inventory Bot");
+  assert.match(both, /Read AGENTS\.md and docs\/mini-apps\/inventoryBot\.md and docs\/mini-apps\/wells\.md first/);
+  const created = promptFor("Mini app: New mini app");
+  assert.match(created, /Read AGENTS\.md first\. This is a new mini app: create docs\/mini-apps\/<id>\.md/);
+  assert.match(created, /add that app to the list in AGENTS\.md/);
+  assert.doesNotMatch(created, /docs\/mini-apps\/[a-z]+\.md/);
 });
 
 test("a new agent is limited to this repo, branches from production, and opens a pull request", () => {
@@ -196,6 +211,8 @@ test("a follow-up steers with only prompt and delivery, and an idle follow-up st
   assert.match(followPrompt(ask), /builder-auto-deploy/);
   assert.match(followPrompt(ask), /Do not merge or push to production yourself/);
   assert.match(followPrompt(ask), /Do not read or change secrets or IAM/);
+  assert.match(followPrompt(ask), /update its docs\/mini-apps\/<id>\.md/);
+  assert.match(followPrompt(ask), /update the list in AGENTS\.md/);
   assert.equal(followPrompt(ask).includes("PLAN:"), false);
   assert.doesNotMatch(followPrompt(ask), /Cursor's question tool/);
   assert.match(read("../builder-functions.js"), /warmBuilderCall = \{ \.\.\.builderCall, minInstances: 1 \}/);

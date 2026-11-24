@@ -1,6 +1,16 @@
 # Repository operating rules
 
-Read [docs/APP_GUIDE.md](docs/APP_GUIDE.md) first. It is the map of the site: UniqEnergy, routes, every mini app, Firestore shapes, auth, deploy, and what you cannot do. When you change the app's structure (routes, mini apps, collections, functions, auth, or deploy), update that guide in the same pull request.
+Short map for this repo. Read the matching page in [docs/mini-apps/](docs/mini-apps/) before opening code. Public site, email, and blocked actions stay in [docs/APP_GUIDE.md](docs/APP_GUIDE.md).
+
+When a pull request changes a mini app, update `docs/mini-apps/<id>.md` in that pull request. When a mini app is added, renamed, or removed, update the list below. Update `docs/APP_GUIDE.md` when the public site, email, auth, or deploy behavior changes.
+
+## App rules
+
+- This is the UniqEnergy portal (uniqenergy.com, Firebase project `uniqenergy-de71c`). Keep the theme and branding that already exist: tokens in `src/auth/portal.css`, chrome in `src/auth/Shell.tsx`, and the light/dark switch in `src/auth/Theme.tsx`. The stored choice is `localStorage` key `uniqenergy-portal-theme`. A tile's colour is that mini app's `accent` in `functions/miniApps.js`. Marks and logos live under `public/brand/`. Do not change them unless the request asks.
+- On viewports up to 800px, inputs, textareas, and selects are 16px (`src/styles.css`) so phones do not zoom.
+- One top-level Firestore collection per mini app that stores data: `contactInquiries`, `inventoryBot`, `wellsApp`, `users` (User Access and Profile share it), `builder`. UniqGroup Logo stores nothing. Subcollections stay under that one collection. The browser does not write Firestore.
+- No legacy code. When you replace something, delete the old code in the same change.
+- `functions/miniApps.js` is the only mini-app registry. The browser imports it; `src/auth/miniApps.ts` only adds icons. To add a mini app: add the entry, guard its callables with `requireMiniApp`, add its routes in `src/App.tsx`, add a noindex header in `firebase.json`, add a new icon in `src/auth/miniApps.ts`, and add `docs/mini-apps/<id>.md` plus a line in the list below.
 
 ## Deployment
 
@@ -11,6 +21,22 @@ Read [docs/APP_GUIDE.md](docs/APP_GUIDE.md) first. It is the map of the site: Un
 - Run focused checks once and repeat only for relevant changes or failures. Run paid AI checks only when AI behavior changes. Deploy only affected components; coordinate dependent backend/rules changes before Hosting.
 - After publishing, monitor the relevant GitHub Actions run and report its final result and URL.
 
+Pull requests run `.github/workflows/firebase-hosting-pull-request.yml` (PR: Firebase Hosting), `firebase-functions-pull-request.yml` (PR: Firebase Functions), and `firebase-rules-pull-request.yml` (PR: Firebase Rules), each on its own path filter. A push to `production` runs `firebase-hosting-merge.yml` (Production: Firebase Hosting), `firebase-functions-merge.yml` (Production: Firebase Functions), and `firebase-rules-merge.yml` (Production: Firebase Rules). Those three production workflows also run on `workflow_dispatch`.
+
 ## Builder exception
 
 A task from the Builder mini app includes the line `Builder-Auto-Deploy: yes`. For that task only, open a pull request into `production`, put that line in the pull request body, add the label `builder-auto-deploy`, and fix checks until they are green. A green pull request with that label and that line squash-merges into `production` and the production workflows deploy it. Do not merge it yourself. Do not deploy. Do not read or change secrets or IAM. Any other pull request stops when it is open.
+
+`.github/workflows/builder-auto-deploy.yml` is the workflow that squash-merges that pull request and starts the three production workflows.
+
+## Mini apps
+
+Order and ids are `functions/miniApps.js`. One line each; the page has the screens, data, and files.
+
+- **Profile** (`profile`, everyone, `/profile`) — name, email, photo, and password. [docs/mini-apps/profile.md](docs/mini-apps/profile.md)
+- **Contact Form** (`contact`, assigned, `/contact-inbox`) — public-site messages. [docs/mini-apps/contact.md](docs/mini-apps/contact.md)
+- **Inventory Bot** (`inventoryBot`, assigned, `/inventory-bot`) — warehouse tickets, rig inventory, and the morning checks. [docs/mini-apps/inventoryBot.md](docs/mini-apps/inventoryBot.md)
+- **Wells** (`wells`, assigned, `/wells`) — completed wells copied from the mud man app. [docs/mini-apps/wells.md](docs/mini-apps/wells.md)
+- **UniqGroup Logo** (`uniqGroupLogo`, assigned, `/uniqgroup-logo`) — the Uniq Group in 3D. [docs/mini-apps/uniqGroupLogo.md](docs/mini-apps/uniqGroupLogo.md)
+- **User Access** (`users`, super admins, `/users`) — invites and which mini apps each person can open. [docs/mini-apps/users.md](docs/mini-apps/users.md)
+- **Builder** (`builder`, super admins, `/builder`) — a cloud agent opens a pull request. [docs/mini-apps/builder.md](docs/mini-apps/builder.md)

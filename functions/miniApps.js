@@ -6,6 +6,7 @@
 //                  2) guard its callables with requireMiniApp(request, "<id>")   (functions/core.js)
 //                  3) add its routes inside <RequireMiniApp app="<id>"> in src/App.tsx and a noindex header in firebase.json
 //                  4) add its icon to ICONS in src/auth/miniApps.ts if it uses a new one
+//                  5) add docs/mini-apps/<id>.md and a line for it in AGENTS.md
 // Tests fail if any of these is forgotten. Super admins get every mini app in this list automatically.
 //
 // Three kinds of mini app:
