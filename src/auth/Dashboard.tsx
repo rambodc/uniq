@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { AppIcon } from "./AppIcon";
 import { ICONS, MINI_APPS, USER_TYPE_LABELS } from "./miniApps";
 import Avatar from "./Avatar";
 import Shell from "./Shell";
@@ -20,7 +21,7 @@ export default function Dashboard() {
       {apps.map(({ id, route, name, description, icon, accent }) => {
         const Icon = ICONS[icon];
         return <Link key={id} className="portal-tile" style={{ "--accent": accent } as CSSProperties} to={route}>
-          <span className="portal-tile-icon"><Icon size={26} aria-hidden="true" /></span>
+          <AppIcon icon={Icon} tile />
           <h2>{name}</h2>
           <p>{description}</p>
           <span>Open</span>
