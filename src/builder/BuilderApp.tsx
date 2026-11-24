@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { doc, onSnapshot } from "firebase/firestore";
 import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { getBuilderConversation, listBuilderConversations, notifyBuilderAdmin, renameBuilderConversation, sendBuilderMessage, startBuilderConversation, type BuilderConversation, type BuilderShip, type BuilderStatus, type BuilderSummary } from "../core/api";
+import { getBuilderConversation, listBuilderConversations, notifyBuilderAdmin, renameBuilderConversation, sendBuilderMessage, startBuilderConversation, watchBuilderRun, type BuilderConversation, type BuilderLive, type BuilderShip, type BuilderStatus, type BuilderSummary } from "../core/api";
 import { MINI_APPS } from "../../functions/miniApps.js";
-import { elapsedLabel, fillerPhase, latestAdminHelp, openIdeas, openPreview, openQuestion, openSummary, parsePreview, parseQuestion, parseStoredFiles, questionViews, withoutAdminHelp, withoutStoredFiles, workingStep } from "../../functions/builderHelp.js";
-import { auth, storage } from "../core/firebase";
+import { LIVE_SITE, LIVE_TEXT, clipLine, elapsedLabel, latestAdminHelp, liveHref, openIdeas, openPreview, openQuestion, openSummary, parsePreview, parseQuestion, parseStoredFiles, publicLive, questionViews, withoutAdminHelp, withoutStoredFiles, workingStep } from "../../functions/builderHelp.js";
+import { auth, db, storage } from "../core/firebase";
 import { messageOf } from "../core/api";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../auth/Theme";
@@ -97,7 +98,43 @@ export function clock(iso: string) {
 }
 
 type StoredFile = { path?: string; name: string; size: number; contentType: string; previewUrl?: string };
-type Row = { id: string; kind: "user" | "assistant"; text: string; at: string; pending?: "sending" | "failed"; localAck?: boolean; files?: StoredFile[]; error?: string };
+type Row = { id: string; kind: "user" | "assistant" | "notice"; text: string; at: string; pending?: "sending" | "failed"; localAck?: boolean; files?: StoredFile[]; error?: string; tone?: "live" | "note"; href?: string | null; prUrl?: string | null };
+
+/** Keep the newer live line when a poll and the document listener overlap. */
+export function preferLive(current: BuilderLive | null | undefined, next: BuilderLive | null | undefined): BuilderLive | null {
+  const a = Date.parse(current?.updatedAt || "");
+  const b = Date.parse(next?.updatedAt || "");
+  if (Number.isFinite(a) && (!Number.isFinite(b) || a > b)) return current ?? null;
+  return next ?? null;
+}
+
+/** Timer text, the latest assistant line, and the live step. A missing stream falls back to the saved reply. */
+export function workLine(messages: { kind: string; text: string }[], live: BuilderLive | null | undefined) {
+  const streamed = clipLine(live?.text || "", 240);
+  const fallback = workingStep(messages);
+  const text = streamed || (fallback === "Starting" ? "" : fallback);
+  const step = clipLine(live?.step || "", 96);
+  return { text, step: step || (text ? "" : "Starting"), live: Boolean(step) };
+}
+
+export function liveLinkLabel(href: string) {
+  try {
+    const url = new URL(href);
+    if (url.hostname !== "uniqenergy.com") return "uniqenergy.com";
+    const path = url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+    return `uniqenergy.com${path}`;
+  } catch {
+    return "uniqenergy.com";
+  }
+}
+
+export function LiveCard({ text, href }: { text: string; href: string }) {
+  const link = href || LIVE_SITE;
+  return <div className="bd-done" role="status">
+    <span className="bd-done-mark" aria-hidden="true">✓</span>
+    <div><p>{text}</p><a href={link} target="_blank" rel="noopener noreferrer">{liveLinkLabel(link)}</a></div>
+  </div>;
+}
 
 function StoredFileChip({ file }: { file: StoredFile }) {
   const [url, setUrl] = useState(file.previewUrl || "");
@@ -205,13 +242,13 @@ export function ChatColumn({ conversation, extras = [], now, busy = false, refre
   const preview = openPreview(messages);
   const waiting = Boolean((question && !question.answered) || (ideas && !ideas.answered) || (summary && !summary.answered) || (preview && !preview.answered));
   const anchor = [...messages].reverse().find((message) => message.kind === "user")?.at ?? conversation.updatedAt;
-  const elapsedSec = anchor ? Math.max(0, (now - Date.parse(anchor)) / 1000) : 0;
-  const lastAgent = [...conversation.messages].reverse().find((message) => message.kind === "assistant" && message.id !== question?.id);
-  const quietSec = lastAgent ? (now - Date.parse(lastAgent.at)) / 1000 : null;
-  const phase = conversation.status === "running" && !waiting ? fillerPhase(elapsedSec, quietSec) : null;
-  const showFiller = Boolean(phase);
+  const line = workLine(conversation.messages, conversation.live);
+  const liveNotes = messages.filter((message) => message.kind === "notice" && message.tone === "live");
+  const ship = conversation.ship;
+  const showDone = ship?.phase === "live" && Boolean(conversation.prUrl) && !liveNotes.some((message) => message.prUrl === conversation.prUrl);
   return <div className="bd-col">
     {messages.map((message) => {
+      if (message.kind === "notice" && message.tone === "live") return <div key={message.id} className="bd-turn"><LiveCard text={message.text || LIVE_TEXT} href={message.href || liveHref(conversation.messages)} /></div>;
       const text = message.kind === "assistant" ? withoutAdminHelp(message.text) : withoutStoredFiles(message.text);
       const files = message.kind === "user" ? (message.files?.length ? message.files : parseStoredFiles(message.text)) : [];
       const card = questions.find((item) => item.id === message.id && !item.hidden);
@@ -236,10 +273,19 @@ export function ChatColumn({ conversation, extras = [], now, busy = false, refre
       </div>;
     })}
     {onRefresh && <button type="button" className={refreshing ? "bd-refresh spin" : "bd-refresh"} aria-label="Check for new messages" title="Check for new messages" disabled={refreshing} onClick={onRefresh}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" /></svg></button>}
-    {showFiller && <div className="bd-work"><span className="bd-dot" /><div><b>{phase === "ten" ? `Still working, ${elapsedLabel(anchor, now)}` : (workingStep(conversation.messages) === "Starting" ? "Reading the files…" : workingStep(conversation.messages))} <span className="bd-dots"><i /><i /><i /></span></b></div></div>}
-    {conversation.status === "running" && !showFiller && !waiting && <div className="bd-work"><span className="bd-dot" /><div><b>Working… {elapsedLabel(anchor, now)}</b><small>{workingStep(conversation.messages)}</small></div></div>}
-    {conversation.ship?.detail === "No changes." && <div className="bd-banner"><div><b>No changes</b><small>The merge did not change production.</small></div></div>}
-    {conversation.ship?.phase === "failed" && <div className="bd-banner bad"><div><b>Failed</b><small>{conversation.ship.detail || "The deploy did not finish."}</small></div>{onFix && <button className="ws-button" type="button" disabled={busy} onClick={onFix}>{busy ? "Sending…" : "Ask Builder to fix"}</button>}</div>}
+    {conversation.status === "running" && !waiting && <div className="bd-work" role="status" aria-live="polite">
+      <span className="bd-dot" aria-hidden="true" />
+      <p className="bd-work-line">
+        <span className="bd-work-time">{elapsedLabel(anchor, now)}</span>
+        {line.text ? <span className="bd-work-text" title={line.text}>{line.text}</span> : null}
+        {line.step ? <span className={line.live ? "bd-work-step" : "bd-work-quiet"}>{line.step}</span> : null}
+      </p>
+    </div>}
+    {showDone && <LiveCard text={LIVE_TEXT} href={liveHref(conversation.messages)} />}
+    {ship?.detail === "No changes." && <div className="bd-note"><div><b>No changes</b><small>The merge did not change production.</small></div></div>}
+    {ship?.phase === "merged" && ship.detail !== "No changes." && <div className="bd-note"><div><b>Merged</b><small>{ship.detail || "Waiting for the production deploy."}</small></div></div>}
+    {ship?.phase === "deploying" && <div className="bd-note"><div><b>Deploying</b><small>{ship.detail || "Deploying to production."}</small></div></div>}
+    {ship?.phase === "failed" && <div className="bd-note bad"><div><b>Failed</b><small>{ship.detail || "The deploy did not finish."}</small></div>{onFix && <button className="ws-button" type="button" disabled={busy} onClick={onFix}>{busy ? "Sending…" : "Ask Builder to fix"}</button>}</div>}
   </div>;
 }
 
@@ -265,6 +311,7 @@ export function sameThread(current: BuilderConversation | null, next: BuilderCon
   if (!current || current.id !== next.id) return false;
   if (current.status !== next.status || (current.error ?? "") !== (next.error ?? "")) return false;
   if ((current.ship?.phase ?? "") !== (next.ship?.phase ?? "") || (current.ship?.detail ?? "") !== (next.ship?.detail ?? "")) return false;
+  if ((current.live?.step ?? "") !== (next.live?.step ?? "") || (current.live?.text ?? "") !== (next.live?.text ?? "")) return false;
   if (current.messages.length !== next.messages.length) return false;
   for (let i = 0; i < current.messages.length; i += 1) if (current.messages[i].id !== next.messages[i].id) return false;
   const previous = current.messages.at(-1);
@@ -345,7 +392,11 @@ export default function BuilderApp() {
       try {
         const next = (await getBuilderConversation(id, force)).conversation;
         if (owned.current !== id) return;
-        setConversation((current) => sameThread(current, next) ? current : mergeConversation(current, next));
+        setConversation((current) => {
+          const live = preferLive(current?.id === next.id ? current.live : null, next.live);
+          const merged = { ...next, live };
+          return sameThread(current, merged) ? current : mergeConversation(current, merged);
+        });
         setOutgoing((rows) => {
           const kept = dropSent(rows, next);
           return kept.length === rows.length && kept.every((row, index) => row === rows[index]) ? rows : kept;
@@ -532,6 +583,46 @@ export default function BuilderApp() {
   const summary = openSummary(thread);
   const previewCard = openPreview(thread);
   const waiting = Boolean((asked && !asked.answered) || (ideas && !ideas.answered) || (summary && !summary.answered) || (previewCard && !previewCard.answered));
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    return onSnapshot(doc(db, "builder", conversationId), (snap) => {
+      const live = publicLive(snap.data()?.live);
+      setConversation((current) => {
+        if (!current || current.id !== conversationId) return current;
+        const next = preferLive(current.live, live);
+        if ((next?.step ?? "") === (current.live?.step ?? "") && (next?.text ?? "") === (current.live?.text ?? "") && (next?.updatedAt ?? "") === (current.live?.updatedAt ?? "")) return current;
+        return { ...current, live: next };
+      });
+    }, () => undefined);
+  }, [conversationId]);
+  useEffect(() => {
+    if (!conversationId || hidden || shown?.status !== "running" || waiting) return undefined;
+    let stop = false;
+    const pump = async () => {
+      while (!stop) {
+        try {
+          const result = await watchBuilderRun(conversationId);
+          if (stop) return;
+          if (result.live) setConversation((current) => {
+            if (!current || current.id !== conversationId) return current;
+            const live = preferLive(current.live, result.live);
+            if ((live?.step ?? "") === (current.live?.step ?? "") && (live?.text ?? "") === (current.live?.text ?? "")) return current;
+            return { ...current, live };
+          });
+          if (result.status !== "running") return;
+          if (result.done) void loadOne(conversationId, true);
+          const remain = result.held && result.holdUntil ? Date.parse(result.holdUntil) - Date.now() : 0;
+          const wait = result.held ? Math.min(20_000, Math.max(1_500, remain || 1_500)) : result.done ? 4_000 : 400;
+          await new Promise((resolve) => setTimeout(resolve, wait));
+        } catch {
+          if (stop) return;
+          await new Promise((resolve) => setTimeout(resolve, 5_000));
+        }
+      }
+    };
+    void pump();
+    return () => { stop = true; };
+  }, [conversationId, hidden, shown?.status, waiting, loadOne]);
   const placeholder = fixing ? "Tell me what to change" : (asked && !asked.answered) || (ideas && !ideas.answered) ? "Answer the question above or type your own" : "Message";
   const help = view ? latestAdminHelp(view.messages) : null;
   const pill = view ? pillOf(view.status, view.ship, waiting) : null;
