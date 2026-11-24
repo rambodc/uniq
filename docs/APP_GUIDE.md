@@ -38,7 +38,7 @@ Private paths are noindex in `firebase.json` and listed in `public/robots.txt`.
 
 Sign-in is `/signin` (email and password, Firebase Auth, verified email required). After sign-in everyone lands on `/dashboard`.
 
-The dashboard is one tile per mini app the account may open. Tile order is the order in `functions/miniApps.js`. Profile is always first. Each tile's colour is that entry's `accent`. The portal chrome is `src/auth/Shell.tsx` and the theme is `src/auth/Theme.tsx` (`portal.css` tokens). The choice is stored in `localStorage` under `uniqenergy-portal-theme`. Do not change brand marks or logos unless the request asks for it.
+The dashboard is one tile per mini app the account may open. Tile order is the order in `functions/miniApps.js`. Profile is always first. Each tile's colour is that entry's `accent` (tile border, Open label, and the small squircle icon on the card). Mini-app page headers use the same icon treatment via `src/auth/AppIcon.tsx`. The portal chrome is `src/auth/Shell.tsx` and the theme is `src/auth/Theme.tsx` (`portal.css` tokens). The choice is stored in `localStorage` under `uniqenergy-portal-theme`. Do not change brand marks or logos unless the request asks for it.
 
 The account bar at the top of every private page links to the dashboard. Log out exists only on the Profile page.
 

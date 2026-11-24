@@ -15,13 +15,13 @@
 // `accent` is the tile colour (a hex). Order here is the dashboard order. Profile is always first, for everyone.
 
 export const MINI_APPS = /** @type {const} */ ([
-  { id: "profile", name: "Profile", description: "Your name, email, photo and password.", route: "/profile", icon: "CircleUserRound", accent: "#1ce7be", superAdminOnly: false, everyone: true },
-  { id: "contact", name: "Contact Form", description: "Messages received through uniqenergy.com.", route: "/contact-inbox", icon: "Inbox", accent: "#32c9ed", superAdminOnly: false, everyone: false },
-  { id: "inventoryBot", name: "Inventory Bot", description: "Warehouse tickets, rig inventory, and the morning checks.", route: "/inventory-bot", icon: "PackageSearch", accent: "#f0b429", superAdminOnly: false, everyone: false },
-  { id: "wells", name: "Wells", description: "Completed wells copied from the mud man app.", route: "/wells", icon: "Drill", accent: "#19c3b1", superAdminOnly: false, everyone: false },
-  { id: "uniqGroupLogo", name: "UniqGroup Logo", description: "The Uniq Group in 3D: the UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit.", route: "/uniqgroup-logo", icon: "Orbit", accent: "#2bd94f", superAdminOnly: false, everyone: false },
-  { id: "users", name: "User Access", description: "Invite people, edit their details, and choose which mini apps each one can open.", route: "/users", icon: "ShieldCheck", accent: "#7aa2ff", superAdminOnly: true, everyone: false },
-  { id: "builder", name: "Builder", description: "Describe a change. A cloud agent opens a pull request.", route: "/builder", icon: "Hammer", accent: "#0c9a78", superAdminOnly: true, everyone: false },
+  { id: "profile", name: "Profile", description: "Your name, email, photo and password.", route: "/profile", icon: "CircleUserRound", accent: "#15dbb3", superAdminOnly: false, everyone: true },
+  { id: "contact", name: "Contact Form", description: "Messages received through uniqenergy.com.", route: "/contact-inbox", icon: "Inbox", accent: "#2899f5", superAdminOnly: false, everyone: false },
+  { id: "inventoryBot", name: "Inventory Bot", description: "Warehouse tickets, rig inventory, and the morning checks.", route: "/inventory-bot", icon: "PackageSearch", accent: "#e5a50e", superAdminOnly: false, everyone: false },
+  { id: "wells", name: "Wells", description: "Completed wells copied from the mud man app.", route: "/wells", icon: "Drill", accent: "#17b8a8", superAdminOnly: false, everyone: false },
+  { id: "uniqGroupLogo", name: "UniqGroup Logo", description: "The Uniq Group in 3D: the UniqEnergy globe with Alchem, Uniquem, UniqEnergy and Kemko in orbit.", route: "/uniqgroup-logo", icon: "Orbit", accent: "#28c955", superAdminOnly: false, everyone: false },
+  { id: "users", name: "User Access", description: "Invite people, edit their details, and choose which mini apps each one can open.", route: "/users", icon: "ShieldCheck", accent: "#6688f0", superAdminOnly: true, everyone: false },
+  { id: "builder", name: "Builder", description: "Describe a change. A cloud agent opens a pull request.", route: "/builder", icon: "Hammer", accent: "#14b574", superAdminOnly: true, everyone: false },
 ]);
 
 export const SUPER_ADMIN = "super_admin";

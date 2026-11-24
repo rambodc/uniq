@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "./AuthContext";
+import { AppIcon } from "./AppIcon";
 import { ICONS, miniAppById, type MiniAppId } from "./miniApps";
 import { ThemeToggle } from "./Theme";
 
@@ -33,7 +34,7 @@ export function PageShell({ title, eyebrow, appId, back, backTo = "/dashboard", 
     <main className="portal-main">
       {back && <Link className="portal-back-link" to={backTo}><ArrowLeft size={18} aria-hidden="true" /> Back</Link>}
       <div className="portal-page-head">
-        {Icon && <span className="portal-page-icon"><Icon size={26} aria-hidden="true" /></span>}
+        {Icon && <AppIcon icon={Icon} />}
         <div>
           {eyebrow && <p className="portal-eyebrow">{eyebrow}</p>}
           <h1>{title}</h1>
