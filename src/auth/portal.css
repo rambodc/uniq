@@ -53,7 +53,10 @@
 .portal-segment button.active{color:#032018;background:linear-gradient(135deg,#35f5c7,#12caa7)}
 .mail-count{margin:0 0 10px;color:var(--portal-muted);font-size:13px}
 .mail-list{list-style:none;margin:0;padding:0;border:1px solid var(--portal-line);border-radius:18px;background:var(--portal-panel);overflow:hidden}
-.mail-row{display:grid;gap:6px;min-width:0;padding:16px 18px;border-bottom:1px solid var(--portal-line);color:inherit;text-decoration:none}
+.mail-row{display:flex;align-items:flex-start;gap:14px;min-width:0;padding:16px 18px;border-bottom:1px solid var(--portal-line);color:inherit;text-decoration:none}
+.mail-row>.portal-app-icon{align-self:center;flex:none;width:40px;height:40px;border-radius:10px}
+.mail-row>.portal-app-icon svg{width:20px;height:20px}
+.mail-row-body{display:grid;gap:6px;min-width:0;flex:1}
 .mail-list li:last-child .mail-row{border-bottom:0}
 .mail-row:hover,.mail-row:focus-visible{background:color-mix(in srgb,var(--accent,var(--portal-teal)) 10%,transparent)}
 .mail-row-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;min-width:0}

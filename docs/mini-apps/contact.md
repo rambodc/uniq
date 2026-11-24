@@ -4,7 +4,7 @@ Assigned staff and super admins. Routes `/contact-inbox` and `/contact-inbox/:in
 
 ## Screens
 
-- Inbox (`src/contact/ContactInbox.tsx`): Active and Archived, search (`?archived=1`, `?q=`), newest first. Each row links to the message.
+- Inbox (`src/contact/ContactInbox.tsx`): Active and Archived, search (`?archived=1`, `?q=`), newest first. Each row shows a mail icon and links to the message.
 - Message (`src/contact/ContactDetail.tsx`): type, optional product name, name, email, company, phone, message, and any stored `legacy` fields. Archive and restore.
 
 The public form is not this mini app. It is `/contact-us` in `src/public/PublicSite.tsx` and calls `submitContactInquiry` with no sign-in.
