@@ -42,5 +42,5 @@ Order and ids are `functions/miniApps.js`. One line each; the page has the scree
 - **Inventory Bot** (`inventoryBot`, assigned, `/inventory-bot`) — warehouse tickets, rig inventory, and the morning checks. [docs/mini-apps/inventoryBot.md](docs/mini-apps/inventoryBot.md)
 - **Wells** (`wells`, assigned, `/wells`) — completed wells copied from the mud man app. [docs/mini-apps/wells.md](docs/mini-apps/wells.md)
 - **UniqGroup Logo** (`uniqGroupLogo`, assigned, `/uniqgroup-logo`) — the Uniq Group in 3D. [docs/mini-apps/uniqGroupLogo.md](docs/mini-apps/uniqGroupLogo.md)
-- **User Access** (`users`, super admins, `/users`) — invites and which mini apps each person can open. [docs/mini-apps/users.md](docs/mini-apps/users.md)
+- **User Access** (`users`, super admins, `/users`, `/users/new`, `/users/:uid/edit`) — invites and which mini apps each person can open. [docs/mini-apps/users.md](docs/mini-apps/users.md)
 - **Builder** (`builder`, super admins, `/builder`) — a cloud agent opens a pull request. [docs/mini-apps/builder.md](docs/mini-apps/builder.md)

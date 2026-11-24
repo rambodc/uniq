@@ -33,6 +33,6 @@ describe("mini-app registry", () => {
     expect(safeNext("/users")).toBe("/users");
     expect(safeNext("/portal")).toBe("/dashboard");
     expect(read("src/auth/Dashboard.tsx")).toContain("MINI_APPS.filter((app) => can(app.id))");
-    expect(read("src/users/UsersApp.tsx")).toContain("ASSIGNABLE_MINI_APP_IDS.map");
+    expect(read("src/users/UserForm.tsx")).toContain("ASSIGNABLE_MINI_APP_IDS.map");
   });
 });
