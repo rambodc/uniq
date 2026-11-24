@@ -18,13 +18,11 @@ export default function Dashboard() {
       <p className="portal-lead">{type ? USER_TYPE_LABELS[type] : ""} · {profile.email}</p>
     </div>}
     <section className="portal-tiles" aria-label="Mini apps">
-      {apps.map(({ id, route, name, description, icon, accent }) => {
+      {apps.map(({ id, route, name, icon, accent }) => {
         const Icon = ICONS[icon];
         return <Link key={id} className="portal-tile" style={{ "--accent": accent } as CSSProperties} to={route}>
-          <AppIcon icon={Icon} tile />
-          <h2>{name}</h2>
-          <p>{description}</p>
-          <span>Open</span>
+          <AppIcon icon={Icon} launcher />
+          <span className="portal-tile-name">{name}</span>
         </Link>;
       })}
     </section>

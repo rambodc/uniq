@@ -1,13 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 
-const SIZE = 22;
-const STROKE = 2.15;
-
-/** Lucide glyph inside the portal’s iOS-style squircle chip (dashboard tiles and page headers). */
-export function AppIcon({ icon: Icon, tile }: { icon: LucideIcon; tile?: boolean }) {
+/** Lucide glyph inside the portal’s iOS-style squircle chip (dashboard launcher or page header). */
+export function AppIcon({ icon: Icon, launcher }: { icon: LucideIcon; launcher?: boolean }) {
+  const size = launcher ? 28 : 22;
+  const stroke = launcher ? 2.1 : 2.15;
+  const kind = launcher ? "portal-app-icon portal-tile-icon is-launcher" : "portal-app-icon portal-page-icon";
   return (
-    <span className={tile ? "portal-app-icon portal-tile-icon" : "portal-app-icon portal-page-icon"}>
-      <Icon size={SIZE} strokeWidth={STROKE} aria-hidden="true" />
+    <span className={kind}>
+      <Icon size={size} strokeWidth={stroke} aria-hidden="true" />
     </span>
   );
 }
