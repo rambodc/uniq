@@ -21,17 +21,16 @@
 .portal-app-icon{--chip:var(--accent,var(--portal-teal));position:relative;display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:11px;color:#fff;background:linear-gradient(165deg,color-mix(in srgb,var(--chip) 72%,#fff) 0%,var(--chip) 42%,color-mix(in srgb,var(--chip) 75%,#000) 100%);box-shadow:0 1px 0 color-mix(in srgb,#fff 48%,transparent) inset,0 6px 14px color-mix(in srgb,var(--chip) 38%,transparent),0 2px 4px rgba(0,0,0,.18);transition:transform .22s ease,box-shadow .22s ease;isolation:isolate}
 .portal-app-icon::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(70% 55% at 28% 18%,rgba(255,255,255,.42),transparent 68%);pointer-events:none}
 .portal-app-icon svg{position:relative;z-index:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.22))}
-.portal-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
-.portal-tile{display:grid;gap:8px;min-height:200px;padding:20px 22px;border:1px solid var(--portal-line);border-top:3px solid var(--accent,var(--portal-teal));border-radius:22px;background:var(--portal-panel);box-shadow:var(--portal-shadow);align-content:start;text-decoration:none;color:inherit;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
-.portal-tile:hover,.portal-tile:focus-visible{transform:translateY(-2px);box-shadow:0 20px 44px color-mix(in srgb,var(--accent,var(--portal-teal)) 14%,transparent),var(--portal-shadow);border-color:color-mix(in srgb,var(--accent,var(--portal-teal)) 35%,var(--portal-line))}
-.portal-tile:hover .portal-tile-icon,.portal-tile:focus-visible .portal-tile-icon{transform:scale(1.07) translateY(-1px);box-shadow:0 1px 0 color-mix(in srgb,#fff 52%,transparent) inset,0 10px 22px color-mix(in srgb,var(--chip,var(--accent,var(--portal-teal))) 48%,transparent),0 4px 8px rgba(0,0,0,.2)}
-.portal-tile h2{margin:6px 0 0;font-size:22px}
-.portal-tile p{margin:0;color:var(--portal-muted)}
-.portal-tile>span:last-child{margin-top:auto;color:var(--accent,var(--portal-teal));font-weight:750}
+.portal-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px 14px;margin-top:16px;justify-items:center}
+@media(min-width:900px){.portal-tiles{grid-template-columns:repeat(5,minmax(0,1fr));gap:32px 18px}}
+.portal-tile{display:flex;flex-direction:column;align-items:center;gap:9px;width:100%;max-width:88px;padding:0;text-decoration:none;color:inherit;text-align:center;background:transparent;border:0;box-shadow:none}
+.portal-tile-name{margin:0;font-size:12px;font-weight:650;line-height:1.25;color:var(--portal-text);max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.portal-app-icon.is-launcher{width:58px;height:58px;border-radius:14px}
+.portal-tile:hover .portal-tile-icon.is-launcher,.portal-tile:focus-visible .portal-tile-icon.is-launcher{transform:scale(1.06) translateY(-2px);box-shadow:0 1px 0 color-mix(in srgb,#fff 52%,transparent) inset,0 12px 26px color-mix(in srgb,var(--chip,var(--accent,var(--portal-teal))) 50%,transparent),0 4px 8px rgba(0,0,0,.22)}
 .portal-eyebrow{margin:0 0 6px;color:var(--accent,var(--portal-teal));font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 .portal-lead,.portal-card p,.portal-panel p{color:var(--portal-muted);line-height:1.55}
 .portal-welcome{display:flex;align-items:center;gap:14px;margin-bottom:8px}
-@media(prefers-reduced-motion:reduce){.portal-app-icon,.portal-tile{transition:none}.portal-tile:hover,.portal-tile:focus-visible{transform:none}.portal-tile:hover .portal-tile-icon,.portal-tile:focus-visible .portal-tile-icon{transform:none}}
+@media(prefers-reduced-motion:reduce){.portal-app-icon{transition:none}.portal-tile:hover .portal-tile-icon,.portal-tile:focus-visible .portal-tile-icon{transform:none}}
 .portal-card,.portal-panel{display:grid;gap:14px;padding:22px;border:1px solid var(--portal-line);border-radius:22px;background:var(--portal-panel);box-shadow:var(--portal-shadow)}
 .portal-card{width:min(440px,100%)}
 .portal-card img{width:72px;height:72px}
@@ -97,7 +96,7 @@
 .portal-logout{justify-self:start}
 .portal-empty{color:var(--portal-muted);padding:18px}
 @media(max-width:800px){
-  .portal-tiles,.portal-people,.portal-profile-grid,.portal-form-grid{grid-template-columns:1fr}
+  .portal-people,.portal-profile-grid,.portal-form-grid{grid-template-columns:1fr}
   .portal-toolbar{flex-direction:column;align-items:stretch}
   .portal-toolbar form{max-width:none}
   .portal-photo{align-items:flex-start}
