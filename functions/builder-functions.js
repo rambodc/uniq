@@ -27,6 +27,7 @@ function raise(error) {
 }
 function take(fn, value) { try { return fn(value); } catch (error) { raise(error); } }
 function conversationId(value) { const id = text(value, "build", 128); if (!/^[A-Za-z0-9]+$/.test(id)) throw new HttpsError("invalid-argument", "Enter a valid build."); return id; }
+function listPageSize(value, fallback) { const n = Number(value); if (!Number.isFinite(n)) return fallback; return Math.min(100, Math.max(1, Math.floor(n))); }
 function keyOrNull() { try { return readCursorKey(cursorApiKey); } catch { return null; } }
 
 async function loadMessages(id) {
@@ -160,10 +161,12 @@ async function present(id) {
 export const listBuilderConversations = onCall(builderCall, async (request) => {
   const access = await requireMiniApp(request, "builder");
   if (!isSuperAdmin(access)) throw new HttpsError("permission-denied", "This account is not authorized.");
-  const snapshot = await conversations().orderBy("updatedAt", "desc").limit(40).get();
+  const limit = listPageSize(request.data?.limit, 2);
+  const snapshot = await conversations().orderBy("updatedAt", "desc").limit(limit + 1).get();
   const configured = keyOrNull() != null;
-  const items = snapshot.docs.map((doc) => { const view = summaryView(doc.id, doc.data()); if (!configured && view.status === "running") view.error = NOT_CONFIGURED; return view; });
-  return { conversations: items };
+  const page = snapshot.docs.slice(0, limit);
+  const items = page.map((doc) => { const view = summaryView(doc.id, doc.data()); if (!configured && view.status === "running") view.error = NOT_CONFIGURED; return view; });
+  return { conversations: items, hasMore: snapshot.docs.length > limit };
 });
 
 export const getBuilderConversation = onCall(warmBuilderCall, async (request) => {

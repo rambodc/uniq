@@ -13,6 +13,9 @@ import { AssistantMessage } from "./RichMessage";
 import { takePendingReport } from "../report/report";
 import "./builder.css";
 
+const BUILD_LIST_START = 2;
+const BUILD_LIST_MORE = 5;
+
 /** Reload conversation data when the tab comes back after being hidden for a minute. */
 function useResume(reload: () => unknown) {
   const latest = useRef(reload);
@@ -383,10 +386,23 @@ export default function BuilderApp() {
   const known = useRef<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
   const [unseen, setUnseen] = useState<Row[]>([]);
+  const [hasMoreBuilds, setHasMoreBuilds] = useState(false);
+  const [loadingMoreBuilds, setLoadingMoreBuilds] = useState(false);
+  const listLimit = useRef(BUILD_LIST_START);
 
   const loadList = useCallback(async () => {
-    try { setItems((await listBuilderConversations()).conversations); } catch (cause) { setError(messageOf(cause, "Builds could not be loaded. Try again.")); }
+    try {
+      const { conversations, hasMore } = await listBuilderConversations(listLimit.current);
+      setItems(conversations);
+      setHasMoreBuilds(hasMore);
+    } catch (cause) { setError(messageOf(cause, "Builds could not be loaded. Try again.")); }
   }, []);
+  const loadMoreBuilds = useCallback(() => {
+    if (loadingMoreBuilds || !hasMoreBuilds) return;
+    listLimit.current += BUILD_LIST_MORE;
+    setLoadingMoreBuilds(true);
+    void loadList().finally(() => setLoadingMoreBuilds(false));
+  }, [hasMoreBuilds, loadList, loadingMoreBuilds]);
   const loadOne = useCallback(async (id: string, force = false) => {
     if (!id) return;
     if (flight.current?.id === id) return force ? flight.current.promise : undefined;
@@ -646,6 +662,7 @@ export default function BuilderApp() {
         <div className="bd-side-top"><button className="bd-new" type="button" onClick={() => { setDrawer(false); setMenu(false); navigate("/builder"); }}>+ New build</button></div>
         {!items && !error && <div className="ws-empty">Loading builds…</div>}
         {items && <BuildList items={items} current={conversationId} />}
+        {items && hasMoreBuilds && <button type="button" className="bd-more-builds" disabled={loadingMoreBuilds} onClick={loadMoreBuilds}>{loadingMoreBuilds ? "Loading…" : "Load more"}</button>}
         <div className="bd-side-foot"><Link className="bd-dash" to="/dashboard">← Dashboard</Link></div>
       </aside>
       <section className="bd-main" aria-label="Build conversation">

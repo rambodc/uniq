@@ -4,7 +4,7 @@ Super admins only. Routes `/builder` and `/builder/:conversationId`. A super adm
 
 ## Screens
 
-`src/builder/BuilderApp.tsx` (lazy-loaded). A new build starts with "Which mini app should this live in?" The options are the names in `functions/miniApps.js`, in that order, plus "New mini app". The first user message is `Mini app: {name}`. The thread then shows questions, idea chips, the plan, and the approval card from assistant text. Continue sends `Continue to preview`. Approve sends `Approved, build it`. Those cards are text. A screenshot is not a required step; the agent makes one only when the person asks. The composer attaches up to eight files, 20 MB each. The header shows status and, once a pull request exists, the ship phase. An empty merge shows "No changes".
+`src/builder/BuilderApp.tsx` (lazy-loaded). The sidebar loads the two most recent builds first, then a **Load more** button fetches five older builds at a time. A new build starts with "Which mini app should this live in?" The options are the names in `functions/miniApps.js`, in that order, plus "New mini app". The first user message is `Mini app: {name}`. The thread then shows questions, idea chips, the plan, and the approval card from assistant text. Continue sends `Continue to preview`. Approve sends `Approved, build it`. Those cards are text. A screenshot is not a required step; the agent makes one only when the person asks. The composer attaches up to eight files, 20 MB each. The header shows status and, once a pull request exists, the ship phase. An empty merge shows "No changes".
 
 Assistant text may end with a `builder-admin-help` block. The screen then shows "Notify admin", which calls `notifyBuilderAdmin` once.
 

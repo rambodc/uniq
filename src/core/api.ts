@@ -116,7 +116,7 @@ export type BuilderMessage = { id: string; kind: "user" | "assistant" | "notice"
 export type BuilderLive = { step: string; text: string; updatedAt: string | null };
 export type BuilderConversation = BuilderSummary & { agentUrl: string | null; messages: BuilderMessage[]; live?: BuilderLive | null };
 export type BuilderWatch = { status: BuilderStatus; live: BuilderLive | null; held: boolean; holdUntil: string | null; done: boolean };
-export const listBuilderConversations = () => invoke<undefined, { conversations: BuilderSummary[] }>("listBuilderConversations");
+export const listBuilderConversations = (limit?: number) => invoke<{ limit?: number }, { conversations: BuilderSummary[]; hasMore: boolean }>("listBuilderConversations", limit == null ? {} : { limit });
 export const getBuilderConversation = (conversationId: string, force = false) => invoke<{ conversationId: string; force: boolean }, { conversation: BuilderConversation }>("getBuilderConversation", { conversationId, force });
 export const watchBuilderRun = async (conversationId: string) => (await httpsCallable<{ conversationId: string }, BuilderWatch>(functions, "watchBuilderRun", { timeout: 80_000 })({ conversationId })).data;
 export type BuilderUpload = { path: string; name: string; size: number; contentType: string };

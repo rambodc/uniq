@@ -20,6 +20,10 @@ describe("Builder chat", () => {
     expect(out).toContain('href="/builder/abc"');
     expect(out).toContain('aria-current="page"');
   });
+  it("offers Load more for older builds in the sidebar markup", () => {
+    expect(readFileSync(new URL("./BuilderApp.tsx", import.meta.url), "utf8")).toMatch(/bd-more-builds/);
+    expect(readFileSync(new URL("./builder.css", import.meta.url), "utf8")).toMatch(/\.bd-more-builds/);
+  });
   it("shows streamed replies, a working row, and the live or failed result", () => {
     const early = html(<ChatColumn now={Date.parse("2026-11-22T18:00:02.000Z")} conversation={conversation({ messages: [{ id: "m1", kind: "user", text: "Add a questionnaire.", at: "2026-11-22T18:00:00.000Z" }] })} />);
     expect(early).toContain("0:02");
