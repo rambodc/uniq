@@ -670,6 +670,9 @@ test("Builder is wired to the secret, one collection, and super-admin reads with
   assert.match(rules, /allow write: if false/);
   assert.match(rules, /type == "super_admin"/);
   assert.match(rules, /match \/\{document=\*\*\} \{\s*allow read, write: if false;/);
+  assert.match(functions, /listPageSize\(request\.data\?\.limit, 2\)/);
+  assert.match(functions, /limit\(limit \+ 1\)/);
+  assert.match(functions, /hasMore: snapshot\.docs\.length > limit/);
 });
 
 test("live step labels come from tool calls, and a shell command uses its description", () => {
